@@ -1,0 +1,421 @@
+@page "/jobs"
+@model Audio2Timeline.Web.Pages.Jobs.IndexModel
+@using Audio2Timeline.Web.Infrastructure
+@inject Audio2Timeline.Web.Services.LanguageService LanguageService
+@inject Audio2Timeline.Web.Services.JsonLocalizationService Localizer
+@{
+    var lang = LanguageService.Resolve(ViewContext.HttpContext.Request);
+    string L(string key) => Localizer.Get(lang, key);
+    string StateLabel(string? value)
+    {
+        var key = $"state.{(value ?? string.Empty).ToLowerInvariant()}";
+        var label = L(key);
+        return label == key ? value ?? "-" : label;
+    }
+
+    string StageLabel(string? value)
+    {
+        if (string.Equals(value, "skipped_duplicate", StringComparison.OrdinalIgnoreCase))
+        {
+            return L("details.reused");
+        }
+
+        var key = $"stage.{(value ?? string.Empty).ToLowerInvariant()}";
+        var label = L(key);
+        return label == key ? value ?? "-" : label;
+    }
+
+    string FormatSize(long valueBytes) => DisplayFormatters.FormatFileSize(valueBytes, L);
+    string FormatDuration(double? valueSeconds) => DisplayFormatters.FormatDurationFriendly(valueSeconds, L);
+    string FormatDurationOrDash(double? valueSeconds) => valueSeconds.HasValue ? FormatDuration(valueSeconds) : "-";
+    string FormatCreatedAt(string? value) => DisplayFormatters.FormatCreatedAt(value);
+    int CompletedCount(int done, int skipped, int failed) => done + skipped + failed;
+
+    string ProgressCounter(int done, int skipped, int failed, int total) =>
+        $"{CompletedCount(done, skipped, failed)} / {total}";
+
+    string ProgressBreakdown(int done, int skipped, int failed) =>
+        $"{L("details.processed")} {done} | {L("details.reused")} {skipped} | {L("details.errors")} {failed}";
+
+    double Percent(double raw, int completed, int total)
+    {
+        if (raw > 0)
+        {
+            return Math.Clamp(raw, 0, 100);
+        }
+
+        return total <= 0 ? 0 : Math.Round(completed * 100.0 / total, 1);
+    }
+
+    string PercentLabel(double value) => $"{Math.Round(value, 1):0.0}%";
+    string StateBadgeClass(string? value) => (value ?? string.Empty).ToLowerInvariant() switch
+    {
+        "running" => "status-badge status-badge-info",
+        "pending" => "status-badge status-badge-warning",
+        "completed" => "status-badge status-badge-success",
+        "failed" => "status-badge status-badge-danger",
+        "canceled" => "status-badge status-badge-neutral",
+        _ => "status-badge status-badge-neutral",
+    };
+    ViewData["Title"] = L("jobs.list.page_title");
+}
+
+<section class="app-page space-y-6" id="jobs-page" data-has-active="@(Model.ActiveRun is not null ? "true" : "false")">
+    <header class="panel page-header">
+        <div>
+            <p class="eyebrow">@L("jobs.list.eyebrow")</p>
+            <h1 class="page-title">@L("jobs.list.page_title")</h1>
+            <p class="page-description">@L("jobs.list.description")</p>
+        </div>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+    {
+        <section class="panel notice-panel">
+            @Model.StatusMessage
+        </section>
+    }
+
+    @if (Model.ActiveRun is not null)
+    {
+        var activePercent = Percent(
+            Model.ActiveRun.ProgressPercent,
+            CompletedCount(Model.ActiveRun.VideosDone, Model.ActiveRun.VideosSkipped, Model.ActiveRun.VideosFailed),
+            Model.ActiveRun.VideosTotal);
+        <section class="panel">
+            <div class="mb-4 flex items-center justify-between gap-3">
+                <div>
+                    <p class="eyebrow">@L("jobs.active.title")</p>
+                    <h2 class="section-title">@L("jobs.active.heading")</h2>
+                </div>
+            </div>
+
+            <div class="grid gap-4 xl:grid-cols-6">
+                <div class="metric-card xl:col-span-2">
+                    <div class="metric-label">@L("common.job")</div>
+                    <div class="metric-value">@Model.ActiveRun.JobId</div>
+                    <div class="metric-subtle">
+                        <span class="@StateBadgeClass(Model.ActiveRun.State)">@StateLabel(Model.ActiveRun.State)</span>
+                        <span class="ml-2">@StageLabel(Model.ActiveRun.CurrentStage)</span>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">@L("common.progress")</div>
+                    <div class="metric-value">@PercentLabel(activePercent)</div>
+                    <div class="metric-subtle">@ProgressCounter(Model.ActiveRun.VideosDone, Model.ActiveRun.VideosSkipped, Model.ActiveRun.VideosFailed, Model.ActiveRun.VideosTotal)</div>
+                    <div class="metric-subtle">@ProgressBreakdown(Model.ActiveRun.VideosDone, Model.ActiveRun.VideosSkipped, Model.ActiveRun.VideosFailed)</div>
+                    <div class="progress-track mt-3">
+                        <div class="progress-fill" style="width:@(activePercent.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">@L("common.total_size")</div>
+                    <div class="metric-value">@FormatSize(Model.ActiveRun.TotalSizeBytes)</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">@L("common.total_duration")</div>
+                    <div class="metric-value">@FormatDuration(Model.ActiveRun.TotalDurationSec)</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">@L("common.elapsed")</div>
+                    <div class="metric-value">@FormatDurationOrDash(Model.ActiveRun.ElapsedWallSec)</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">@L("details.remaining_time")</div>
+                    <div class="metric-value">@FormatDuration(Model.ActiveRun.EstimatedRemainingSec)</div>
+                </div>
+            </div>
+            <div class="mt-4">
+                <a class="btn-secondary" href="@JobUrls.Details(Model.ActiveRun.JobId)">@L("jobs.active.open_details")</a>
+            </div>
+        </section>
+    }
+
+    <section class="panel">
+        <div class="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <p class="eyebrow">@L("jobs.list.history_eyebrow")</p>
+                <h2 class="section-title">@L("jobs.list.history_title")</h2>
+            </div>
+            <form method="post" asp-page-handler="DeleteAll" id="delete-all-form">
+                <input type="hidden" name="confirmation" id="delete-all-confirmation" />
+                <button type="submit"
+                        class="btn-table-danger"
+                        data-confirm-kind="delete-all"
+                        data-confirm-title="@L("jobs.list.delete_all")"
+                        data-confirm-message="@L("jobs.list.delete_all_confirm")"
+                        data-confirm-requires-text="true"
+                        data-confirm-expected="DELETE"
+                        data-confirm-invalid="@L("jobs.list.delete_all_invalid")">
+                    @L("jobs.list.delete_all")
+                </button>
+            </form>
+        </div>
+
+        <div class="table-shell">
+            <table class="app-table">
+                <thead>
+                    <tr>
+                        <th>@L("common.job")</th>
+                        <th>@L("common.state")</th>
+                        <th>@L("common.progress")</th>
+                        <th>@L("common.total_size")</th>
+                        <th>@L("common.total_duration")</th>
+                        <th>@L("common.elapsed")</th>
+                        <th>@L("common.created")</th>
+                        <th>@L("common.actions")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.RecentRuns.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="8" class="px-4 py-8 text-center text-sm text-slate-500">@L("common.no_items")</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var run in Model.RecentRuns)
+                        {
+                            var percent = Percent(
+                                run.ProgressPercent,
+                                CompletedCount(run.VideosDone, run.VideosSkipped, run.VideosFailed),
+                                run.VideosTotal);
+                            <tr>
+                                <td>
+                                    <a class="table-link" href="@JobUrls.Details(run.JobId)">@run.JobId</a>
+                                </td>
+                                <td>
+                                    <span class="@StateBadgeClass(run.State)">@StateLabel(run.State)</span>
+                                    <div class="mt-2 text-xs text-slate-500">@StageLabel(run.CurrentStage)</div>
+                                    @if ((string.Equals(run.State, "pending", StringComparison.OrdinalIgnoreCase) ||
+                                          string.Equals(run.State, "running", StringComparison.OrdinalIgnoreCase)) &&
+                                         run.EstimatedRemainingSec.HasValue)
+                                    {
+                                        <div class="mt-1 text-xs text-slate-500">@L("common.remaining"): @FormatDuration(run.EstimatedRemainingSec)</div>
+                                    }
+                                </td>
+                                <td>
+                                    <div class="font-medium text-slate-900">@PercentLabel(percent)</div>
+                                    <div class="mt-1 text-xs text-slate-500">@ProgressCounter(run.VideosDone, run.VideosSkipped, run.VideosFailed, run.VideosTotal)</div>
+                                    <div class="mt-1 text-xs text-slate-500">@ProgressBreakdown(run.VideosDone, run.VideosSkipped, run.VideosFailed)</div>
+                                    <div class="progress-track mt-2">
+                                        <div class="progress-fill" style="width:@(percent.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+                                    </div>
+                                </td>
+                                <td>@FormatSize(run.TotalSizeBytes)</td>
+                                <td>@FormatDuration(run.TotalDurationSec)</td>
+                                <td>@FormatDurationOrDash(run.ElapsedWallSec)</td>
+                                <td>@FormatCreatedAt(run.CreatedAt)</td>
+                                <td>
+                                    <div class="flex flex-wrap gap-2">
+                                        <a class="btn-table" href="@JobUrls.Details(run.JobId)">@L("common.details")</a>
+                                        @if (run.HasDownloadableArchive && !string.Equals(run.State, "pending", StringComparison.OrdinalIgnoreCase) && !string.Equals(run.State, "running", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <a class="btn-table-success" href="@JobUrls.Download(run.JobId)">@L("common.zip")</a>
+                                        }
+                                        <form method="post" asp-page-handler="Delete" class="inline">
+                                            <input type="hidden" name="jobId" value="@run.JobId" />
+                                            <button class="btn-table-danger"
+                                                    type="submit"
+                                                    data-confirm-kind="delete-one"
+                                                    data-confirm-title="@L("common.delete")"
+                                                    data-confirm-message="@string.Format(System.Globalization.CultureInfo.CurrentCulture, L("jobs.list.delete_one_confirm"), run.JobId)"
+                                                    data-confirm-requires-text="false">
+                                                @L("common.delete")
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (Model.TotalPages > 1)
+        {
+            <div class="mt-4 flex items-center justify-between gap-3">
+                <div class="text-sm text-slate-500">
+                    @string.Format(System.Globalization.CultureInfo.CurrentCulture, L("jobs.list.pagination_summary"), Model.PageNumber, Model.TotalPages)
+                </div>
+                <div class="flex items-center gap-2">
+                    @if (Model.PageNumber > 1)
+                    {
+                        <a class="btn-table" href="/jobs?pageNumber=@(Model.PageNumber - 1)">@L("common.previous")</a>
+                    }
+                    @if (Model.PageNumber < Model.TotalPages)
+                    {
+                        <a class="btn-table" href="/jobs?pageNumber=@(Model.PageNumber + 1)">@L("common.next")</a>
+                    }
+                </div>
+            </div>
+        }
+    </section>
+</section>
+
+<div id="confirm-modal"
+     class="modal-shell hidden"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="confirm-modal-title">
+    <div class="modal-backdrop" data-modal-close="true"></div>
+    <div class="modal-card">
+        <div class="space-y-3">
+            <p class="eyebrow">@L("common.confirm")</p>
+            <h2 class="section-title" id="confirm-modal-title"></h2>
+            <p class="page-description !mt-0" id="confirm-modal-message"></p>
+            <div id="confirm-modal-input-wrap" class="hidden space-y-2">
+                <label class="metric-label" for="confirm-modal-input">@L("common.confirm_text")</label>
+                <input id="confirm-modal-input"
+                       type="text"
+                       class="form-input"
+                       autocomplete="off"
+                       spellcheck="false" />
+                <p id="confirm-modal-error" class="text-sm text-rose-700 hidden"></p>
+            </div>
+        </div>
+        <div class="mt-6 flex items-center justify-end gap-3">
+            <button type="button" class="btn-secondary" id="confirm-modal-cancel">@L("common.cancel")</button>
+            <button type="button" class="btn-table-danger" id="confirm-modal-submit">@L("common.delete")</button>
+        </div>
+    </div>
+</div>
+
+@section Scripts
+{
+    <script>
+        (() => {
+            const page = document.getElementById("jobs-page");
+            const deleteAllForm = document.getElementById("delete-all-form");
+            const deleteAllConfirmation = document.getElementById("delete-all-confirmation");
+            const confirmModal = document.getElementById("confirm-modal");
+            const confirmModalTitle = document.getElementById("confirm-modal-title");
+            const confirmModalMessage = document.getElementById("confirm-modal-message");
+            const confirmModalInputWrap = document.getElementById("confirm-modal-input-wrap");
+            const confirmModalInput = document.getElementById("confirm-modal-input");
+            const confirmModalError = document.getElementById("confirm-modal-error");
+            const confirmModalCancel = document.getElementById("confirm-modal-cancel");
+            const confirmModalSubmit = document.getElementById("confirm-modal-submit");
+
+            const hasActive = page?.dataset.hasActive === "true";
+            let activeForm = null;
+            let activeExpected = null;
+            let activeInvalidMessage = null;
+            let restoreButton = null;
+
+            window.addEventListener("pageshow", (event) => {
+                if (event.persisted) {
+                    location.reload();
+                }
+            });
+
+            if (hasActive) {
+                window.setInterval(() => location.reload(), 5000);
+            }
+
+            const closeModal = () => {
+                confirmModal?.classList.add("hidden");
+                confirmModalError?.classList.add("hidden");
+                if (confirmModalError) {
+                    confirmModalError.textContent = "";
+                }
+                if (confirmModalInput) {
+                    confirmModalInput.value = "";
+                }
+                activeForm = null;
+                activeExpected = null;
+                activeInvalidMessage = null;
+                restoreButton = null;
+            };
+
+            const openModal = (button, form) => {
+                activeForm = form;
+                activeExpected = button.dataset.confirmExpected || null;
+                activeInvalidMessage = button.dataset.confirmInvalid || "";
+                restoreButton = button;
+
+                if (confirmModalTitle) {
+                    confirmModalTitle.textContent = button.dataset.confirmTitle || "";
+                }
+                if (confirmModalMessage) {
+                    confirmModalMessage.textContent = button.dataset.confirmMessage || "";
+                }
+
+                const needsText = button.dataset.confirmRequiresText === "true";
+                confirmModalInputWrap?.classList.toggle("hidden", !needsText);
+                confirmModalError?.classList.add("hidden");
+                if (confirmModalError) {
+                    confirmModalError.textContent = "";
+                }
+                if (confirmModalInput) {
+                    confirmModalInput.value = "";
+                }
+
+                confirmModal?.classList.remove("hidden");
+                if (needsText) {
+                    window.setTimeout(() => confirmModalInput?.focus(), 0);
+                } else {
+                    window.setTimeout(() => confirmModalSubmit?.focus(), 0);
+                }
+            };
+
+            document.querySelectorAll("form button[data-confirm-kind]").forEach((button) => {
+                button.addEventListener("click", (event) => {
+                    event.preventDefault();
+                    const form = button.closest("form");
+                    if (!form) {
+                        return;
+                    }
+                    openModal(button, form);
+                });
+            });
+
+            confirmModalCancel?.addEventListener("click", closeModal);
+            confirmModal?.querySelectorAll("[data-modal-close='true']").forEach((element) => {
+                element.addEventListener("click", closeModal);
+            });
+
+            document.addEventListener("keydown", (event) => {
+                if (event.key === "Escape" && confirmModal && !confirmModal.classList.contains("hidden")) {
+                    closeModal();
+                }
+            });
+
+            confirmModalSubmit?.addEventListener("click", () => {
+                if (!activeForm) {
+                    closeModal();
+                    return;
+                }
+
+                if (activeExpected) {
+                    const typed = (confirmModalInput?.value || "").trim();
+                    if (typed !== activeExpected) {
+                        if (confirmModalError) {
+                            confirmModalError.textContent = activeInvalidMessage || "";
+                            confirmModalError.classList.remove("hidden");
+                        }
+                        confirmModalInput?.focus();
+                        return;
+                    }
+                    if (deleteAllConfirmation) {
+                        deleteAllConfirmation.value = typed;
+                    }
+                }
+
+                const targetForm = activeForm;
+                closeModal();
+                targetForm.submit();
+            });
+
+            if (deleteAllForm && deleteAllConfirmation) {
+                deleteAllForm.addEventListener("submit", () => {
+                    if (!deleteAllConfirmation.value) {
+                        deleteAllConfirmation.value = "DELETE";
+                    }
+                });
+            }
+        })();
+    </script>
+}

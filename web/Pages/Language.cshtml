@@ -1,0 +1,51 @@
+@page "/language"
+@model Audio2Timeline.Web.Pages.LanguageModel
+@inject Audio2Timeline.Web.Services.LanguageService LanguageService
+@inject Audio2Timeline.Web.Services.JsonLocalizationService Localizer
+@{
+    var lang = LanguageService.Resolve(ViewContext.HttpContext.Request);
+    var languages = LanguageService.GetSupportedLanguages();
+    string L(string key) => Localizer.Get(lang, key);
+    ViewData["Title"] = L("language.page_title");
+}
+
+<section class="app-page space-y-6">
+    <header class="panel page-header">
+        <div>
+            <p class="eyebrow">@L("language.eyebrow")</p>
+            <h1 class="page-title">@L("language.header.title")</h1>
+            <p class="page-description">@L("language.header.description")</p>
+        </div>
+    </header>
+
+    @if (!ViewContext.ModelState.IsValid)
+    {
+        <section class="panel error-panel">
+            <ul class="list-disc space-y-1 pl-5">
+                @foreach (var error in ViewContext.ModelState.Values.SelectMany(static value => value.Errors))
+                {
+                    <li>@error.ErrorMessage</li>
+                }
+            </ul>
+        </section>
+    }
+
+    <section class="panel max-w-xl space-y-5">
+        <form method="post" class="space-y-5">
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-slate-900" for="language-select">@L("language.form.label")</label>
+                <select id="language-select" asp-for="UiLanguage" class="form-input w-full">
+                    @foreach (var item in languages)
+                    {
+                        <option value="@item.Code">@item.NativeName</option>
+                    }
+                </select>
+                <p class="text-xs text-slate-500">@L("language.form.hint")</p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3">
+                <button class="btn-primary" type="submit">@L("language.form.continue")</button>
+            </div>
+        </form>
+    </section>
+</section>

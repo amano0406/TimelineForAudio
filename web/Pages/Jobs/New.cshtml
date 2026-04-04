@@ -1,0 +1,792 @@
+@page "/jobs/new"
+@model Audio2Timeline.Web.Pages.Jobs.NewModel
+@inject Audio2Timeline.Web.Services.LanguageService LanguageService
+@inject Audio2Timeline.Web.Services.JsonLocalizationService Localizer
+@{
+    var lang = LanguageService.Resolve(ViewContext.HttpContext.Request);
+    string L(string key) => Localizer.Get(lang, key);
+    ViewData["Title"] = L("jobs.new.page_title");
+}
+
+<section class="app-page space-y-6">
+    <header class="panel page-header">
+        <div>
+            <p class="eyebrow">@L("jobs.new.eyebrow")</p>
+            <h1 class="page-title">@L("jobs.new.page_title")</h1>
+            <p class="page-description">@L("jobs.new.description")</p>
+        </div>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+    {
+        <section class="panel notice-panel">
+            @Model.StatusMessage
+        </section>
+    }
+
+    <form method="post" enctype="multipart/form-data" class="space-y-6" id="new-job-form">
+        @if (!ViewContext.ModelState.IsValid)
+        {
+            <section class="panel error-panel" id="server-errors">
+                <ul class="list-disc space-y-1 pl-5">
+                    @foreach (var error in ViewContext.ModelState.Values.SelectMany(static value => value.Errors))
+                    {
+                        <li>@error.ErrorMessage</li>
+                    }
+                </ul>
+            </section>
+        }
+
+        <div class="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+            <section class="panel">
+                <div class="space-y-2">
+                    <h2 class="section-title">@L("jobs.new.files_title")</h2>
+                    <p class="text-sm text-slate-600">@L("jobs.new.files_description")</p>
+                </div>
+                <div class="mt-4 flex flex-wrap gap-3">
+                    <button type="button" class="btn-secondary" id="pick-files-button">@L("jobs.new.pick_files")</button>
+                    <button type="button" class="btn-secondary" id="pick-folder-button">@L("jobs.new.pick_folder")</button>
+                </div>
+                <p class="selection-hint mt-4">
+                    @string.Format(System.Globalization.CultureInfo.CurrentCulture, L("jobs.new.supported_extensions"), Model.AllowedExtensionsDisplay)
+                </p>
+                <input asp-for="UploadFiles"
+                       type="file"
+                       multiple
+                       accept="@Model.AcceptAttribute"
+                       class="hidden"
+                       id="upload-files-input" />
+                <input asp-for="UploadDirectoryFiles"
+                       type="file"
+                       multiple
+                       webkitdirectory
+                       directory
+                       accept="@Model.AcceptAttribute"
+                       class="hidden"
+                       id="upload-directory-input" />
+            </section>
+
+            <section class="panel">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div class="space-y-2">
+                        <h2 class="section-title">@L("jobs.new.selected_title")</h2>
+                        <p class="text-sm text-slate-600" id="selection-count-label">@L("jobs.new.selected_empty")</p>
+                    </div>
+                    <div class="badge-chip" id="selected-items-count">0</div>
+                </div>
+
+                <div class="selection-feedback mt-4 hidden" id="selection-feedback" aria-live="polite"></div>
+
+                <div class="selection-list-shell mt-4">
+                    <div class="selection-empty" id="selected-items-empty">@L("jobs.new.selected_empty")</div>
+                    <ul class="selection-list hidden" id="selected-items-list"></ul>
+                </div>
+            </section>
+        </div>
+
+        <section class="panel subtle-panel text-sm text-slate-600">
+            @L("jobs.new.cache_notice")
+        </section>
+
+        <div class="flex flex-wrap items-center gap-3">
+            <a class="btn-secondary" href="/jobs">@L("common.cancel")</a>
+            <button asp-page-handler="Execute" class="btn-primary" id="execute-job-button">@L("jobs.new.execute")</button>
+        </div>
+    </form>
+</section>
+
+<section class="modal-shell hidden" id="upload-overlay" aria-hidden="true" role="dialog" aria-modal="true" aria-live="polite">
+    <div class="modal-backdrop"></div>
+    <div class="modal-card upload-modal-card">
+        <div class="space-y-4">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <p class="eyebrow">@L("jobs.new.upload_eyebrow")</p>
+                    <h2 class="section-title" id="upload-progress-title">@L("jobs.new.upload_idle")</h2>
+                </div>
+                <div class="badge-chip" id="upload-progress-percent">0%</div>
+            </div>
+
+            <div class="h-3 overflow-hidden rounded-full bg-slate-200">
+                <div class="h-full rounded-full bg-slate-900 transition-all" id="upload-progress-bar" style="width:0%"></div>
+            </div>
+
+            <p class="text-sm text-slate-600" id="upload-progress-message">@L("jobs.new.upload_waiting")</p>
+
+            <div class="flex justify-end">
+                <button type="button" class="btn-secondary" id="upload-cancel-button">@L("jobs.new.upload_cancel")</button>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="modal-shell hidden" id="decision-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="decision-modal-title">
+    <div class="modal-backdrop" data-modal-close="true"></div>
+    <div class="modal-card">
+        <div class="space-y-4">
+            <div class="space-y-2">
+                <p class="eyebrow">@L("common.confirm")</p>
+                <h2 class="section-title" id="decision-modal-title"></h2>
+                <p class="page-description !mt-0" id="decision-modal-message"></p>
+            </div>
+            <ul class="modal-list hidden" id="decision-modal-list"></ul>
+            <div class="flex flex-wrap items-center justify-end gap-3">
+                <button type="button" class="btn-secondary hidden" id="decision-modal-cancel">@L("common.cancel")</button>
+                <button type="button" class="btn-secondary hidden" id="decision-modal-secondary"></button>
+                <button type="button" class="btn-primary" id="decision-modal-primary">@L("common.ok")</button>
+            </div>
+        </div>
+    </div>
+</section>
+
+@section Scripts
+{
+    <script>
+        (() => {
+            const form = document.getElementById("new-job-form");
+            const filesInput = document.getElementById("upload-files-input");
+            const directoryInput = document.getElementById("upload-directory-input");
+            const pickFilesButton = document.getElementById("pick-files-button");
+            const pickFolderButton = document.getElementById("pick-folder-button");
+            const executeButton = document.getElementById("execute-job-button");
+            const selectedItemsList = document.getElementById("selected-items-list");
+            const selectedItemsEmpty = document.getElementById("selected-items-empty");
+            const selectedItemsCount = document.getElementById("selected-items-count");
+            const selectionCountLabel = document.getElementById("selection-count-label");
+            const selectionFeedback = document.getElementById("selection-feedback");
+            const progressPanel = document.getElementById("upload-overlay");
+            const progressTitle = document.getElementById("upload-progress-title");
+            const progressMessage = document.getElementById("upload-progress-message");
+            const progressPercent = document.getElementById("upload-progress-percent");
+            const progressBar = document.getElementById("upload-progress-bar");
+            const cancelButton = document.getElementById("upload-cancel-button");
+            const decisionModal = document.getElementById("decision-modal");
+            const decisionModalTitle = document.getElementById("decision-modal-title");
+            const decisionModalMessage = document.getElementById("decision-modal-message");
+            const decisionModalList = document.getElementById("decision-modal-list");
+            const decisionModalCancel = document.getElementById("decision-modal-cancel");
+            const decisionModalSecondary = document.getElementById("decision-modal-secondary");
+            const decisionModalPrimary = document.getElementById("decision-modal-primary");
+
+            if (!form || !filesInput || !directoryInput || !pickFilesButton || !pickFolderButton || !executeButton || !selectedItemsList || !selectedItemsEmpty || !selectedItemsCount || !selectionCountLabel || !selectionFeedback || !progressPanel || !progressTitle || !progressMessage || !progressPercent || !progressBar || !cancelButton || !decisionModal || !decisionModalTitle || !decisionModalMessage || !decisionModalList || !decisionModalCancel || !decisionModalSecondary || !decisionModalPrimary) {
+                return;
+            }
+
+            const allowedExtensions = new Set(@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.AllowedExtensions.Select(static value => value.ToLowerInvariant()))));
+            const messages = {
+                ok: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("common.ok"))),
+                cancel: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("common.cancel"))),
+                selectInput: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.select_input"))),
+                selectInputTitle: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.select_input_title"))),
+                pickFiles: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.pick_files"))),
+                pickFolder: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.pick_folder"))),
+                selectedEmpty: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.selected_empty"))),
+                selectedCount: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.selected_count"))),
+                sourceFiles: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.source_files"))),
+                sourceFolder: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.source_folder"))),
+                duplicateSummary: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.duplicate_summary"))),
+                duplicatePromptTitle: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.duplicate_prompt_title"))),
+                duplicatePromptMessage: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.duplicate_prompt_message"))),
+                duplicatePromptMessageAll: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.duplicate_prompt_message_all"))),
+                duplicatePromptSkip: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.duplicate_prompt_skip"))),
+                duplicatePromptReprocess: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.duplicate_prompt_reprocess"))),
+                duplicateNoJobTitle: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.duplicate_no_job_title"))),
+                duplicateNoJobMessage: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.duplicate_no_job_message"))),
+                unsupportedSummary: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.unsupported_summary"))),
+                uploadPreparing: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.upload_preparing"))),
+                uploadRunning: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.upload_running"))),
+                uploadCreatingJob: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.upload_creating_job"))),
+                uploadCompleted: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.upload_completed"))),
+                uploadFailed: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.upload_failed"))),
+                uploadCancelled: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.upload_cancelled"))),
+                uploadCanceling: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.upload_canceling"))),
+                execute: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.execute"))),
+                currentFile: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.upload_current_file"))),
+                leaveWarning: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.upload_leave_warning"))),
+                unitByte: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("units.byte"))),
+                unitKb: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("units.kb"))),
+                unitMb: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("units.mb"))),
+                unitGb: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("units.gb")))
+            };
+
+            const chunkUploadEnabled = window.fetch && window.FormData && window.Blob;
+            if (!chunkUploadEnabled) {
+                return;
+            }
+
+            let activeSessionId = null;
+            let uploadController = null;
+            let uploadInProgress = false;
+            let cancelRequested = false;
+            let suppressLeaveWarning = false;
+            let selectionSequence = 0;
+            let decisionModalResolve = null;
+            const selectedEntries = [];
+            const selectionKeys = new Set();
+            const selectionFeedbackState = {
+                duplicates: [],
+                unsupported: []
+            };
+
+            const format = (template, ...values) => values.reduce(
+                (current, value, index) => current.replace(`{${index}}`, String(value)),
+                template);
+
+            const formatCompactNumber = (value) => {
+                if (Math.abs(value) >= 100) {
+                    return Math.round(value).toString();
+                }
+                return value.toFixed(1).replace(/\.0$/, "");
+            };
+
+            const formatBytes = (value) => {
+                if (value >= 1024 * 1024 * 1024) {
+                    return `${formatCompactNumber(value / (1024 * 1024 * 1024))} ${messages.unitGb}`;
+                }
+                if (value >= 1024 * 1024) {
+                    return `${formatCompactNumber(value / (1024 * 1024))} ${messages.unitMb}`;
+                }
+                if (value >= 1024) {
+                    return `${formatCompactNumber(value / 1024)} ${messages.unitKb}`;
+                }
+                return `${value} ${messages.unitByte}`;
+            };
+
+            const getDisplayName = (file, sourceKind) => {
+                if (sourceKind === "folder" && file.webkitRelativePath) {
+                    return file.webkitRelativePath;
+                }
+                return file.name;
+            };
+
+            const getExtension = (fileName) => {
+                const lastDot = fileName.lastIndexOf(".");
+                return lastDot >= 0 ? fileName.slice(lastDot).toLowerCase() : "";
+            };
+
+            const getEntryKey = (file, sourceKind) => {
+                const displayName = getDisplayName(file, sourceKind).toLowerCase();
+                return `${displayName}::${file.size}::${file.lastModified}`;
+            };
+
+            const createFeedbackElement = (text, tone) => {
+                const item = document.createElement("div");
+                item.className = `selection-feedback-item selection-feedback-item-${tone}`;
+                item.textContent = text;
+                return item;
+            };
+
+            const renderSelectionState = () => {
+                selectedItemsCount.textContent = selectedEntries.length.toString();
+                selectionCountLabel.textContent = selectedEntries.length === 0
+                    ? messages.selectedEmpty
+                    : format(messages.selectedCount, selectedEntries.length);
+
+                selectedItemsList.innerHTML = "";
+                if (selectedEntries.length === 0) {
+                    selectedItemsEmpty.classList.remove("hidden");
+                    selectedItemsList.classList.add("hidden");
+                } else {
+                    selectedItemsEmpty.classList.add("hidden");
+                    selectedItemsList.classList.remove("hidden");
+
+                    for (const entry of selectedEntries) {
+                        const item = document.createElement("li");
+                        item.className = "selection-item";
+                        item.dataset.entryId = entry.id;
+                        item.innerHTML = `
+                            <div class="selection-item-body">
+                                <div class="selection-item-title">${entry.displayName}</div>
+                                <div class="selection-item-meta">
+                                    <span class="selection-chip">${entry.sourceKind === "folder" ? messages.sourceFolder : messages.sourceFiles}</span>
+                                    <span>${formatBytes(entry.file.size)}</span>
+                                </div>
+                            </div>
+                            <button type="button" class="selection-remove-button" data-entry-id="${entry.id}">@L("common.delete")</button>
+                        `;
+                        selectedItemsList.appendChild(item);
+                    }
+                }
+
+                selectionFeedback.innerHTML = "";
+                const hasUnsupported = selectionFeedbackState.unsupported.length > 0;
+                const hasDuplicates = selectionFeedbackState.duplicates.length > 0;
+                if (!hasUnsupported && !hasDuplicates) {
+                    selectionFeedback.classList.add("hidden");
+                    return;
+                }
+
+                selectionFeedback.classList.remove("hidden");
+                if (hasUnsupported) {
+                    selectionFeedback.appendChild(
+                        createFeedbackElement(
+                            format(messages.unsupportedSummary, selectionFeedbackState.unsupported.length),
+                            "warning"));
+                }
+                if (hasDuplicates) {
+                    selectionFeedback.appendChild(
+                        createFeedbackElement(
+                            format(messages.duplicateSummary, selectionFeedbackState.duplicates.length),
+                            "info"));
+                }
+            };
+
+            const addFilesToSelection = (files, sourceKind) => {
+                selectionFeedbackState.duplicates = [];
+                selectionFeedbackState.unsupported = [];
+
+                for (const file of files) {
+                    const displayName = getDisplayName(file, sourceKind);
+                    const extension = getExtension(displayName || file.name);
+                    if (allowedExtensions.size > 0 && !allowedExtensions.has(extension)) {
+                        selectionFeedbackState.unsupported.push(displayName);
+                        continue;
+                    }
+
+                    const key = getEntryKey(file, sourceKind);
+                    if (selectionKeys.has(key)) {
+                        selectionFeedbackState.duplicates.push(displayName);
+                        continue;
+                    }
+
+                    selectionSequence += 1;
+                    selectionKeys.add(key);
+                    selectedEntries.push({
+                        id: `selection-${selectionSequence}`,
+                        key,
+                        file,
+                        sourceKind,
+                        displayName
+                    });
+                }
+
+                renderSelectionState();
+            };
+
+            const removeSelectionEntry = (entryId) => {
+                const index = selectedEntries.findIndex((entry) => entry.id === entryId);
+                if (index < 0) {
+                    return;
+                }
+
+                const [removed] = selectedEntries.splice(index, 1);
+                selectionKeys.delete(removed.key);
+                renderSelectionState();
+            };
+
+            const collectFiles = () => selectedEntries.map((entry) => entry.file);
+
+            const setBusy = (busy) => {
+                if (window.audio2timelineSetBusy) {
+                    window.audio2timelineSetBusy(busy);
+                }
+                uploadInProgress = busy;
+                filesInput.disabled = busy;
+                directoryInput.disabled = busy;
+                pickFilesButton.disabled = busy;
+                pickFolderButton.disabled = busy;
+                executeButton.disabled = busy;
+                executeButton.textContent = busy ? messages.uploadRunning : messages.execute;
+                cancelButton.disabled = !busy;
+                progressPanel.classList.toggle("hidden", !busy);
+                progressPanel.setAttribute("aria-hidden", busy ? "false" : "true");
+            };
+
+            const cleanupSession = async () => {
+                if (!activeSessionId) {
+                    return;
+                }
+
+                const sessionId = activeSessionId;
+                activeSessionId = null;
+                try {
+                    await fetch(`/api/uploads/sessions/${sessionId}`, {
+                        method: "DELETE",
+                        headers: { "Accept": "application/json" }
+                    });
+                } catch {
+                }
+            };
+
+            const updateProgress = (percent, title, message) => {
+                progressTitle.textContent = title;
+                progressMessage.textContent = message;
+                progressPercent.textContent = `${percent}%`;
+                progressBar.style.width = `${percent}%`;
+            };
+
+            const closeDecisionModal = (result = "cancel") => {
+                decisionModal.classList.add("hidden");
+                decisionModal.setAttribute("aria-hidden", "true");
+                decisionModalTitle.textContent = "";
+                decisionModalMessage.textContent = "";
+                decisionModalList.innerHTML = "";
+                decisionModalList.classList.add("hidden");
+                decisionModalCancel.classList.add("hidden");
+                decisionModalSecondary.classList.add("hidden");
+                decisionModalPrimary.textContent = messages.ok;
+                const resolve = decisionModalResolve;
+                decisionModalResolve = null;
+                resolve?.(result);
+            };
+
+            const showDecisionModal = ({
+                title,
+                message,
+                items = [],
+                primaryText,
+                primaryValue = "primary",
+                secondaryText = null,
+                secondaryValue = "secondary",
+                cancelText = null,
+                cancelValue = "cancel"
+            }) => new Promise((resolve) => {
+                decisionModalResolve = resolve;
+                decisionModalTitle.textContent = title;
+                decisionModalMessage.textContent = message;
+                decisionModalList.innerHTML = "";
+                if (items.length > 0) {
+                    for (const item of items) {
+                        const row = document.createElement("li");
+                        row.className = "modal-list-item";
+                        row.textContent = item;
+                        decisionModalList.appendChild(row);
+                    }
+                    decisionModalList.classList.remove("hidden");
+                } else {
+                    decisionModalList.classList.add("hidden");
+                }
+
+                decisionModalPrimary.textContent = primaryText;
+                decisionModalPrimary.dataset.result = primaryValue;
+
+                if (secondaryText) {
+                    decisionModalSecondary.textContent = secondaryText;
+                    decisionModalSecondary.dataset.result = secondaryValue;
+                    decisionModalSecondary.classList.remove("hidden");
+                } else {
+                    decisionModalSecondary.classList.add("hidden");
+                    delete decisionModalSecondary.dataset.result;
+                }
+
+                if (cancelText) {
+                    decisionModalCancel.textContent = cancelText;
+                    decisionModalCancel.dataset.result = cancelValue;
+                    decisionModalCancel.classList.remove("hidden");
+                } else {
+                    decisionModalCancel.classList.add("hidden");
+                    delete decisionModalCancel.dataset.result;
+                }
+
+                decisionModal.classList.remove("hidden");
+                decisionModal.setAttribute("aria-hidden", "false");
+                window.setTimeout(() => decisionModalPrimary.focus(), 0);
+            });
+
+            const showInfoModal = (title, message, items = []) => showDecisionModal({
+                title,
+                message,
+                items,
+                primaryText: messages.ok,
+                primaryValue: "ok"
+            });
+
+            const readErrorMessage = async (response) => {
+                try {
+                    const payload = await response.clone().json();
+                    if (payload && typeof payload.error === "string" && payload.error.trim().length > 0) {
+                        return payload.error;
+                    }
+                } catch {
+                }
+
+                const text = await response.text();
+                return text || messages.uploadFailed;
+            };
+
+            const isEditableTarget = (target) => {
+                if (!(target instanceof HTMLElement)) {
+                    return false;
+                }
+
+                if (target.isContentEditable) {
+                    return true;
+                }
+
+                const tagName = target.tagName.toLowerCase();
+                return tagName === "input" || tagName === "textarea" || tagName === "select";
+            };
+
+            cancelButton.addEventListener("click", async () => {
+                if (!uploadInProgress) {
+                    return;
+                }
+
+                cancelRequested = true;
+                cancelButton.disabled = true;
+                updateProgress(0, messages.uploadCanceling, messages.uploadCanceling);
+                uploadController?.abort();
+                await cleanupSession();
+                setBusy(false);
+                updateProgress(0, messages.uploadCancelled, messages.uploadCancelled);
+            });
+
+            pickFilesButton.addEventListener("click", () => filesInput.click());
+            pickFolderButton.addEventListener("click", () => directoryInput.click());
+
+            filesInput.addEventListener("change", () => {
+                addFilesToSelection(Array.from(filesInput.files || []), "files");
+                filesInput.value = "";
+            });
+
+            directoryInput.addEventListener("change", () => {
+                addFilesToSelection(Array.from(directoryInput.files || []), "folder");
+                directoryInput.value = "";
+            });
+
+            selectedItemsList.addEventListener("click", (event) => {
+                const target = event.target;
+                if (!(target instanceof HTMLElement)) {
+                    return;
+                }
+
+                const entryId = target.dataset.entryId;
+                if (!entryId) {
+                    return;
+                }
+
+                removeSelectionEntry(entryId);
+            });
+
+            const handleBeforeUnload = (event) => {
+                if (!uploadInProgress || suppressLeaveWarning) {
+                    return;
+                }
+
+                event.preventDefault();
+                event.returnValue = messages.leaveWarning;
+            };
+
+            window.addEventListener("beforeunload", handleBeforeUnload);
+
+            decisionModalPrimary.addEventListener("click", () => closeDecisionModal(decisionModalPrimary.dataset.result || "primary"));
+            decisionModalSecondary.addEventListener("click", () => closeDecisionModal(decisionModalSecondary.dataset.result || "secondary"));
+            decisionModalCancel.addEventListener("click", () => closeDecisionModal(decisionModalCancel.dataset.result || "cancel"));
+            decisionModal.querySelectorAll("[data-modal-close='true']").forEach((element) => {
+                element.addEventListener("click", () => closeDecisionModal());
+            });
+
+            document.addEventListener("keydown", (event) => {
+                if (event.key === "Escape" && !decisionModal.classList.contains("hidden")) {
+                    event.preventDefault();
+                    closeDecisionModal();
+                    return;
+                }
+
+                if (!uploadInProgress) {
+                    return;
+                }
+
+                const isBackspaceNavigation = event.key === "Backspace" && !isEditableTarget(event.target);
+                const isHistoryNavigation = event.altKey && (event.key === "ArrowLeft" || event.key === "ArrowRight");
+                const isRefresh = event.key === "F5" || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "r");
+
+                if (isBackspaceNavigation || isHistoryNavigation || isRefresh) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+            }, true);
+
+            form.addEventListener("submit", async (event) => {
+                event.preventDefault();
+
+                const selectedFiles = collectFiles();
+                if (selectedFiles.length === 0) {
+                    await showInfoModal(messages.selectInputTitle, messages.selectInput);
+                    return;
+                }
+
+                const totalBytes = selectedFiles.reduce((sum, file) => sum + file.size, 0);
+                let uploadedBytes = 0;
+
+                cancelRequested = false;
+                uploadController = new AbortController();
+                setBusy(true);
+                updateProgress(0, messages.uploadPreparing, messages.uploadPreparing);
+
+                try {
+                    const sessionResponse = await fetch("/api/uploads/sessions", {
+                        method: "POST",
+                        signal: uploadController.signal
+                    });
+                    if (!sessionResponse.ok) {
+                        throw new Error(await readErrorMessage(sessionResponse));
+                    }
+
+                    const session = await sessionResponse.json();
+                    activeSessionId = session.sessionId;
+                    const chunkSize = session.chunkSizeBytes;
+                    const uploadedItems = [];
+
+                    for (const file of selectedFiles) {
+                        const registerResponse = await fetch(`/api/uploads/sessions/${session.sessionId}/files`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            signal: uploadController.signal,
+                            body: JSON.stringify({
+                                originalName: file.webkitRelativePath || file.name,
+                                sizeBytes: file.size
+                            })
+                        });
+                        if (!registerResponse.ok) {
+                            throw new Error(await readErrorMessage(registerResponse));
+                        }
+
+                        const registered = await registerResponse.json();
+                        const totalChunks = Math.max(1, registered.expectedChunks);
+
+                        for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
+                            const start = chunkIndex * chunkSize;
+                            const end = Math.min(file.size, start + chunkSize);
+                            const chunk = file.slice(start, end);
+
+                            const chunkResponse = await fetch(`/api/uploads/sessions/${session.sessionId}/files/${registered.fileId}/chunks/${chunkIndex}`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/octet-stream" },
+                                signal: uploadController.signal,
+                                body: chunk
+                            });
+                            if (!chunkResponse.ok) {
+                                throw new Error(await readErrorMessage(chunkResponse));
+                            }
+
+                            uploadedBytes += (end - start);
+                            const percent = totalBytes > 0 ? Math.min(100, Math.round((uploadedBytes / totalBytes) * 100)) : 100;
+                            updateProgress(
+                                percent,
+                                messages.uploadRunning,
+                                `${messages.currentFile}: ${file.webkitRelativePath || file.name}`
+                            );
+                        }
+                    }
+
+                    const completeResponse = await fetch(`/api/uploads/sessions/${session.sessionId}/complete`, {
+                        method: "POST",
+                        signal: uploadController.signal
+                    });
+                    if (!completeResponse.ok) {
+                        throw new Error(await readErrorMessage(completeResponse));
+                    }
+
+                    const completed = await completeResponse.json();
+                    uploadedItems.push(...(completed.items || []));
+
+                    const duplicateResponse = await fetch("/api/jobs/duplicates", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        signal: uploadController.signal,
+                        body: JSON.stringify({
+                            uploadedFiles: uploadedItems
+                        })
+                    });
+                    if (!duplicateResponse.ok) {
+                        throw new Error(await readErrorMessage(duplicateResponse));
+                    }
+
+                    const duplicatePreview = await duplicateResponse.json();
+                    let filesForJob = uploadedItems;
+                    let reprocessDuplicates = false;
+
+                    if ((duplicatePreview.duplicateCount || 0) > 0) {
+                        setBusy(false);
+                        uploadController = null;
+
+                        const duplicateItems = (duplicatePreview.duplicates || []).map((item) => item.displayName);
+                        const duplicateMessage = duplicatePreview.newCount > 0
+                            ? format(
+                                messages.duplicatePromptMessage,
+                                duplicatePreview.duplicateCount,
+                                duplicatePreview.totalCount,
+                                duplicatePreview.newCount)
+                            : format(
+                                messages.duplicatePromptMessageAll,
+                                duplicatePreview.duplicateCount);
+
+                        const choice = await showDecisionModal({
+                            title: messages.duplicatePromptTitle,
+                            message: duplicateMessage,
+                            items: duplicateItems,
+                            primaryText: messages.duplicatePromptReprocess,
+                            primaryValue: "reprocess",
+                            secondaryText: messages.duplicatePromptSkip,
+                            secondaryValue: "skip",
+                            cancelText: messages.cancel,
+                            cancelValue: "cancel"
+                        });
+
+                        if (choice === "cancel") {
+                            await cleanupSession();
+                            setBusy(false);
+                            uploadController = null;
+                            return;
+                        }
+
+                        if (choice === "skip") {
+                            const duplicateReferenceIds = new Set(
+                                (duplicatePreview.duplicates || []).map((item) => item.referenceId));
+                            filesForJob = uploadedItems.filter((item) => !duplicateReferenceIds.has(item.referenceId));
+
+                            if (filesForJob.length === 0) {
+                                await cleanupSession();
+                                setBusy(false);
+                                uploadController = null;
+                                await showInfoModal(
+                                    messages.duplicateNoJobTitle,
+                                    messages.duplicateNoJobMessage,
+                                    duplicateItems);
+                                return;
+                            }
+                        } else {
+                            reprocessDuplicates = true;
+                        }
+
+                        setBusy(true);
+                        uploadController = new AbortController();
+                    }
+
+                    updateProgress(100, messages.uploadCreatingJob, messages.uploadCreatingJob);
+                    const jobResponse = await fetch("/api/jobs", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        signal: uploadController.signal,
+                        body: JSON.stringify({
+                            uploadedFiles: filesForJob,
+                            reprocessDuplicates
+                        })
+                    });
+                    if (!jobResponse.ok) {
+                        throw new Error(await readErrorMessage(jobResponse));
+                    }
+
+                    const created = await jobResponse.json();
+                    updateProgress(100, messages.uploadCompleted, messages.uploadCompleted);
+                    suppressLeaveWarning = true;
+                    uploadInProgress = false;
+                    window.removeEventListener("beforeunload", handleBeforeUnload);
+                    activeSessionId = null;
+                    window.location.assign(`/jobs/${created.jobId}`);
+                } catch (error) {
+                    if (!cancelRequested) {
+                        await cleanupSession();
+                        const text = error instanceof Error ? error.message : String(error);
+                        updateProgress(0, messages.uploadFailed, text);
+                    }
+
+                    suppressLeaveWarning = false;
+                    setBusy(false);
+                    uploadController = null;
+                }
+            });
+        })();
+    </script>
+}

@@ -1,0 +1,33 @@
+{
+  "project_name": "audio2timeline",
+  "source_directories": [
+    {
+      "name": "audio_primary",
+      "path": "C:\\path\\to\\audio-primary",
+      "recursive": true
+    },
+    {
+      "name": "audio_secondary",
+      "path": "D:\\path\\to\\audio-secondary",
+      "recursive": true
+    }
+  ],
+  "output_root": "C:\\path\\to\\audio2timeline-runs",
+  "audio_extensions": [
+    ".mp3",
+    ".wav",
+    ".m4a",
+    ".aac",
+    ".flac"
+  ],
+  "change_detection": {
+    "phash_same_threshold": 4,
+    "dhash_same_threshold": 6,
+    "mean_diff_same_threshold": 0.015,
+    "changed_ratio_same_threshold": 0.01,
+    "phash_minor_threshold": 12,
+    "dhash_minor_threshold": 14,
+    "mean_diff_minor_threshold": 0.05,
+    "changed_ratio_minor_threshold": 0.05
+  }
+}

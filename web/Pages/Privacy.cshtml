@@ -1,0 +1,14 @@
+@page
+@model PrivacyModel
+@inject Audio2Timeline.Web.Services.LanguageService LanguageService
+@inject Audio2Timeline.Web.Services.JsonLocalizationService Localizer
+@{
+    var lang = LanguageService.Resolve(ViewContext.HttpContext.Request);
+    string L(string key) => Localizer.Get(lang, key);
+    ViewData["Title"] = L("privacy.page_title");
+}
+
+<section class="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm space-y-3">
+    <h1 class="text-3xl font-semibold text-slate-900">@ViewData["Title"]</h1>
+    <p class="text-sm leading-7 text-slate-600">@L("privacy.description")</p>
+</section>

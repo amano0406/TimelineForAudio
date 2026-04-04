@@ -1,0 +1,8 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.8.0+cpu
+torchaudio==2.8.0+cpu
+faster-whisper==1.2.1
+pyannote.audio==4.0.1
+librosa==0.11.0
+soundfile==0.13.1
+python-dotenv==1.2.2

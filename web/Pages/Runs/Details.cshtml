@@ -1,0 +1,321 @@
+@page "/jobs/{id}"
+@model Audio2Timeline.Web.Pages.Runs.DetailsModel
+@using Audio2Timeline.Web.Infrastructure
+@using Audio2Timeline.Web.Models
+@inject Audio2Timeline.Web.Services.LanguageService LanguageService
+@inject Audio2Timeline.Web.Services.JsonLocalizationService Localizer
+@{
+    var run = Model.Run!;
+    var status = run.Status;
+    var result = run.Result;
+    var lang = LanguageService.Resolve(ViewContext.HttpContext.Request);
+    string L(string key) => Localizer.Get(lang, key);
+    string StateLabel(string? value)
+    {
+        var key = $"state.{(value ?? string.Empty).ToLowerInvariant()}";
+        var label = L(key);
+        return label == key ? value ?? "-" : label;
+    }
+
+    string StageLabel(string? value)
+    {
+        if (string.Equals(value, "skipped_duplicate", StringComparison.OrdinalIgnoreCase))
+        {
+            return L("details.reused");
+        }
+
+        var key = $"stage.{(value ?? string.Empty).ToLowerInvariant()}";
+        var label = L(key);
+        return label == key ? value ?? "-" : label;
+    }
+
+    string ComputeModeLabel(string? value)
+    {
+        var normalized = string.Equals(value, "gpu", StringComparison.OrdinalIgnoreCase) ? "gpu" : "cpu";
+        return L($"settings.compute_mode.{normalized}");
+    }
+
+    string ProcessingQualityLabel(string? value)
+    {
+        var normalized = string.Equals(value, "high", StringComparison.OrdinalIgnoreCase) ? "high" : "standard";
+        return L($"settings.processing_quality.{normalized}");
+    }
+
+    string StateBadgeClass(string? value) => (value ?? string.Empty).ToLowerInvariant() switch
+    {
+        "running" => "status-badge status-badge-info",
+        "pending" => "status-badge status-badge-warning",
+        "completed" => "status-badge status-badge-success",
+        "failed" => "status-badge status-badge-danger",
+        "canceled" => "status-badge status-badge-neutral",
+        _ => "status-badge status-badge-neutral",
+    };
+
+    int CompletedCount(JobStatusDocument? source) =>
+        (source?.VideosDone ?? 0) + (source?.VideosSkipped ?? 0) + (source?.VideosFailed ?? 0);
+
+    string ProgressCounter(JobStatusDocument? source) =>
+        $"{CompletedCount(source)} / {source?.VideosTotal ?? 0}";
+
+    string ProgressBreakdown(JobStatusDocument? source) =>
+        $"{L("details.processed")} {source?.VideosDone ?? 0} | {L("details.reused")} {source?.VideosSkipped ?? 0} | {L("details.errors")} {source?.VideosFailed ?? 0}";
+
+    double Percent(double? raw, int completed, int total)
+    {
+        if (raw.HasValue && raw.Value > 0)
+        {
+            return Math.Clamp(raw.Value, 0, 100);
+        }
+
+        return total <= 0 ? 0 : Math.Round(completed * 100.0 / total, 1);
+    }
+
+    string PercentLabel(double value) => $"{Math.Round(value, 1):0.0}%";
+
+    string FormatDurationFriendly(double? seconds) => DisplayFormatters.FormatDurationFriendly(seconds, L);
+    string FormatDurationOrDash(double? seconds) => seconds.HasValue ? FormatDurationFriendly(seconds) : "-";
+    var currentFileElapsed = string.IsNullOrWhiteSpace(status?.CurrentMedia)
+        ? "-"
+        : FormatDurationFriendly(status?.CurrentMediaElapsedSec);
+
+    ViewData["Title"] = L("details.page_title");
+    var progressPercent = Percent(status?.ProgressPercent, CompletedCount(status), status?.VideosTotal ?? 0);
+    var isActive = string.Equals(status?.State, "pending", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(status?.State, "running", StringComparison.OrdinalIgnoreCase);
+    var canDownloadArchive = !isActive && run.TimelineItems.Count > 0;
+    var hasReusedOnlyWithoutTimeline = run.TimelineItems.Count == 0 && (status?.VideosSkipped ?? 0) > 0;
+    var canRerun = !isActive && (run.Request?.InputItems.Count ?? 0) > 0;
+}
+
+<section class="app-page space-y-6" data-active="@(isActive ? "true" : "false")" id="job-details">
+    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+    {
+        <section class="panel notice-panel">
+            @Model.StatusMessage
+        </section>
+    }
+
+    <div class="panel page-header">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div class="space-y-2">
+                <p class="eyebrow">@L("common.job")</p>
+                <h1 class="page-title">@run.JobId</h1>
+                <p class="page-description">@run.RunDirectory</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                @if (canDownloadArchive)
+                {
+                    <a class="btn-secondary" href="@JobUrls.Download(run.JobId)">@L("details.download_zip")</a>
+                }
+            </div>
+        </div>
+    </div>
+
+    <section class="grid gap-4 lg:grid-cols-5">
+        <div class="metric-card">
+            <div class="metric-label">@L("common.state")</div>
+            <div class="metric-value">
+                <span class="@StateBadgeClass(status?.State)">@StateLabel(status?.State)</span>
+            </div>
+            <div class="metric-subtle">@StageLabel(status?.CurrentStage)</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">@L("common.progress")</div>
+            <div class="metric-value">@PercentLabel(progressPercent)</div>
+            <div class="metric-subtle">@ProgressCounter(status)</div>
+            <div class="metric-subtle">@ProgressBreakdown(status)</div>
+            <div class="progress-track mt-3">
+                <div class="progress-fill" style="width:@(progressPercent.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+            </div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">@L("details.failed")</div>
+            <div class="metric-value">@status?.VideosFailed</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">@L("details.elapsed_time")</div>
+            <div class="metric-value">@FormatDurationOrDash(run.ElapsedWallSec)</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">@L("details.remaining_time")</div>
+            <div class="metric-value">@FormatDurationFriendly(status?.EstimatedRemainingSec)</div>
+        </div>
+    </section>
+
+    <section class="grid gap-8 xl:grid-cols-[0.95fr_1.05fr]">
+        <div class="space-y-8">
+            <div class="panel">
+                <h2 class="section-title">@L("details.rerun")</h2>
+                <p class="page-description mt-2">@L("details.rerun_description")</p>
+                <dl class="mt-4 grid gap-4 text-sm text-slate-700 md:grid-cols-2">
+                    <div>
+                        <dt class="text-slate-500">@L("details.original_settings")</dt>
+                        <dd class="mt-2 space-y-1">
+                            <div>@L("details.compute_mode"): @ComputeModeLabel(run.Request?.ComputeMode)</div>
+                            <div>@L("details.processing_quality"): @ProcessingQualityLabel(run.Request?.ProcessingQuality)</div>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-slate-500">@L("details.current_settings")</dt>
+                        <dd class="mt-2 space-y-1">
+                            <div>@L("details.compute_mode"): @ComputeModeLabel(run.CurrentSettings?.ComputeMode)</div>
+                            <div>@L("details.processing_quality"): @ProcessingQualityLabel(run.CurrentSettings?.ProcessingQuality)</div>
+                        </dd>
+                    </div>
+                </dl>
+                @if (canRerun)
+                {
+                    <div class="mt-6 flex flex-wrap gap-3">
+                        <form method="post" asp-page-handler="Rerun" class="inline">
+                            <input type="hidden" name="id" value="@run.JobId" />
+                            <input type="hidden" name="mode" value="original" />
+                            <button type="submit" class="btn-secondary">@L("details.rerun_original")</button>
+                        </form>
+                        <form method="post" asp-page-handler="Rerun" class="inline">
+                            <input type="hidden" name="id" value="@run.JobId" />
+                            <input type="hidden" name="mode" value="current" />
+                            <button type="submit" class="btn-primary">@L("details.rerun_current")</button>
+                        </form>
+                    </div>
+                    <div class="mt-4 space-y-1 text-xs text-slate-500">
+                        <p>@L("details.rerun_original_note")</p>
+                        <p>@L("details.rerun_current_note")</p>
+                    </div>
+                }
+            </div>
+
+            <div class="panel">
+                <h2 class="section-title">@L("details.current_processing")</h2>
+                <dl class="mt-4 grid gap-4 text-sm text-slate-700 md:grid-cols-2">
+                    <div>
+                        <dt class="text-slate-500">@L("details.current_file")</dt>
+                        <dd>@status?.CurrentMedia</dd>
+                    </div>
+                    <div>
+                        <dt class="text-slate-500">@L("details.current_file_elapsed")</dt>
+                        <dd>@currentFileElapsed</dd>
+                    </div>
+                    <div>
+                        <dt class="text-slate-500">@L("details.message")</dt>
+                        <dd>@status?.Message</dd>
+                    </div>
+                    <div>
+                        <dt class="text-slate-500">@L("details.processed_duration")</dt>
+                        <dd>@FormatDurationFriendly(status?.ProcessedDurationSec)</dd>
+                    </div>
+                    <div>
+                        <dt class="text-slate-500">@L("details.total_duration")</dt>
+                        <dd>@FormatDurationFriendly(status?.TotalDurationSec)</dd>
+                    </div>
+                </dl>
+            </div>
+
+            <div class="panel">
+                <h2 class="section-title">@L("details.result")</h2>
+                <dl class="mt-4 grid gap-4 text-sm text-slate-700">
+                    <div>
+                        <dt class="text-slate-500">@L("details.processed")</dt>
+                        <dd>@result?.ProcessedCount</dd>
+                    </div>
+                    <div>
+                        <dt class="text-slate-500">@L("details.reused")</dt>
+                        <dd>@result?.SkippedCount</dd>
+                    </div>
+                    <div>
+                        <dt class="text-slate-500">@L("details.errors")</dt>
+                        <dd>@result?.ErrorCount</dd>
+                    </div>
+                    <div>
+                        <dt class="text-slate-500">@L("details.timeline_index")</dt>
+                        <dd class="break-all">@result?.TimelineIndexPath</dd>
+                    </div>
+                </dl>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="mb-4 flex items-center justify-between">
+                <h2 class="section-title">@L("details.generated_timeline")</h2>
+                @if (!string.IsNullOrWhiteSpace(result?.TimelineIndexPath))
+                {
+                    <span class="badge-chip">@L("common.batch"): @result?.BatchCount</span>
+                }
+            </div>
+            <div class="table-shell">
+                <table class="app-table">
+                    <thead>
+                        <tr>
+                            <th>@L("common.media_id")</th>
+                            <th>@L("common.status")</th>
+                            <th>@L("details.source")</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (run.TimelineItems.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="3" class="px-4 py-8 text-center text-sm text-slate-500">@(hasReusedOnlyWithoutTimeline ? L("details.generated_timeline_reused_missing") : L("details.generated_timeline_empty"))</td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var item in run.TimelineItems)
+                            {
+                                <tr>
+                                    <td class="font-medium text-slate-900">
+                                        <a class="text-sky-700 hover:text-sky-500" href="@JobUrls.Media(run.JobId, item.MediaId)">@item.MediaId</a>
+                                    </td>
+                                    <td>@StageLabel(item.Status)</td>
+                                    <td class="text-slate-600">
+                                        <div>@item.SourcePath</div>
+                                        @if (item.IsReferencedDuplicate && !string.IsNullOrWhiteSpace(item.ReferencedJobId))
+                                        {
+                                            <div class="mt-1 text-xs text-slate-500">
+                                                @($"{L("details.reused_from_job")}:")
+                                                <a class="text-sky-700 hover:text-sky-500" href="@JobUrls.Details(item.ReferencedJobId!)">@item.ReferencedJobId</a>
+                                            </div>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel timeline-shell">
+        <h2 class="section-title">@L("details.worker_log")</h2>
+        @if (string.IsNullOrWhiteSpace(run.LogTail))
+        {
+            <div class="selection-empty mt-4">@L("details.worker_log_empty")</div>
+        }
+        else
+        {
+            <pre class="mt-4 max-h-[32rem] text-xs">@run.LogTail</pre>
+        }
+    </section>
+</section>
+
+@section Scripts
+{
+    <script>
+        (() => {
+            const container = document.getElementById("job-details");
+            if (!container) return;
+
+            const isActive = container.dataset.active === "true";
+
+            window.addEventListener("pageshow", (event) => {
+                if (event.persisted) {
+                    location.reload();
+                }
+            });
+
+            if (isActive) {
+                window.setInterval(() => location.reload(), 5000);
+            }
+        })();
+    </script>
+}

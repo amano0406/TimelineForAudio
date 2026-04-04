@@ -1,0 +1,50 @@
+{
+  "defaultLanguage": "en",
+  "languages": [
+    {
+      "code": "ja",
+      "nativeName": "Japanese",
+      "aliases": ["ja", "ja-jp"]
+    },
+    {
+      "code": "en",
+      "nativeName": "English",
+      "aliases": ["en", "en-us", "en-gb", "en-au", "en-ca", "en-ie", "en-nz", "en-in", "en-sg"]
+    },
+    {
+      "code": "zh-CN",
+      "nativeName": "Simplified Chinese",
+      "aliases": ["zh-cn", "zh-sg", "zh-hans"]
+    },
+    {
+      "code": "zh-TW",
+      "nativeName": "Traditional Chinese",
+      "aliases": ["zh-tw", "zh-hk", "zh-mo", "zh-hant"]
+    },
+    {
+      "code": "ko",
+      "nativeName": "Korean",
+      "aliases": ["ko", "ko-kr"]
+    },
+    {
+      "code": "es",
+      "nativeName": "Spanish",
+      "aliases": ["es", "es-es", "es-mx", "es-ar", "es-co", "es-cl"]
+    },
+    {
+      "code": "fr",
+      "nativeName": "French",
+      "aliases": ["fr", "fr-fr", "fr-ca", "fr-be", "fr-ch"]
+    },
+    {
+      "code": "de",
+      "nativeName": "German",
+      "aliases": ["de", "de-de", "de-at", "de-ch"]
+    },
+    {
+      "code": "pt",
+      "nativeName": "Portuguese",
+      "aliases": ["pt", "pt-br", "pt-pt"]
+    }
+  ]
+}

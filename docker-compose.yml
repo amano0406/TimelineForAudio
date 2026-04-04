@@ -1,0 +1,51 @@
+name: audio2timeline
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      AUDIO2TIMELINE_RUNTIME_DEFAULTS: /app/config/runtime.defaults.json
+      AUDIO2TIMELINE_APPDATA_ROOT: /shared/app-data
+      AUDIO2TIMELINE_UPLOADS_ROOT: /shared/uploads
+      AUDIO2TIMELINE_OUTPUTS_ROOT: /shared/outputs
+      AUDIO2TIMELINE_HF_CACHE_ROOT: /cache/huggingface
+      AUDIO2TIMELINE_TORCH_CACHE_ROOT: /cache/torch
+    ports:
+      - "${AUDIO2TIMELINE_WEB_PORT}:8080"
+    volumes:
+      - app-data:/shared/app-data
+      - outputs:/shared/outputs
+      - uploads:/shared/uploads
+      - hf-cache:/cache/huggingface
+      - torch-cache:/cache/torch
+    depends_on:
+      - worker
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    environment:
+      AUDIO2TIMELINE_RUNTIME_DEFAULTS: /app/config/runtime.defaults.json
+      AUDIO2TIMELINE_APPDATA_ROOT: /shared/app-data
+      AUDIO2TIMELINE_UPLOADS_ROOT: /shared/uploads
+      AUDIO2TIMELINE_OUTPUTS_ROOT: /shared/outputs
+      HF_HOME: /cache/huggingface
+      TRANSFORMERS_CACHE: /cache/huggingface
+      TORCH_HOME: /cache/torch
+    volumes:
+      - app-data:/shared/app-data
+      - outputs:/shared/outputs
+      - uploads:/shared/uploads
+      - hf-cache:/cache/huggingface
+      - torch-cache:/cache/torch
+
+volumes:
+  app-data:
+  outputs:
+  uploads:
+  hf-cache:
+  torch-cache:

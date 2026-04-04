@@ -1,0 +1,25 @@
+{
+  "audioExtensions": [
+    ".mp3",
+    ".wav",
+    ".m4a",
+    ".aac",
+    ".flac"
+  ],
+  "inputRoots": [
+    {
+      "id": "uploads",
+      "displayName": "Uploaded Files",
+      "path": "/shared/uploads",
+      "enabled": true
+    }
+  ],
+  "outputRoots": [
+    {
+      "id": "runs",
+      "displayName": "Runs",
+      "path": "/shared/outputs",
+      "enabled": true
+    }
+  ]
+}

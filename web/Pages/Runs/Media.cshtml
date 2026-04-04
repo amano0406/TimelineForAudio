@@ -1,0 +1,28 @@
+@page "/jobs/{jobId}/{mediaId}"
+@model Audio2Timeline.Web.Pages.Runs.MediaModel
+@using Audio2Timeline.Web.Infrastructure
+@inject Audio2Timeline.Web.Services.LanguageService LanguageService
+@inject Audio2Timeline.Web.Services.JsonLocalizationService Localizer
+@{
+    var lang = LanguageService.Resolve(ViewContext.HttpContext.Request);
+    string L(string key) => Localizer.Get(lang, key);
+    ViewData["Title"] = L("media.page_title");
+}
+
+<section class="app-page space-y-6">
+    <div class="panel page-header">
+        <div>
+            <p class="eyebrow">@L("media.page_title")</p>
+            <h1 class="page-title">@Model.MediaId</h1>
+            <p class="page-description">
+                @L("common.job"):
+                <a class="text-sky-700 hover:text-sky-500" href="@JobUrls.Details(Model.JobId)">@Model.JobId</a>
+            </p>
+        </div>
+        <a class="btn-secondary" href="/jobs">@L("layout.jobs")</a>
+    </div>
+
+    <div class="panel timeline-shell">
+        <pre class="text-sm leading-7 text-slate-100">@Model.TimelineText</pre>
+    </div>
+</section>
