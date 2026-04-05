@@ -1,5 +1,7 @@
 using System.IO.Compression;
+using System.Net;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Audio2Timeline.Web.Infrastructure;
 using Audio2Timeline.Web.Models;
@@ -1201,31 +1203,52 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         File.WriteAllText(Path.Combine(exportRoot, "README.md"), packageInfo);
 
         var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var exportedRows = new List<ExportIndexRow>();
         foreach (var row in timelineRows)
         {
             var fileName = EnsureUniqueExportFileName($"{row.Label}.md", usedNames);
             File.Copy(row.TimelinePath, Path.Combine(timelinesRoot, fileName), overwrite: true);
+            var exportedRow = new ExportIndexRow
+            {
+                Label = row.Label,
+                SourcePath = row.SourcePath,
+                TimelinePath = $"timelines/{fileName}",
+            };
             if (!string.IsNullOrWhiteSpace(row.RawTranscriptPath) && File.Exists(row.RawTranscriptPath))
             {
                 File.Copy(row.RawTranscriptPath, Path.Combine(rawTranscriptsRoot, fileName), overwrite: true);
+                exportedRow.RawTranscriptPath = $"raw-transcripts/{fileName}";
             }
             if (!string.IsNullOrWhiteSpace(row.NormalizedTranscriptPath) && File.Exists(row.NormalizedTranscriptPath))
             {
                 File.Copy(row.NormalizedTranscriptPath, Path.Combine(normalizedTranscriptsRoot, fileName), overwrite: true);
+                exportedRow.NormalizedTranscriptPath = $"normalized-transcripts/{fileName}";
             }
             if (!string.IsNullOrWhiteSpace(row.NormalizationReportPath) && File.Exists(row.NormalizationReportPath))
             {
                 File.Copy(row.NormalizationReportPath, Path.Combine(normalizationReportsRoot, fileName), overwrite: true);
+                exportedRow.NormalizationReportPath = $"normalization-reports/{fileName}";
             }
             if (!string.IsNullOrWhiteSpace(row.SpeakerSummaryPath) && File.Exists(row.SpeakerSummaryPath))
             {
                 File.Copy(row.SpeakerSummaryPath, Path.Combine(speakerSummariesRoot, fileName), overwrite: true);
+                exportedRow.SpeakerSummaryPath = $"speaker-summaries/{fileName}";
             }
             if (!string.IsNullOrWhiteSpace(row.AudioFeatureSummaryPath) && File.Exists(row.AudioFeatureSummaryPath))
             {
                 File.Copy(row.AudioFeatureSummaryPath, Path.Combine(featureSummariesRoot, fileName), overwrite: true);
+                exportedRow.AudioFeatureSummaryPath = $"audio-feature-summaries/{fileName}";
             }
+            exportedRows.Add(exportedRow);
         }
+
+        WriteExportIndexHtml(
+            exportRoot,
+            jobId,
+            exportedRows,
+            hasTranscriptionInfo: File.Exists(Path.Combine(exportRoot, "TRANSCRIPTION_INFO.md")),
+            hasFailureReport: File.Exists(Path.Combine(exportRoot, "FAILURE_REPORT.md")),
+            hasWorkerLog: File.Exists(Path.Combine(exportRoot, "logs", "worker.log")));
     }
 
     private static List<(string AudioId, string Label, string TimelinePath, string SourcePath, string? RawTranscriptPath, string? NormalizedTranscriptPath, string? NormalizationReportPath, string? SpeakerSummaryPath, string? AudioFeatureSummaryPath)> ResolveExportTimelineRows(
@@ -1446,6 +1469,118 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         }
 
         return candidate;
+    }
+
+    private static void WriteExportIndexHtml(
+        string exportRoot,
+        string jobId,
+        IReadOnlyList<ExportIndexRow> rows,
+        bool hasTranscriptionInfo,
+        bool hasFailureReport,
+        bool hasWorkerLog)
+    {
+        static string Encode(string? value) => WebUtility.HtmlEncode(value ?? "");
+        static string LinkOrMuted(string? path, string label) =>
+            string.IsNullOrWhiteSpace(path)
+                ? "<span class=\"muted\">N/A</span>"
+                : $"<a href=\"{Encode(path)}\">{Encode(label)}</a>";
+
+        var topLinks = new List<string>
+        {
+            "<li><a href=\"README.md\">README.md</a></li>",
+        };
+        if (hasTranscriptionInfo)
+        {
+            topLinks.Add("<li><a href=\"TRANSCRIPTION_INFO.md\">TRANSCRIPTION_INFO.md</a></li>");
+        }
+        if (hasFailureReport)
+        {
+            topLinks.Add("<li><a href=\"FAILURE_REPORT.md\">FAILURE_REPORT.md</a></li>");
+        }
+        if (hasWorkerLog)
+        {
+            topLinks.Add("<li><a href=\"logs/worker.log\">logs/worker.log</a></li>");
+        }
+
+        var bodyRows = new StringBuilder();
+        foreach (var row in rows)
+        {
+            bodyRows.AppendLine("<tr>");
+            bodyRows.AppendLine($"<td>{Encode(row.Label)}</td>");
+            bodyRows.AppendLine($"<td><code>{Encode(row.SourcePath)}</code></td>");
+            bodyRows.AppendLine($"<td>{LinkOrMuted(row.TimelinePath, "timeline")}</td>");
+            bodyRows.AppendLine($"<td>{LinkOrMuted(row.RawTranscriptPath, "raw")}</td>");
+            bodyRows.AppendLine($"<td>{LinkOrMuted(row.NormalizedTranscriptPath, "normalized")}</td>");
+            bodyRows.AppendLine($"<td>{LinkOrMuted(row.NormalizationReportPath, "report")}</td>");
+            bodyRows.AppendLine($"<td>{LinkOrMuted(row.SpeakerSummaryPath, "speaker")}</td>");
+            bodyRows.AppendLine($"<td>{LinkOrMuted(row.AudioFeatureSummaryPath, "features")}</td>");
+            bodyRows.AppendLine("</tr>");
+        }
+
+        var html = string.Join(
+            Environment.NewLine,
+            [
+                "<!doctype html>",
+                "<html lang=\"en\">",
+                "<head>",
+                "  <meta charset=\"utf-8\">",
+                $"  <title>audio2timeline export {Encode(jobId)}</title>",
+                "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
+                "  <style>",
+                "    :root { color-scheme: light; }",
+                "    body { font-family: 'Segoe UI', sans-serif; margin: 24px; color: #1e293b; background: #f8fafc; }",
+                "    h1, h2 { margin: 0 0 12px; }",
+                "    p, li { line-height: 1.6; }",
+                "    code { font-family: Consolas, monospace; font-size: 12px; }",
+                "    .panel { background: white; border: 1px solid #dbe4ee; border-radius: 16px; padding: 20px; margin-bottom: 20px; }",
+                "    table { width: 100%; border-collapse: collapse; background: white; }",
+                "    th, td { border-bottom: 1px solid #e2e8f0; padding: 10px 12px; text-align: left; vertical-align: top; }",
+                "    th { background: #eff6ff; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }",
+                "    a { color: #0f766e; text-decoration: none; }",
+                "    a:hover { text-decoration: underline; }",
+                "    .muted { color: #94a3b8; }",
+                "  </style>",
+                "</head>",
+                "<body>",
+                "  <section class=\"panel\">",
+                "    <h1>audio2timeline export</h1>",
+                $"    <p>Job ID: <code>{Encode(jobId)}</code></p>",
+                "    <p>Open the links below to inspect the generated markdown, transcript artifacts, and summaries.</p>",
+                "  </section>",
+                "  <section class=\"panel\">",
+                "    <h2>Top-level files</h2>",
+                $"    <ul>{string.Join("", topLinks)}</ul>",
+                "  </section>",
+                "  <section class=\"panel\">",
+                "    <h2>Per-item artifacts</h2>",
+                "    <table>",
+                "      <thead>",
+                "        <tr><th>Item</th><th>Source</th><th>Timeline</th><th>Raw</th><th>Normalized</th><th>Report</th><th>Speaker</th><th>Features</th></tr>",
+                "      </thead>",
+                "      <tbody>",
+                bodyRows.ToString(),
+                "      </tbody>",
+                "    </table>",
+                "  </section>",
+                "</body>",
+                "</html>",
+                "",
+            ]);
+
+        File.WriteAllText(Path.Combine(exportRoot, "index.html"), html, Encoding.UTF8);
+        File.WriteAllText(Path.Combine(exportRoot, "README.html"), html, Encoding.UTF8);
+    }
+
+    private sealed class ExportIndexRow
+    {
+        public string Label { get; set; } = "";
+        public string SourcePath { get; set; } = "";
+        public string TimelinePath { get; set; } = "";
+        public string? RawTranscriptPath { get; set; }
+        public string? NormalizedTranscriptPath { get; set; }
+        public string? NormalizationReportPath { get; set; }
+        public string? SpeakerSummaryPath { get; set; }
+        public string? AudioFeatureSummaryPath { get; set; }
     }
 
     private static bool TryParseBestEffortDateTime(string value, out DateTime parsed)

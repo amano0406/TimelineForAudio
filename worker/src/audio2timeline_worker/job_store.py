@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import re
 import shutil
@@ -318,6 +319,7 @@ def _build_export_package(run_dir: Path, job_id: str, export_root: Path) -> None
     (export_root / "README.md").write_text(package_note, encoding="utf-8")
 
     used_names: set[str] = set()
+    exported_rows: list[dict[str, str]] = []
     for row in timelines:
         file_name = _ensure_unique_export_file_name(f"{row['label']}.md", used_names)
         destination = timelines_root / file_name
@@ -325,6 +327,16 @@ def _build_export_package(run_dir: Path, job_id: str, export_root: Path) -> None
             Path(row["timeline_path"]).read_text(encoding="utf-8", errors="replace"),
             encoding="utf-8",
         )
+        exported_row = {
+            "label": row["label"],
+            "source_path": row["source_path"],
+            "timeline_path": f"timelines/{file_name}",
+            "raw_transcript_path": "",
+            "normalized_transcript_path": "",
+            "normalization_report_path": "",
+            "speaker_summary_path": "",
+            "audio_feature_summary_path": "",
+        }
         for source_key, target_root in (
             ("raw_transcript_path", raw_transcripts_root),
             ("normalized_transcript_path", normalized_transcripts_root),
@@ -338,6 +350,111 @@ def _build_export_package(run_dir: Path, job_id: str, export_root: Path) -> None
                     source_path.read_text(encoding="utf-8", errors="replace"),
                     encoding="utf-8",
                 )
+                exported_row[source_key] = f"{target_root.name}/{file_name}"
+        exported_rows.append(exported_row)
+
+    _write_export_index_html(
+        export_root=export_root,
+        job_id=job_id,
+        exported_rows=exported_rows,
+        has_transcription_info=(export_root / "TRANSCRIPTION_INFO.md").exists(),
+        has_failure_report=(export_root / "FAILURE_REPORT.md").exists(),
+        has_worker_log=(export_root / "logs" / "worker.log").exists(),
+    )
+
+
+def _write_export_index_html(
+    *,
+    export_root: Path,
+    job_id: str,
+    exported_rows: list[dict[str, str]],
+    has_transcription_info: bool,
+    has_failure_report: bool,
+    has_worker_log: bool,
+) -> None:
+    def anchor(path: str, label: str) -> str:
+        if not path:
+            return '<span class="muted">N/A</span>'
+        return f'<a href="{html.escape(path, quote=True)}">{html.escape(label)}</a>'
+
+    top_links = ['<li><a href="README.md">README.md</a></li>']
+    if has_transcription_info:
+        top_links.append('<li><a href="TRANSCRIPTION_INFO.md">TRANSCRIPTION_INFO.md</a></li>')
+    if has_failure_report:
+        top_links.append('<li><a href="FAILURE_REPORT.md">FAILURE_REPORT.md</a></li>')
+    if has_worker_log:
+        top_links.append('<li><a href="logs/worker.log">logs/worker.log</a></li>')
+
+    item_rows = []
+    for row in exported_rows:
+        item_rows.append(
+            "\n".join(
+                [
+                    "<tr>",
+                    f"<td>{html.escape(row['label'])}</td>",
+                    f"<td><code>{html.escape(row['source_path'] or '')}</code></td>",
+                    f"<td>{anchor(row['timeline_path'], 'timeline')}</td>",
+                    f"<td>{anchor(row['raw_transcript_path'], 'raw')}</td>",
+                    f"<td>{anchor(row['normalized_transcript_path'], 'normalized')}</td>",
+                    f"<td>{anchor(row['normalization_report_path'], 'report')}</td>",
+                    f"<td>{anchor(row['speaker_summary_path'], 'speaker')}</td>",
+                    f"<td>{anchor(row['audio_feature_summary_path'], 'features')}</td>",
+                    "</tr>",
+                ]
+            )
+        )
+
+    document = "\n".join(
+        [
+            "<!doctype html>",
+            '<html lang="en">',
+            "<head>",
+            '  <meta charset="utf-8">',
+            f"  <title>audio2timeline export {html.escape(job_id)}</title>",
+            '  <meta name="viewport" content="width=device-width, initial-scale=1">',
+            "  <style>",
+            "    :root { color-scheme: light; }",
+            "    body { font-family: 'Segoe UI', sans-serif; margin: 24px; color: #1e293b; background: #f8fafc; }",
+            "    h1, h2 { margin: 0 0 12px; }",
+            "    p, li { line-height: 1.6; }",
+            "    code { font-family: Consolas, monospace; font-size: 12px; }",
+            "    .panel { background: white; border: 1px solid #dbe4ee; border-radius: 16px; padding: 20px; margin-bottom: 20px; }",
+            "    table { width: 100%; border-collapse: collapse; background: white; }",
+            "    th, td { border-bottom: 1px solid #e2e8f0; padding: 10px 12px; text-align: left; vertical-align: top; }",
+            "    th { background: #eff6ff; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }",
+            "    a { color: #0f766e; text-decoration: none; }",
+            "    a:hover { text-decoration: underline; }",
+            "    .muted { color: #94a3b8; }",
+            "  </style>",
+            "</head>",
+            "<body>",
+            '  <section class="panel">',
+            "    <h1>audio2timeline export</h1>",
+            f"    <p>Job ID: <code>{html.escape(job_id)}</code></p>",
+            "    <p>Open the links below to inspect the generated markdown, transcript artifacts, and summaries.</p>",
+            "  </section>",
+            '  <section class="panel">',
+            "    <h2>Top-level files</h2>",
+            f"    <ul>{''.join(top_links)}</ul>",
+            "  </section>",
+            '  <section class="panel">',
+            "    <h2>Per-item artifacts</h2>",
+            "    <table>",
+            "      <thead>",
+            "        <tr><th>Item</th><th>Source</th><th>Timeline</th><th>Raw</th><th>Normalized</th><th>Report</th><th>Speaker</th><th>Features</th></tr>",
+            "      </thead>",
+            "      <tbody>",
+            *item_rows,
+            "      </tbody>",
+            "    </table>",
+            "  </section>",
+            "</body>",
+            "</html>",
+            "",
+        ]
+    )
+    (export_root / "index.html").write_text(document, encoding="utf-8")
+    (export_root / "README.html").write_text(document, encoding="utf-8")
 
 
 def _best_export_label(media_id: str, source_info: dict[str, Any]) -> str:

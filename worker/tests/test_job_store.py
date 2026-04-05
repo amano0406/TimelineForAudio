@@ -221,11 +221,16 @@ class JobStoreTests(unittest.TestCase):
             with zipfile.ZipFile(archive_path) as archive:
                 names = set(archive.namelist())
                 self.assertIn("README.md", names)
+                self.assertIn("index.html", names)
+                self.assertIn("README.html", names)
                 self.assertIn("TRANSCRIPTION_INFO.md", names)
                 self.assertIn("timelines/2026-03-24 12-58-32.md", names)
                 self.assertIn("raw-transcripts/2026-03-24 12-58-32.md", names)
                 self.assertIn("normalized-transcripts/2026-03-24 12-58-32.md", names)
                 self.assertIn("normalization-reports/2026-03-24 12-58-32.md", names)
+                index_text = archive.read("index.html").decode("utf-8")
+                self.assertIn("timelines/2026-03-24 12-58-32.md", index_text)
+                self.assertIn("raw-transcripts/2026-03-24 12-58-32.md", index_text)
 
 
 if __name__ == "__main__":
