@@ -1180,28 +1180,6 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
 
         var hasFailureArtifacts = WriteFailureArtifacts(runDirectory, exportRoot, jobId, status, result, manifest, timelineRows.Count);
 
-        var packageInfo = string.Join(
-            Environment.NewLine,
-            [
-                "# README",
-                "",
-                "This ZIP contains timeline markdown files that are ready to review or upload to an LLM such as ChatGPT.",
-                "",
-                $"- Job ID: `{jobId}`",
-                "- Main folder: `timelines/`",
-                "- Each markdown file is one audio timeline.",
-                "- `raw-transcripts/` contains per-item raw transcript markdown.",
-                "- `normalized-transcripts/` contains the transcript after deterministic normalization.",
-                "- `normalization-reports/` summarizes glossary rules and document-wide corrections.",
-                "- `speaker-summaries/` contains diarization-oriented speaker summaries when available.",
-                "- `audio-feature-summaries/` contains pause/loudness/pitch/rate summaries.",
-                "- `TRANSCRIPTION_INFO.md` explains which processing and models were used.",
-                hasFailureArtifacts ? "- `FAILURE_REPORT.md` summarizes any failed items or warnings from the job." : "",
-                hasFailureArtifacts ? "- `logs/worker.log` is included for troubleshooting." : "",
-                "",
-            ]);
-        File.WriteAllText(Path.Combine(exportRoot, "README.md"), packageInfo);
-
         var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var exportedRows = new List<ExportIndexRow>();
         foreach (var row in timelineRows)
@@ -1485,10 +1463,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
                 ? "<span class=\"muted\">N/A</span>"
                 : $"<a href=\"{Encode(path)}\">{Encode(label)}</a>";
 
-        var topLinks = new List<string>
-        {
-            "<li><a href=\"README.md\">README.md</a></li>",
-        };
+        var topLinks = new List<string>();
         if (hasTranscriptionInfo)
         {
             topLinks.Add("<li><a href=\"TRANSCRIPTION_INFO.md\">TRANSCRIPTION_INFO.md</a></li>");
@@ -1567,7 +1542,6 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
                 "",
             ]);
 
-        File.WriteAllText(Path.Combine(exportRoot, "index.html"), html, Encoding.UTF8);
         File.WriteAllText(Path.Combine(exportRoot, "README.html"), html, Encoding.UTF8);
     }
 

@@ -298,26 +298,6 @@ def _build_export_package(run_dir: Path, job_id: str, export_root: Path) -> None
     if transcription_info_path.exists():
         shutil.copy2(transcription_info_path, export_root / "TRANSCRIPTION_INFO.md")
 
-    package_note = "\n".join(
-        [
-            "# README",
-            "",
-            "This ZIP contains timeline markdown files that are ready to review or upload to an LLM such as ChatGPT.",
-            "",
-            f"- Job ID: `{job_id}`",
-            "- Main folder: `timelines/`",
-            "- Each markdown file is one audio timeline.",
-            "- `raw-transcripts/` contains per-item raw transcript markdown.",
-            "- `normalized-transcripts/` contains the transcript after deterministic normalization.",
-            "- `normalization-reports/` summarizes glossary rules and document-wide corrections.",
-            "- `speaker-summaries/` contains diarization-oriented speaker summaries when available.",
-            "- `audio-feature-summaries/` contains pause/loudness/pitch/rate summaries.",
-            "- `TRANSCRIPTION_INFO.md` explains which processing and models were used.",
-            "",
-        ]
-    )
-    (export_root / "README.md").write_text(package_note, encoding="utf-8")
-
     used_names: set[str] = set()
     exported_rows: list[dict[str, str]] = []
     for row in timelines:
@@ -377,7 +357,7 @@ def _write_export_index_html(
             return '<span class="muted">N/A</span>'
         return f'<a href="{html.escape(path, quote=True)}">{html.escape(label)}</a>'
 
-    top_links = ['<li><a href="README.md">README.md</a></li>']
+    top_links: list[str] = []
     if has_transcription_info:
         top_links.append('<li><a href="TRANSCRIPTION_INFO.md">TRANSCRIPTION_INFO.md</a></li>')
     if has_failure_report:
@@ -453,7 +433,6 @@ def _write_export_index_html(
             "",
         ]
     )
-    (export_root / "index.html").write_text(document, encoding="utf-8")
     (export_root / "README.html").write_text(document, encoding="utf-8")
 
 
