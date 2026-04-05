@@ -41,6 +41,10 @@ def worker_capabilities_path() -> Path:
     return appdata_root() / "worker-capabilities.json"
 
 
+def normalize_transcript_normalization_mode(value: str | None) -> str:
+    return "off" if str(value or "").strip().lower() == "off" else "deterministic"
+
+
 def load_settings() -> dict[str, Any]:
     if settings_path().exists():
         payload = json.loads(settings_path().read_text(encoding="utf-8"))
@@ -54,6 +58,9 @@ def load_settings() -> dict[str, Any]:
             "huggingfaceTermsConfirmed": False,
             "computeMode": "cpu",
             "processingQuality": "standard",
+            "transcriptionInitialPrompt": "",
+            "transcriptNormalizationMode": "deterministic",
+            "transcriptNormalizationGlossary": "",
             "uiLanguage": "en",
         }
     if "audioExtensions" not in payload:
@@ -82,6 +89,15 @@ def load_settings() -> dict[str, Any]:
     )
     if payload["processingQuality"] not in {"standard", "high"}:
         payload["processingQuality"] = "standard"
+    payload["transcriptionInitialPrompt"] = (
+        str(payload.get("transcriptionInitialPrompt") or "").strip()
+    )
+    payload["transcriptNormalizationMode"] = normalize_transcript_normalization_mode(
+        payload.get("transcriptNormalizationMode")
+    )
+    payload["transcriptNormalizationGlossary"] = str(
+        payload.get("transcriptNormalizationGlossary") or ""
+    )
     payload["uiLanguage"] = str(payload.get("uiLanguage") or "en").strip() or "en"
     return payload
 

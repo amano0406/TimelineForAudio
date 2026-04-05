@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Audio2Timeline.Web.Infrastructure;
 using Audio2Timeline.Web.Models;
 using Audio2Timeline.Web.Services;
 
@@ -34,6 +35,15 @@ public sealed class SettingsModel(
 
     [BindProperty]
     public string ProcessingQuality { get; set; } = "standard";
+
+    [BindProperty]
+    public string TranscriptionInitialPrompt { get; set; } = "";
+
+    [BindProperty]
+    public string TranscriptNormalizationMode { get; set; } = "deterministic";
+
+    [BindProperty]
+    public string TranscriptNormalizationGlossary { get; set; } = "";
 
     [BindProperty]
     public string UiLanguage { get; set; } = "en";
@@ -77,6 +87,10 @@ public sealed class SettingsModel(
         var settings = await settingsStore.LoadAsync(cancellationToken);
         settings.ComputeMode = ComputeMode;
         settings.ProcessingQuality = ProcessingQuality;
+        settings.TranscriptionInitialPrompt = TranscriptionInitialPrompt?.Trim() ?? "";
+        settings.TranscriptNormalizationMode = ConversionSignature.NormalizeTranscriptNormalizationMode(
+            TranscriptNormalizationMode);
+        settings.TranscriptNormalizationGlossary = TranscriptNormalizationGlossary ?? "";
         settings.UiLanguage = languageService.Normalize(UiLanguage) ?? "en";
         settings.LanguageSelected = true;
         settings.HuggingfaceTermsConfirmed = false;
@@ -125,6 +139,9 @@ public sealed class SettingsModel(
         {
             ProcessingQuality = "standard";
         }
+        TranscriptionInitialPrompt = settings.TranscriptionInitialPrompt;
+        TranscriptNormalizationMode = settings.TranscriptNormalizationMode;
+        TranscriptNormalizationGlossary = settings.TranscriptNormalizationGlossary;
         UiLanguage = languageService.Normalize(settings.UiLanguage) ?? "en";
         StatusMessage ??= TempData["StatusMessage"] as string;
     }

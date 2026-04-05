@@ -21,6 +21,10 @@ class TimelineTests(unittest.TestCase):
                 },
                 transcript_payload={
                     "diarization_used": True,
+                    "normalization": {
+                        "mode": "deterministic",
+                        "changed_segment_count": 1,
+                    },
                     "segments": [
                         {
                             "speaker": "SPEAKER_01",
@@ -45,6 +49,7 @@ class TimelineTests(unittest.TestCase):
             self.assertIn("Speaker: `SPEAKER_01`", text)
             self.assertIn("Text: hello world", text)
             self.assertIn("Median pitch Hz", text)
+            self.assertIn("Transcript normalization mode", text)
 
 
 if __name__ == "__main__":

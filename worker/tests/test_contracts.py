@@ -20,6 +20,9 @@ class ContractsTests(unittest.TestCase):
             conversion_signature="sig-123",
             transcription_backend="faster-whisper",
             transcription_model_id="large-v3",
+            transcription_initial_prompt="OpenAI Codex",
+            transcript_normalization_mode="deterministic",
+            transcript_normalization_glossary="Open AI => OpenAI",
             diarization_enabled=True,
             diarization_model_id="pyannote/speaker-diarization-community-1",
             vad_backend="silero-vad",
@@ -46,6 +49,9 @@ class ContractsTests(unittest.TestCase):
         self.assertEqual("gpu", restored.compute_mode)
         self.assertEqual("high", restored.processing_quality)
         self.assertEqual("sig-123", restored.conversion_signature)
+        self.assertEqual("OpenAI Codex", restored.transcription_initial_prompt)
+        self.assertEqual("deterministic", restored.transcript_normalization_mode)
+        self.assertEqual("Open AI => OpenAI", restored.transcript_normalization_glossary)
         self.assertTrue(restored.diarization_enabled)
         self.assertEqual(1, len(restored.input_items))
         self.assertEqual("example.wav", restored.input_items[0].display_name)

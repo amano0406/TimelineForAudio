@@ -255,7 +255,8 @@ class EtaPredictorTests(unittest.TestCase):
                         "stage_elapsed_seconds": {
                             "extract_audio": 1.0,
                             "transcribe": 5.0,
-                            "analyze_audio": 3.0,
+                            "normalize_transcript": 1.0,
+                            "analyze_audio": 2.0,
                             "timeline_render": 1.0,
                         },
                     }

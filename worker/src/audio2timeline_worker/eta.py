@@ -12,13 +12,15 @@ _MAX_MATCH_SCORE = 9.0
 _STAGE_ORDER = [
     "extract_audio",
     "transcribe",
+    "normalize_transcript",
     "analyze_audio",
     "timeline_render",
 ]
 _DEFAULT_STAGE_SHARES = {
     "extract_audio": 0.16,
-    "transcribe": 0.60,
-    "analyze_audio": 0.18,
+    "transcribe": 0.56,
+    "normalize_transcript": 0.08,
+    "analyze_audio": 0.14,
     "timeline_render": 0.06,
 }
 

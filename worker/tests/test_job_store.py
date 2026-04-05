@@ -96,6 +96,7 @@ class JobStoreTests(unittest.TestCase):
                 self.assertTrue(request["token_enabled"])
                 self.assertEqual("gpu", request["compute_mode"])
                 self.assertEqual("high", request["processing_quality"])
+                self.assertEqual("deterministic", request["transcript_normalization_mode"])
 
     def test_list_runs_returns_created_job(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -197,6 +198,21 @@ class JobStoreTests(unittest.TestCase):
             (run_dir / "TRANSCRIPTION_INFO.md").write_text(
                 "# Transcription Info\n", encoding="utf-8"
             )
+            (media_dir / "transcript").mkdir(parents=True)
+            (media_dir / "analysis").mkdir(parents=True)
+            (media_dir / "transcript" / "raw.md").write_text("# Raw Transcript\n", encoding="utf-8")
+            (media_dir / "transcript" / "normalized.md").write_text(
+                "# Normalized Transcript\n", encoding="utf-8"
+            )
+            (media_dir / "transcript" / "normalization_report.md").write_text(
+                "# Normalization Report\n", encoding="utf-8"
+            )
+            (media_dir / "analysis" / "speaker_summary.md").write_text(
+                "# Speaker Summary\n", encoding="utf-8"
+            )
+            (media_dir / "analysis" / "audio_features.md").write_text(
+                "# Audio Features\n", encoding="utf-8"
+            )
 
             archive_path = build_run_archive(job_id, settings=settings)
 
@@ -207,6 +223,9 @@ class JobStoreTests(unittest.TestCase):
                 self.assertIn("README.md", names)
                 self.assertIn("TRANSCRIPTION_INFO.md", names)
                 self.assertIn("timelines/2026-03-24 12-58-32.md", names)
+                self.assertIn("raw-transcripts/2026-03-24 12-58-32.md", names)
+                self.assertIn("normalized-transcripts/2026-03-24 12-58-32.md", names)
+                self.assertIn("normalization-reports/2026-03-24 12-58-32.md", names)
 
 
 if __name__ == "__main__":

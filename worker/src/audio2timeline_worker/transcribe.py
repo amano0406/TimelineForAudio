@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gc
+import hashlib
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -134,6 +135,13 @@ def _map_trimmed_to_original(seconds: float, cut_map: list[dict[str, float]]) ->
 
 def _normalize_text(value: Any) -> str:
     return " ".join(str(value or "").split())
+
+
+def _normalize_prompt(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).replace("\r\n", "\n").replace("\r", "\n").strip()
+    return normalized or None
 
 
 def _timestamp_label(seconds: float) -> str:
@@ -286,6 +294,7 @@ def transcribe_audio(
     cut_map: list[dict[str, float]],
     compute_mode: str | None = None,
     processing_quality: str | None = None,
+    initial_prompt: str | None = None,
 ) -> dict[str, Any]:
     settings = load_settings()
     token = load_huggingface_token()
@@ -328,6 +337,7 @@ def transcribe_audio(
     )
     model_name = resolve_model_name_for_quality(resolved_quality)
     language = "ja"
+    resolved_initial_prompt = _normalize_prompt(initial_prompt)
 
     transcription_warnings: list[str] = []
     batch_size = _initial_batch_size(device, resolved_quality)
@@ -364,6 +374,7 @@ def transcribe_audio(
                 beam_size=5,
                 vad_filter=True,
                 vad_parameters={"min_silence_duration_ms": 500},
+                initial_prompt=resolved_initial_prompt,
             )
             segment_rows = [
                 {
@@ -420,6 +431,7 @@ def transcribe_audio(
             beam_size=5,
             vad_filter=True,
             vad_parameters={"min_silence_duration_ms": 500},
+            initial_prompt=resolved_initial_prompt,
         )
         segment_rows = [
             {
@@ -470,6 +482,13 @@ def transcribe_audio(
         "batch_size": batch_size,
         "language": getattr(info, "language", None) or language,
         "language_probability": getattr(info, "language_probability", None),
+        "initial_prompt_configured": bool(resolved_initial_prompt),
+        "initial_prompt_sha256": (
+            hashlib.sha256(resolved_initial_prompt.encode("utf-8")).hexdigest()
+            if resolved_initial_prompt
+            else None
+        ),
+        "initial_prompt_length": len(resolved_initial_prompt or ""),
         "alignment_used": False,
         "diarization_used": diarization_used,
         "diarization_error": diarization_error,

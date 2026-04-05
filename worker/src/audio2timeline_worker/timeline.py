@@ -43,6 +43,8 @@ def render_timeline(
         f"- Duration: `{source_info.get('duration_seconds', 0):.3f}s`",
         f"- Model: `{source_info.get('model_id') or transcript_payload.get('model', '')}`",
         f"- Diarization used: `{transcript_payload.get('diarization_used', False)}`",
+        f"- Transcript normalization mode: `{transcript_payload.get('normalization', {}).get('mode') or source_info.get('transcript_normalization_mode') or 'off'}`",
+        f"- Normalized segments changed: `{transcript_payload.get('normalization', {}).get('changed_segment_count', 0)}`",
         "",
         "## Summary",
         "",

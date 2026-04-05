@@ -23,7 +23,11 @@ from .signature import (
     normalize_processing_quality,
     resolve_transcription_model_id,
 )
-from .settings import load_huggingface_token, load_settings
+from .settings import (
+    load_huggingface_token,
+    load_settings,
+    normalize_transcript_normalization_mode,
+)
 
 _DATETIME_PATTERNS = [
     re.compile(
@@ -242,7 +246,17 @@ def build_run_archive(
 
 def _build_export_package(run_dir: Path, job_id: str, export_root: Path) -> None:
     timelines_root = export_root / "timelines"
+    raw_transcripts_root = export_root / "raw-transcripts"
+    normalized_transcripts_root = export_root / "normalized-transcripts"
+    normalization_reports_root = export_root / "normalization-reports"
+    speaker_summaries_root = export_root / "speaker-summaries"
+    feature_summaries_root = export_root / "audio-feature-summaries"
     timelines_root.mkdir(parents=True, exist_ok=True)
+    raw_transcripts_root.mkdir(parents=True, exist_ok=True)
+    normalized_transcripts_root.mkdir(parents=True, exist_ok=True)
+    normalization_reports_root.mkdir(parents=True, exist_ok=True)
+    speaker_summaries_root.mkdir(parents=True, exist_ok=True)
+    feature_summaries_root.mkdir(parents=True, exist_ok=True)
     timelines: list[dict[str, str]] = []
     media_root = run_dir / "media"
     if media_root.exists():
@@ -265,6 +279,15 @@ def _build_export_package(run_dir: Path, job_id: str, export_root: Path) -> None
                     "timeline_path": str(timeline_path),
                     "label": label,
                     "source_path": str(source_info.get("original_path") or ""),
+                    "raw_transcript_path": str(media_dir / "transcript" / "raw.md"),
+                    "normalized_transcript_path": str(media_dir / "transcript" / "normalized.md"),
+                    "normalization_report_path": str(
+                        media_dir / "transcript" / "normalization_report.md"
+                    ),
+                    "speaker_summary_path": str(media_dir / "analysis" / "speaker_summary.md"),
+                    "audio_feature_summary_path": str(
+                        media_dir / "analysis" / "audio_features.md"
+                    ),
                 }
             )
 
@@ -282,7 +305,12 @@ def _build_export_package(run_dir: Path, job_id: str, export_root: Path) -> None
             "",
             f"- Job ID: `{job_id}`",
             "- Main folder: `timelines/`",
-            "- Each markdown file is one video timeline.",
+            "- Each markdown file is one audio timeline.",
+            "- `raw-transcripts/` contains per-item raw transcript markdown.",
+            "- `normalized-transcripts/` contains the transcript after deterministic normalization.",
+            "- `normalization-reports/` summarizes glossary rules and document-wide corrections.",
+            "- `speaker-summaries/` contains diarization-oriented speaker summaries when available.",
+            "- `audio-feature-summaries/` contains pause/loudness/pitch/rate summaries.",
             "- `TRANSCRIPTION_INFO.md` explains which processing and models were used.",
             "",
         ]
@@ -297,6 +325,19 @@ def _build_export_package(run_dir: Path, job_id: str, export_root: Path) -> None
             Path(row["timeline_path"]).read_text(encoding="utf-8", errors="replace"),
             encoding="utf-8",
         )
+        for source_key, target_root in (
+            ("raw_transcript_path", raw_transcripts_root),
+            ("normalized_transcript_path", normalized_transcripts_root),
+            ("normalization_report_path", normalization_reports_root),
+            ("speaker_summary_path", speaker_summaries_root),
+            ("audio_feature_summary_path", feature_summaries_root),
+        ):
+            source_path = Path(row[source_key])
+            if source_path.exists():
+                target_root.joinpath(file_name).write_text(
+                    source_path.read_text(encoding="utf-8", errors="replace"),
+                    encoding="utf-8",
+                )
 
 
 def _best_export_label(media_id: str, source_info: dict[str, Any]) -> str:
@@ -396,9 +437,21 @@ def create_job(
             compute_mode=settings.get("computeMode"),
             processing_quality=settings.get("processingQuality"),
             diarization_enabled=diarization_enabled,
+            transcription_initial_prompt=settings.get("transcriptionInitialPrompt"),
+            transcript_normalization_mode=settings.get("transcriptNormalizationMode"),
+            transcript_normalization_glossary=settings.get("transcriptNormalizationGlossary"),
         ),
         transcription_backend=TRANSCRIPTION_BACKEND,
         transcription_model_id=resolve_transcription_model_id(settings.get("processingQuality")),
+        transcription_initial_prompt=str(settings.get("transcriptionInitialPrompt") or "").strip()
+        or None,
+        transcript_normalization_mode=normalize_transcript_normalization_mode(
+            settings.get("transcriptNormalizationMode")
+        ),
+        transcript_normalization_glossary=str(
+            settings.get("transcriptNormalizationGlossary") or ""
+        )
+        or None,
         diarization_enabled=diarization_enabled,
         diarization_model_id=DIARIZATION_MODEL_ID if diarization_enabled else None,
         vad_backend=VAD_BACKEND,
@@ -465,6 +518,13 @@ def settings_snapshot(settings: dict[str, Any] | None = None) -> dict[str, Any]:
         "ready": bool(token) and bool(settings.get("huggingfaceTermsConfirmed", False)),
         "compute_mode": str(settings.get("computeMode") or "cpu"),
         "processing_quality": str(settings.get("processingQuality") or "standard"),
+        "transcription_initial_prompt": str(settings.get("transcriptionInitialPrompt") or ""),
+        "transcript_normalization_mode": normalize_transcript_normalization_mode(
+            settings.get("transcriptNormalizationMode")
+        ),
+        "transcript_normalization_glossary": str(
+            settings.get("transcriptNormalizationGlossary") or ""
+        ),
         "input_roots": _enabled_input_roots(settings),
         "output_roots": _enabled_output_root_list(settings),
     }

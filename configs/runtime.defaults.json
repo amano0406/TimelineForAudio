@@ -6,6 +6,9 @@
     ".aac",
     ".flac"
   ],
+  "transcriptionInitialPrompt": "",
+  "transcriptNormalizationMode": "deterministic",
+  "transcriptNormalizationGlossary": "",
   "inputRoots": [
     {
       "id": "uploads",

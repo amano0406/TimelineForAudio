@@ -20,7 +20,10 @@ public static class ConversionSignature
     public static string Build(
         string? computeMode,
         string? processingQuality,
-        bool diarizationEnabled)
+        bool diarizationEnabled,
+        string? transcriptionInitialPrompt = null,
+        string? transcriptNormalizationMode = null,
+        string? transcriptNormalizationGlossary = null)
     {
         var payload = new Dictionary<string, object?>
         {
@@ -33,6 +36,7 @@ public static class ConversionSignature
                 ["backend"] = TranscriptionBackend,
                 ["model_id"] = ResolveTranscriptionModelId(processingQuality),
                 ["language"] = "ja",
+                ["initial_prompt_sha256"] = HashHintText(transcriptionInitialPrompt),
             },
             ["diarization"] = new Dictionary<string, object?>
             {
@@ -56,6 +60,11 @@ public static class ConversionSignature
             {
                 ["timeline_schema"] = "audio-markdown-v1",
             },
+            ["normalization"] = new Dictionary<string, object?>
+            {
+                ["mode"] = NormalizeTranscriptNormalizationMode(transcriptNormalizationMode),
+                ["glossary_sha256"] = HashHintText(transcriptNormalizationGlossary),
+            },
         };
 
         var canonicalJson = JsonSerializer.Serialize(payload);
@@ -68,4 +77,34 @@ public static class ConversionSignature
 
     public static string NormalizeProcessingQuality(string? value) =>
         string.Equals(value, "high", StringComparison.OrdinalIgnoreCase) ? "high" : "standard";
+
+    public static string NormalizeTranscriptNormalizationMode(string? value) =>
+        string.Equals(value, "off", StringComparison.OrdinalIgnoreCase) ? "off" : "deterministic";
+
+    private static string? HashHintText(string? value)
+    {
+        var normalized = NormalizeHintText(value);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return null;
+        }
+
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalized));
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    private static string? NormalizeHintText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var normalized = value.Replace("\r\n", "\n").Replace('\r', '\n');
+        normalized = string.Join(
+            "\n",
+            normalized.Split('\n', StringSplitOptions.None).Select(static line => line.Trim()));
+        normalized = normalized.Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
+    }
 }

@@ -47,6 +47,15 @@ public sealed class AppSettingsDocument
     [JsonPropertyName("processingQuality")]
     public string ProcessingQuality { get; set; } = "standard";
 
+    [JsonPropertyName("transcriptionInitialPrompt")]
+    public string TranscriptionInitialPrompt { get; set; } = "";
+
+    [JsonPropertyName("transcriptNormalizationMode")]
+    public string TranscriptNormalizationMode { get; set; } = "deterministic";
+
+    [JsonPropertyName("transcriptNormalizationGlossary")]
+    public string TranscriptNormalizationGlossary { get; set; } = "";
+
     [JsonPropertyName("uiLanguage")]
     public string UiLanguage { get; set; } = "en";
 
@@ -375,6 +384,15 @@ public sealed class JobRequestDocument
 
     [JsonPropertyName("transcription_model_id")]
     public string TranscriptionModelId { get; set; } = "";
+
+    [JsonPropertyName("transcription_initial_prompt")]
+    public string? TranscriptionInitialPrompt { get; set; }
+
+    [JsonPropertyName("transcript_normalization_mode")]
+    public string TranscriptNormalizationMode { get; set; } = "deterministic";
+
+    [JsonPropertyName("transcript_normalization_glossary")]
+    public string? TranscriptNormalizationGlossary { get; set; }
 
     [JsonPropertyName("diarization_enabled")]
     public bool DiarizationEnabled { get; set; }

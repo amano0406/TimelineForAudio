@@ -22,11 +22,33 @@ def resolve_transcription_model_id(processing_quality: str | None) -> str:
     return "large-v3" if normalize_processing_quality(processing_quality) == "high" else "medium"
 
 
+def normalize_transcript_normalization_mode(value: str | None) -> str:
+    return "off" if str(value or "").strip().lower() == "off" else "deterministic"
+
+
+def _normalize_hint_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).replace("\r\n", "\n").replace("\r", "\n")
+    normalized = "\n".join(line.strip() for line in normalized.split("\n")).strip()
+    return normalized or None
+
+
+def _hash_hint_text(value: str | None) -> str | None:
+    normalized = _normalize_hint_text(value)
+    if not normalized:
+        return None
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
 def build_conversion_signature(
     *,
     compute_mode: str | None,
     processing_quality: str | None,
     diarization_enabled: bool,
+    transcription_initial_prompt: str | None = None,
+    transcript_normalization_mode: str | None = None,
+    transcript_normalization_glossary: str | None = None,
 ) -> str:
     payload = {
         "pipeline": "audio2timeline",
@@ -37,6 +59,7 @@ def build_conversion_signature(
             "backend": TRANSCRIPTION_BACKEND,
             "model_id": resolve_transcription_model_id(processing_quality),
             "language": "ja",
+            "initial_prompt_sha256": _hash_hint_text(transcription_initial_prompt),
         },
         "diarization": {
             "enabled": diarization_enabled,
@@ -55,6 +78,10 @@ def build_conversion_signature(
         },
         "render": {
             "timeline_schema": "audio-markdown-v1",
+        },
+        "normalization": {
+            "mode": normalize_transcript_normalization_mode(transcript_normalization_mode),
+            "glossary_sha256": _hash_hint_text(transcript_normalization_glossary),
         },
     }
     canonical = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))

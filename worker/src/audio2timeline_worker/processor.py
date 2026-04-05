@@ -24,14 +24,16 @@ from .fs_utils import (
     write_text,
 )
 from .hashing import sha256_file
+from .normalization import normalize_transcript_artifacts
 from .settings import load_settings
 from .timeline import render_timeline
 from .transcribe import transcribe_audio
 
 _ITEM_STAGE_BOUNDS: dict[str, tuple[float, float]] = {
     "extract_audio": (0.0, 0.16),
-    "transcribe": (0.16, 0.76),
-    "analyze_audio": (0.76, 0.94),
+    "transcribe": (0.16, 0.72),
+    "normalize_transcript": (0.72, 0.80),
+    "analyze_audio": (0.80, 0.94),
     "timeline_render": (0.94, 1.0),
 }
 
@@ -148,6 +150,8 @@ def _stage_expected_seconds(stage_name: str, media_duration_sec: float, compute_
         factor = 0.25 if compute_mode == "gpu" else 1.20
         ceiling = 180.0 if compute_mode == "gpu" else 900.0
         return max(4.0, min(ceiling, safe_duration * factor))
+    if stage_name == "normalize_transcript":
+        return max(1.0, min(20.0, safe_duration * 0.05))
     if stage_name == "analyze_audio":
         return max(2.0, min(120.0, safe_duration * 0.12))
     if stage_name == "timeline_render":
@@ -260,13 +264,17 @@ def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
             "# Transcription Info",
             "",
             f"- Audio transcription: `{request.transcription_backend}` with `{request.transcription_model_id}`, `ja`, requested `{request.compute_mode}`",
+            f"- Initial prompt configured: `{bool(request.transcription_initial_prompt)}`",
             f"- Diarization enabled: `{request.diarization_enabled}`",
             f"- Diarization model: `{request.diarization_model_id or ''}`",
             f"- VAD backend: `{request.vad_backend}` / `{request.vad_model_id}`",
+            f"- Transcript normalization mode: `{request.transcript_normalization_mode}`",
+            f"- Normalization glossary configured: `{bool(request.transcript_normalization_glossary)}`",
             f"- Pipeline version: `{request.pipeline_version}`",
             f"- Conversion signature: `{request.conversion_signature}`",
             "- Notes:",
             "  - `raw` outputs are preserved.",
+            "  - `normalized` transcript outputs are emitted after deterministic glossary normalization.",
             "  - Speaker summary and audio feature summary are emitted as sidecar markdown files.",
             "  - Optional audio analysis does not fail the main transcription job.",
             "",
@@ -424,6 +432,8 @@ def _process_one_item(
         "bitrate": manifest_item.bitrate,
         "model_id": manifest_item.model_id,
         "pipeline_version": manifest_item.pipeline_version,
+        "transcription_initial_prompt_configured": bool(request.transcription_initial_prompt),
+        "transcript_normalization_mode": request.transcript_normalization_mode,
     }
     write_json_atomic(media_dir / "source.json", source_info)
 
@@ -444,19 +454,29 @@ def _process_one_item(
         cut_map=cut_map,
         compute_mode=request.compute_mode,
         processing_quality=request.processing_quality,
+        initial_prompt=request.transcription_initial_prompt,
+    )
+    if on_stage:
+        on_stage("normalize_transcript", "Applying transcript normalization.")
+    normalized_transcript_payload, normalization_report = normalize_transcript_artifacts(
+        source_name=item.display_name,
+        transcript_dir=transcript_dir,
+        raw_payload=transcript_payload,
+        normalization_mode=request.transcript_normalization_mode,
+        glossary_text=request.transcript_normalization_glossary,
     )
     if on_stage:
         on_stage("analyze_audio", "Computing audio summaries.")
     speaker_summary = write_speaker_summary(
         source_name=item.display_name,
         output_dir=analysis_dir,
-        transcript_payload=transcript_payload,
+        transcript_payload=normalized_transcript_payload,
     )
     audio_feature_summary = analyze_audio(
         source_name=item.display_name,
         audio_path=normalized_audio_path,
         duration_seconds=manifest_item.duration_seconds,
-        transcript_payload=transcript_payload,
+        transcript_payload=normalized_transcript_payload,
         output_dir=analysis_dir,
     )
     manifest_item.pause_summary = audio_feature_summary.get("pause_summary", {})
@@ -474,11 +494,11 @@ def _process_one_item(
     render_timeline(
         output_path=timeline_dir / "timeline.md",
         source_info=source_info,
-        transcript_payload=transcript_payload,
+        transcript_payload=normalized_transcript_payload,
         speaker_summary=speaker_summary,
         audio_feature_summary=audio_feature_summary,
     )
-    return []
+    return [f"Normalization: {warning}" for warning in normalization_report.get("warnings", [])]
 
 
 def process_job(job_dir: Path | None = None) -> bool:

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Audio2Timeline.Web.Infrastructure;
 using Audio2Timeline.Web.Models;
 
 namespace Audio2Timeline.Web.Services;
@@ -141,6 +142,11 @@ public sealed class SettingsStore(AppPaths paths)
             "high" => "high",
             _ => "standard",
         };
+
+        value.TranscriptionInitialPrompt = value.TranscriptionInitialPrompt?.Trim() ?? "";
+        value.TranscriptNormalizationMode = ConversionSignature.NormalizeTranscriptNormalizationMode(
+            value.TranscriptNormalizationMode);
+        value.TranscriptNormalizationGlossary = value.TranscriptNormalizationGlossary ?? "";
 
         value.UiLanguage = value.UiLanguage?.Trim() switch
         {
