@@ -1,118 +1,115 @@
 # audio2timeline
 
-手元にある動画ファイルを、ChatGPT などの LLM に渡しやすいタイムライン資料へ変換するローカルツールです。
+手元の音声ファイルを、レビューしやすく、検索しやすく、ChatGPT などの LLM に渡しやすいタイムライン Markdown パッケージへ変換するローカルツールです。
 
-[English README](README.md) | [サンプルタイムライン](docs/examples/sample-timeline.ja.md) | [第三者ライセンス](THIRD_PARTY_NOTICES.md) | [モデルと実行環境メモ](MODEL_AND_RUNTIME_NOTES.md) | [セキュリティと安全性](docs/SECURITY_AND_SAFETY.md) | [公開前チェック](docs/PUBLIC_RELEASE_CHECKLIST.md) | [ライセンス](LICENSE)
+[English README](README.md) | [サンプルタイムライン](docs/examples/sample-timeline.ja.md) | [第三者ライセンス](THIRD_PARTY_NOTICES.md) | [モデルと実行環境メモ](MODEL_AND_RUNTIME_NOTES.md) | [セキュリティと安全性](docs/SECURITY_AND_SAFETY.md) | [ライセンス](LICENSE)
 
-## Public Release Status
+## 概要
 
-現在の public release 系列は `audio2timeline v0.3.3 Tech Preview` です。
+- local-first の desktop-style tool
+- `video2timeline` とは別の、音声専用アプリ
+- 主運用パスは Windows + Docker Desktop
+- 不特定多数向けの導入簡略化より、手元での実運用を優先
+- 話者分離には `pyannote/speaker-diarization-community-1` を使用
 
-現時点の public contract:
+## 現在の機能
 
-- baseline support: Windows + Docker Desktop + CPU mode
-- macOS: source-based experimental path
-- GPU mode: optional, NVIDIA-only, best-effort
-- 話者分離は optional で、`pyannote/speaker-diarization-community-1` の gated approval と Hugging Face token が必要
-- これは local-first の desktop-style tool であり、hosted SaaS ではありません
+- 対応入力形式: `.mp3`, `.wav`, `.m4a`, `.aac`, `.flac`
+- ファイル選択 / ディレクトリ選択の upload-first job 作成
+- `faster-whisper` による文字起こし
+- `pyannote` による optional な話者分離
+- 次を使った deterministic transcript normalization
+  - ASR initial prompt
+  - glossary ベースの表記統一
+- 次の audio feature summary
+  - pause / silence
+  - loudness
+  - speaking rate
+  - pitch
+  - overlap / interruption
+  - heuristic な speaker confidence
+  - heuristic な diarization quality
+- `source hash` と `conversion signature` の両方を使う duplicate 判定
+- rerun with same settings
+- rerun with current settings
+- ZIP export
+- `FAILURE_REPORT.md` と `logs/worker.log` を含む failure artifact
 
-## このアプリがやっていること
+## 出力物
 
-このアプリは、手元にある動画ファイルを、LLM に渡しやすい ZIP 資料に変換するためのものです。
+完了した job では、アイテムごとの Markdown artifact と ZIP handoff package を出力します。
 
-内部では、主に次のことを行います。
-
-1. 動画の音声を読み取って文字にします
-2. 画面に映っている文字や内容を拾います
-3. 会話と画面の変化を時系列のタイムラインとして整理します
-4. 最終結果を ZIP にまとめます
-
-使う側がモデル名や細かい内部処理を理解する必要はありません。
-
-## どんな用途に向いているか
-
-- 会議の振り返り
-- 会話ログの分析
-- 家族や友人との会話の整理
-- 画面録画の振り返り
-- 古い動画資産のテキスト化
-
-## スクリーンショット
-
-### 言語選択
-
-![言語選択](docs/screenshots/language.png)
-
-### 設定
-
-![設定](docs/screenshots/settings.png)
-
-### 新規ジョブ
-
-![新規ジョブ](docs/screenshots/new-job.png)
-
-### ジョブ一覧
-
-![ジョブ一覧](docs/screenshots/jobs.png)
-
-### ジョブ詳細
-
-![ジョブ詳細](docs/screenshots/run-details.png)
-
-## 基本的な流れ
-
-1. 動画ファイルを選ぶ  
-   複数ファイルも選べます
-2. 実行する
-3. 完了まで待つ  
-   高度な AI 処理を行うため、ある程度時間がかかります
-4. ZIP をダウンロードする
-5. 必要なら、その ZIP を ChatGPT や Claude などの LLM に渡して活用する
-
-たとえば、次のような使い方ができます。
-
-- 会議内容を要約する
-- 決定事項や宿題を抜き出す
-- 自分の説明の癖を振り返る
-- 会話パターンを分析する
-- 動画の蓄積を検索しやすいメモにする
-
-## ZIP に入るもの
-
-ダウンロードされる ZIP は、できるだけコンパクトにしています。
-
-主に入るのは次の 3 つです。
-
-- `README.md`
-- `TRANSCRIPTION_INFO.md`
-- `timelines/<撮影日時>.md`
-
-例:
+典型的な ZIP の中身:
 
 ```text
 audio2timeline-export.zip
-  README.md
+  README.html
   TRANSCRIPTION_INFO.md
   timelines/
-    2026-03-26 18-00-00.md
-    2026-03-25 09-14-12.md
+    2026-03-25 14-47-14.md
+  raw-transcripts/
+    2026-03-25 14-47-14.md
+  normalized-transcripts/
+    2026-03-25 14-47-14.md
+  normalization-reports/
+    2026-03-25 14-47-14.md
+  speaker-summaries/
+    2026-03-25 14-47-14.md
+  audio-feature-summaries/
+    2026-03-25 14-47-14.md
 ```
 
-`timelines/` の中の Markdown が、動画ごとの最終成果物です。
+最初に開くべきファイルは `README.html` です。ここから timeline、transcript、normalization、speaker、feature の各 Markdown へリンクできます。
 
-## 内部作業フォルダと ZIP の違い
+一部失敗した job では、追加で次が入ることがあります。
 
-Docker 内では、処理のためにもう少し大きな作業フォルダを持っています。
+- `FAILURE_REPORT.md`
+- `logs/worker.log`
 
-そこには、たとえば次のようなものが入ります。
+## パイプライン概要
 
-- request / status の JSON
-- worker ログ
-- 中間の文字起こしファイル
-- 画面差分メモ
-- 一時ファイル
+現在の MVP パイプラインは次の流れです。
 
-これらはアプリ内部で使うものです。普段ユーザーが見るのは、ダウンロードした ZIP の中身だけで十分です。
+1. 入力音声を probe して `source hash` を計算
+2. 設定を正規化して `conversion signature` を計算
+3. `faster-whisper` で文字起こし
+4. Hugging Face 側の前提が揃っていれば `pyannote` で話者分離
+5. pause、loudness、speaking rate、pitch、overlap、diarization heuristics を計算
+6. 次を書き出し
+   - `timeline.md`
+   - raw transcript
+   - normalized transcript
+   - normalization report
+   - speaker summary
+   - audio feature summary
+7. ZIP export を生成
+
+## モデルと実行モード
+
+- transcription backend: `faster-whisper`
+- `standard` quality: `medium`
+- `high` quality: `large-v3`
+- diarization model: `pyannote/speaker-diarization-community-1`
+- VAD / silence stack: `silero-vad` 系 metadata と `ffmpeg` の silence detection
+
+計算モード:
+
+- `CPU`
+  - baseline path
+  - 幅広い環境で使える
+  - 遅め
+- `GPU`
+  - optional
+  - Docker から使える NVIDIA GPU が必要
+  - `high` 向き
+
+`high` quality はおおむね 10 GB 以上の VRAM がある GPU を前提にしています。CPU でも `high` 実行はできますが、かなり遅くなります。
+
+## Hugging Face の前提
+
+完全な話者分離パイプラインを使うには、`Settings` に Hugging Face token を保存し、`pyannote/speaker-diarization-community-1` へのアクセス承認を済ませてください。
+
+token や承認がない場合でも文字起こし自体はできますが、話者分離依存の summary は unavailable になります。
 
 ## クイックスタート
 
@@ -122,95 +119,62 @@ Windows:
 .\start.bat
 ```
 
-`v0.3.3` の public release では、これが primary supported path です。
-
-macOS:
+macOS の source-based helper:
 
 ```bash
 ./start.command
 ```
 
-こちらは `v0.3.3` では experimental な source-based path です。現在の public release line の baseline support には含めません。
+起動後:
 
-起動後の流れ:
+1. `Settings` を開く
+2. 話者分離を使いたいなら Hugging Face token を保存する
+3. `CPU` か `GPU` を選ぶ
+4. `Standard` か `High` を選ぶ
+5. 必要なら次を設定する
+   - transcription initial prompt
+   - transcript normalization glossary
+6. ファイルまたはディレクトリから job を作る
+7. duplicate modal で再利用か再処理かを選ぶ
+8. 完了を待って ZIP をダウンロードする
 
-1. 言語を選ぶ
-2. `Settings` を開く
-3. 話者分離を使いたい場合は Hugging Face token を保存する
-4. `CPU` か `GPU` を選ぶ
-5. 処理精度を選ぶ
-6. 新しいジョブを作る
-7. 処理完了まで待つ
-8. ZIP をダウンロードする
+## Duplicate 再利用に効くもの
 
-起動スクリプトは、Google Chrome / Microsoft Edge / Brave / Chromium のいずれかで専用ウィンドウ風に開こうとします。使えない場合は通常のブラウザで開きます。
+duplicate 再利用はファイル hash だけでは決まりません。
 
-## 必要なもの
+保存しているのは:
 
-- primary supported path としての Windows
-- experimental な source-based path としての macOS
-- Docker Desktop
-- 初回のコンテナ・モデル取得用のインターネット接続
-- `pyannote` 話者分離を使う場合のみ Hugging Face token
-- `pyannote` 話者分離を使う場合のみ gated approval
-- GPU モードを使う場合は NVIDIA GPU と Docker GPU 対応
+- `source hash`
+- `conversion signature`
 
-## 計算モード
+`conversion signature` には、pipeline version、model family、compute mode、processing quality、diarization enabled state、initial prompt hash、normalization settings などが入ります。つまり、同じ元音声でも変換条件が変われば再処理対象にできます。
 
-public release の baseline は CPU mode です。
+## アイテムごとに保存する metadata
 
-- `CPU`
-  - 幅広い環境で使える
-  - 速度は遅め
-- `GPU`
-  - Docker から使える NVIDIA GPU が必要
-  - 主な AI 処理が高速になる
-  - `v0.3.3` では best-effort 扱い
+現在のパイプラインでは、次のような metadata を保存します。
 
-処理精度:
-
-- `Standard`
-  - `WhisperX medium`
-- `High`
-  - `WhisperX large-v3`
-  - GPU モードかつ十分な VRAM がある場合のみ使用可能
-
-この開発環境では `NVIDIA GeForce RTX 4070` で GPU 実行を確認しています。
-
-## 対応する入力形式
-
-主な対応形式:
-
-- `.mp4`
-- `.mov`
-- `.m4v`
-- `.avi`
-- `.mkv`
-- `.webm`
-
-実際に読み込めるかどうかは、ランタイムイメージ内の `ffmpeg` に依存します。
-
-## 言語対応
-
-対応言語:
-
-- `en`
-- `ja`
-- `zh-CN`
-- `zh-TW`
-- `ko`
-- `es`
-- `fr`
-- `de`
-- `pt`
-
-初回起動時の既定は英語です。選択した言語は `.env` ではなくアプリ設定データに保存されます。
+- duration
+- size bytes
+- extension / container
+- audio codec
+- channels
+- sample rate
+- bitrate
+- model id
+- pipeline version
+- conversion signature
+- processing wall time
+- stage elapsed times
+- pause / silence summary
+- loudness summary
+- speaking-rate summary
+- pitch summary
+- speaker confidence summary
+- optional voice-feature summary
 
 ## CLI
 
-通常利用の入口は GUI です。必要なら worker CLI も使えます。
-
-初回 public release では GUI を primary path とします。CLI は advanced path であり、daemon と CLI を同時に回す運用は public support guarantee に含めません。
+通常利用の入口は GUI ですが、worker CLI も使えます。
 
 主なコマンド:
 
@@ -227,22 +191,12 @@ public release の baseline は CPU mode です。
 ```powershell
 $env:PYTHONPATH=".\worker\src"
 python -m audio2timeline_worker settings status
-python -m audio2timeline_worker settings save --token hf_xxx --terms-confirmed
-python -m audio2timeline_worker jobs create --file C:\path\to\clip.mp4
-python -m audio2timeline_worker jobs create --directory C:\path\to\folder
 python -m audio2timeline_worker jobs list
-python -m audio2timeline_worker jobs archive --job-id run-YYYYMMDD-HHMMSS-xxxx
+python -m audio2timeline_worker jobs show --job-id job-YYYYMMDD-HHMMSS-xxxx
+python -m audio2timeline_worker jobs archive --job-id job-YYYYMMDD-HHMMSS-xxxx
 ```
 
-`jobs archive` を使うと、GUI でダウンロードするのと同じような ZIP 形式で出力できます。
-
 ## テスト
-
-現在のテストは軽めです。
-
-- Python worker の unit test
-- ASP.NET Core UI の Playwright ベース smoke test
-- 実データでの手動 smoke test
 
 worker unit test:
 
@@ -251,16 +205,10 @@ $env:PYTHONPATH=".\worker\src"
 python -m unittest discover .\worker\tests
 ```
 
-ブラウザ E2E:
+Docker build:
 
 ```powershell
-.\scripts\test-e2e.ps1
-```
-
-commit 前に lint を有効にする場合:
-
-```powershell
-git config core.hooksPath .githooks
+docker compose build web worker
 ```
 
 ## ライセンス
