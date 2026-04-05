@@ -53,6 +53,10 @@ def render_timeline(
         f"- Loudness LUFS: `{audio_feature_summary.get('loudness_summary', {}).get('integrated_lufs')}`",
         f"- Estimated units/min: `{audio_feature_summary.get('speaking_rate_summary', {}).get('estimated_units_per_minute')}`",
         f"- Median pitch Hz: `{audio_feature_summary.get('pitch_summary', {}).get('median_hz')}`",
+        f"- Overlap segments: `{audio_feature_summary.get('overlap_summary', {}).get('overlap_segment_count')}`",
+        f"- Interruptions: `{audio_feature_summary.get('overlap_summary', {}).get('interruption_count')}`",
+        f"- Speaker confidence mean ratio: `{audio_feature_summary.get('speaker_confidence_summary', {}).get('mean_best_overlap_ratio')}`",
+        f"- Diarization quality: `{audio_feature_summary.get('diarization_quality_summary', {}).get('quality_band')}`",
         "",
     ]
 

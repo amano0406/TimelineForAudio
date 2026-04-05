@@ -666,6 +666,9 @@ public sealed class ManifestItemDocument
     [JsonPropertyName("speaker_confidence_summary")]
     public Dictionary<string, object?> SpeakerConfidenceSummary { get; set; } = [];
 
+    [JsonPropertyName("diarization_quality_summary")]
+    public Dictionary<string, object?> DiarizationQualitySummary { get; set; } = [];
+
     [JsonPropertyName("optional_voice_feature_summary")]
     public Dictionary<string, object?> OptionalVoiceFeatureSummary { get; set; } = [];
 }

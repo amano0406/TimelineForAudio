@@ -486,6 +486,9 @@ def _process_one_item(
     manifest_item.speaker_confidence_summary = audio_feature_summary.get(
         "speaker_confidence_summary", {}
     )
+    manifest_item.diarization_quality_summary = audio_feature_summary.get(
+        "diarization_quality_summary", {}
+    )
     manifest_item.optional_voice_feature_summary = audio_feature_summary.get(
         "optional_voice_feature_summary", {}
     )

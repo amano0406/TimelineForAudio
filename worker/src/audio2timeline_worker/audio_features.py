@@ -36,6 +36,188 @@ def _timestamp_label(seconds: float) -> str:
     return f"{hours:02}:{minutes:02}:{secs:02}.{millis:03}"
 
 
+def _segment_bounds(segment: dict[str, Any]) -> tuple[float, float, str, str]:
+    start = float(segment.get("original_start", segment.get("start", 0.0)) or 0.0)
+    end = float(segment.get("original_end", segment.get("end", start)) or start)
+    end = max(start, end)
+    speaker = str(segment.get("speaker") or "SPEAKER_00")
+    text = _compact_text(segment.get("text"))
+    return start, end, speaker, text
+
+
+def build_overlap_summary(segments: list[dict[str, Any]]) -> dict[str, Any]:
+    if not segments:
+        return {
+            "available": False,
+            "segment_count": 0,
+            "speaker_change_count": 0,
+            "overlap_segment_count": 0,
+            "speaker_change_overlap_count": 0,
+            "interruption_count": 0,
+            "rapid_turn_count": 0,
+            "total_overlap_seconds": None,
+            "max_overlap_seconds": None,
+        }
+
+    speaker_change_count = 0
+    overlap_segment_count = 0
+    speaker_change_overlap_count = 0
+    interruption_count = 0
+    rapid_turn_count = 0
+    total_overlap_seconds = 0.0
+    max_overlap_seconds = 0.0
+    previous_end = 0.0
+    previous_speaker: str | None = None
+
+    for segment in segments:
+        start, end, speaker, _ = _segment_bounds(segment)
+        pause_before = max(0.0, start - previous_end)
+        overlap = max(0.0, previous_end - start)
+        speaker_changed = previous_speaker is not None and speaker != previous_speaker
+
+        if speaker_changed:
+            speaker_change_count += 1
+            if pause_before <= 0.2:
+                rapid_turn_count += 1
+        if overlap > 0:
+            overlap_segment_count += 1
+            total_overlap_seconds += overlap
+            max_overlap_seconds = max(max_overlap_seconds, overlap)
+            if speaker_changed:
+                speaker_change_overlap_count += 1
+                if overlap >= 0.15:
+                    interruption_count += 1
+
+        previous_end = max(previous_end, end)
+        previous_speaker = speaker
+
+    return {
+        "available": True,
+        "segment_count": len(segments),
+        "speaker_change_count": speaker_change_count,
+        "overlap_segment_count": overlap_segment_count,
+        "speaker_change_overlap_count": speaker_change_overlap_count,
+        "interruption_count": interruption_count,
+        "rapid_turn_count": rapid_turn_count,
+        "total_overlap_seconds": _round(total_overlap_seconds),
+        "max_overlap_seconds": _round(max_overlap_seconds),
+        "interruption_overlap_threshold_seconds": 0.15,
+        "rapid_turn_pause_threshold_seconds": 0.2,
+    }
+
+
+def build_diarization_summaries(
+    transcript_payload: dict[str, Any],
+    *,
+    duration_seconds: float,
+    overlap_summary: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    diarization_used = bool(transcript_payload.get("diarization_used", False))
+    speaker_turns = transcript_payload.get("speaker_turns", []) or []
+    segments = transcript_payload.get("segments", []) or []
+
+    if not diarization_used:
+        reason = "Diarization was not used for this transcript."
+        return (
+            {
+                "available": False,
+                "reason": reason,
+                "diarization_used": False,
+            },
+            {
+                "available": False,
+                "reason": reason,
+                "diarization_used": False,
+            },
+        )
+
+    if not speaker_turns or not segments:
+        reason = "Diarization output did not include enough speaker turns to score alignment."
+        return (
+            {
+                "available": False,
+                "reason": reason,
+                "diarization_used": True,
+            },
+            {
+                "available": False,
+                "reason": reason,
+                "diarization_used": True,
+            },
+        )
+
+    best_overlap_ratios: list[float] = []
+    for segment in segments:
+        start, end, _, _ = _segment_bounds(segment)
+        segment_duration = max(0.001, end - start)
+        best_overlap = 0.0
+        for turn in speaker_turns:
+            overlap = max(
+                0.0,
+                min(end, float(turn.get("end", end) or end))
+                - max(start, float(turn.get("start", start) or start)),
+            )
+            best_overlap = max(best_overlap, overlap)
+        best_overlap_ratios.append(best_overlap / segment_duration)
+
+    sorted_ratios = sorted(best_overlap_ratios)
+    low_confidence_threshold = 0.55
+    low_confidence_segments = sum(1 for ratio in best_overlap_ratios if ratio < low_confidence_threshold)
+    ambiguous_ratio = low_confidence_segments / max(len(best_overlap_ratios), 1)
+    mean_ratio = sum(best_overlap_ratios) / max(len(best_overlap_ratios), 1)
+    median_ratio = sorted_ratios[len(sorted_ratios) // 2]
+
+    speaker_confidence_summary = {
+        "available": True,
+        "diarization_used": True,
+        "method": "best_speaker_turn_overlap_ratio",
+        "segment_count": len(best_overlap_ratios),
+        "mean_best_overlap_ratio": _round(mean_ratio, 3),
+        "median_best_overlap_ratio": _round(median_ratio, 3),
+        "min_best_overlap_ratio": _round(sorted_ratios[0], 3),
+        "max_best_overlap_ratio": _round(sorted_ratios[-1], 3),
+        "low_confidence_threshold": low_confidence_threshold,
+        "low_confidence_segments": low_confidence_segments,
+        "low_confidence_fraction": _round(ambiguous_ratio, 3),
+        "note": "Heuristic score derived from alignment between transcript segments and diarization speaker turns.",
+    }
+
+    if mean_ratio >= 0.85 and ambiguous_ratio <= 0.10:
+        quality_band = "high"
+    elif mean_ratio >= 0.65 and ambiguous_ratio <= 0.35:
+        quality_band = "medium"
+    else:
+        quality_band = "low"
+
+    total_turn_seconds = sum(
+        max(
+            0.0,
+            float(turn.get("end", 0.0) or 0.0) - float(turn.get("start", 0.0) or 0.0),
+        )
+        for turn in speaker_turns
+    )
+    speaker_labels = {
+        str(turn.get("speaker") or "SPEAKER_00")
+        for turn in speaker_turns
+        if str(turn.get("speaker") or "").strip()
+    }
+    diarization_quality_summary = {
+        "available": True,
+        "diarization_used": True,
+        "quality_band": quality_band,
+        "speaker_turn_count": len(speaker_turns),
+        "speaker_count": len(speaker_labels),
+        "turn_coverage_ratio": _round(total_turn_seconds / max(duration_seconds, 0.001), 3),
+        "mean_best_overlap_ratio": speaker_confidence_summary["mean_best_overlap_ratio"],
+        "ambiguous_segment_count": low_confidence_segments,
+        "ambiguous_segment_fraction": speaker_confidence_summary["low_confidence_fraction"],
+        "overlap_segment_count": overlap_summary.get("overlap_segment_count"),
+        "interruption_count": overlap_summary.get("interruption_count"),
+        "note": "Quality band is a heuristic based on segment-to-speaker-turn overlap ratios and ambiguity rate.",
+    }
+    return speaker_confidence_summary, diarization_quality_summary
+
+
 def build_speaker_summary(transcript_payload: dict[str, Any]) -> dict[str, Any]:
     speakers: dict[str, dict[str, Any]] = {}
     for segment in transcript_payload.get("segments", []) or []:
@@ -224,6 +406,7 @@ def analyze_audio(
     }
 
     segments = transcript_payload.get("segments", []) or []
+    overlap_summary = build_overlap_summary(segments)
     voiced_seconds = 0.0
     total_units = 0
     total_chars = 0
@@ -249,18 +432,20 @@ def analyze_audio(
 
     loudness_summary = _compute_loudness(audio_path)
     pitch_summary, optional_voice_feature_summary = _compute_pitch_and_voice_features(audio_path)
-    speaker_confidence_summary = {
-        "available": False,
-        "reason": "MVP does not expose stable per-speaker confidence scores from the diarization backend.",
-        "diarization_used": bool(transcript_payload.get("diarization_used", False)),
-    }
+    speaker_confidence_summary, diarization_quality_summary = build_diarization_summaries(
+        transcript_payload,
+        duration_seconds=duration_seconds,
+        overlap_summary=overlap_summary,
+    )
 
     payload = {
         "pause_summary": pause_summary,
         "loudness_summary": loudness_summary,
         "speaking_rate_summary": speaking_rate_summary,
         "pitch_summary": pitch_summary,
+        "overlap_summary": overlap_summary,
         "speaker_confidence_summary": speaker_confidence_summary,
+        "diarization_quality_summary": diarization_quality_summary,
         "optional_voice_feature_summary": optional_voice_feature_summary,
     }
     (output_dir / "audio_features.json").write_text(
@@ -297,6 +482,14 @@ def analyze_audio(
         f"- Mean Hz: `{pitch_summary.get('mean_hz')}`",
         f"- Median Hz: `{pitch_summary.get('median_hz')}`",
         "",
+        "## Overlap / Interruptions",
+        "",
+        f"- Available: `{overlap_summary.get('available', False)}`",
+        f"- Speaker changes: `{overlap_summary.get('speaker_change_count')}`",
+        f"- Overlap segments: `{overlap_summary.get('overlap_segment_count')}`",
+        f"- Total overlap seconds: `{overlap_summary.get('total_overlap_seconds')}`",
+        f"- Interruptions: `{overlap_summary.get('interruption_count')}`",
+        "",
         "## Optional Voice Features",
         "",
         f"- Available: `{optional_voice_feature_summary.get('available', False)}`",
@@ -307,7 +500,17 @@ def analyze_audio(
         "## Speaker Confidence",
         "",
         f"- Available: `{speaker_confidence_summary['available']}`",
-        f"- Note: {speaker_confidence_summary['reason']}",
+        f"- Mean best overlap ratio: `{speaker_confidence_summary.get('mean_best_overlap_ratio')}`",
+        f"- Low-confidence segments: `{speaker_confidence_summary.get('low_confidence_segments')}`",
+        f"- Note: {speaker_confidence_summary.get('note') or speaker_confidence_summary.get('reason')}",
+        "",
+        "## Diarization Quality",
+        "",
+        f"- Available: `{diarization_quality_summary.get('available', False)}`",
+        f"- Quality band: `{diarization_quality_summary.get('quality_band')}`",
+        f"- Speaker turns: `{diarization_quality_summary.get('speaker_turn_count')}`",
+        f"- Ambiguous segments: `{diarization_quality_summary.get('ambiguous_segment_count')}`",
+        f"- Note: {diarization_quality_summary.get('note') or diarization_quality_summary.get('reason')}",
         "",
     ]
     write_text(output_dir / "audio_features.md", "\n".join(lines))

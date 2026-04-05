@@ -40,6 +40,9 @@ class TimelineTests(unittest.TestCase):
                     "loudness_summary": {"integrated_lufs": -18.2},
                     "speaking_rate_summary": {"estimated_units_per_minute": 120.0},
                     "pitch_summary": {"median_hz": 180.0},
+                    "overlap_summary": {"overlap_segment_count": 1, "interruption_count": 1},
+                    "speaker_confidence_summary": {"mean_best_overlap_ratio": 0.82},
+                    "diarization_quality_summary": {"quality_band": "medium"},
                 },
             )
 
@@ -49,6 +52,8 @@ class TimelineTests(unittest.TestCase):
             self.assertIn("Speaker: `SPEAKER_01`", text)
             self.assertIn("Text: hello world", text)
             self.assertIn("Median pitch Hz", text)
+            self.assertIn("Interruptions", text)
+            self.assertIn("Diarization quality", text)
             self.assertIn("Transcript normalization mode", text)
 
 

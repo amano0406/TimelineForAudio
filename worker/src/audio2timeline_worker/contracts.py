@@ -237,6 +237,7 @@ class ManifestItem:
     speaking_rate_summary: dict[str, Any] = field(default_factory=dict)
     pitch_summary: dict[str, Any] = field(default_factory=dict)
     speaker_confidence_summary: dict[str, Any] = field(default_factory=dict)
+    diarization_quality_summary: dict[str, Any] = field(default_factory=dict)
     optional_voice_feature_summary: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
