@@ -1,5 +1,5 @@
 {
-  "project_name": "audio2timeline",
+  "project_name": "TimelineForAudio",
   "source_directories": [
     {
       "name": "audio_primary",
@@ -12,7 +12,7 @@
       "recursive": true
     }
   ],
-  "output_root": "C:\\path\\to\\audio2timeline-runs",
+  "output_root": "C:\\path\\to\\TimelineForAudio-runs",
   "audio_extensions": [
     ".mp3",
     ".wav",

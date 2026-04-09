@@ -1,10 +1,10 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Audio2Timeline.Web.Models;
-using Audio2Timeline.Web.Services;
+using TimelineForAudio.Web.Models;
+using TimelineForAudio.Web.Services;
 
-namespace Audio2Timeline.Web.Pages.Jobs;
+namespace TimelineForAudio.Web.Pages.Jobs;
 
 public sealed class IndexModel(
     RunStore runStore,

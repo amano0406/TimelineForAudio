@@ -9,7 +9,7 @@ if errorlevel 1 (
   echo Docker Desktop is not installed or docker.exe is not on PATH.
   echo Download and install Docker Desktop here:
   echo   %DOCKER_DESKTOP_URL%
-  if /I not "%AUDIO2TIMELINE_SKIP_HELP_LINK%"=="1" start "" "%DOCKER_DESKTOP_URL%" >nul 2>&1
+  if /I not "%TIMELINE_FOR_AUDIO_SKIP_HELP_LINK%"=="1" start "" "%DOCKER_DESKTOP_URL%" >nul 2>&1
   echo Install Docker Desktop, start it, and try again.
   exit /b 1
 )
@@ -19,7 +19,7 @@ if errorlevel 1 (
   echo Docker Desktop is installed but the Docker engine is not ready.
   echo Docker Desktop setup guide:
   echo   %DOCKER_DESKTOP_URL%
-  if /I not "%AUDIO2TIMELINE_SKIP_HELP_LINK%"=="1" start "" "%DOCKER_DESKTOP_URL%" >nul 2>&1
+  if /I not "%TIMELINE_FOR_AUDIO_SKIP_HELP_LINK%"=="1" start "" "%DOCKER_DESKTOP_URL%" >nul 2>&1
   echo Start Docker Desktop and wait until it shows the engine is running, then try again.
   exit /b 1
 )
@@ -32,7 +32,7 @@ if not exist ".env" (
 set "WEB_PORT=38090"
 
 for /f "usebackq tokens=1,* delims==" %%A in (".env") do (
-  if /I "%%A"=="AUDIO2TIMELINE_WEB_PORT" set "WEB_PORT=%%B"
+  if /I "%%A"=="TIMELINE_FOR_AUDIO_WEB_PORT" set "WEB_PORT=%%B"
 )
 
 echo Starting web and worker containers...
@@ -72,14 +72,14 @@ powershell -NoLogo -NoProfile -Command "Start-Sleep -Seconds 2" >nul 2>&1
 goto wait_loop
 
 :ready
-echo audio2timeline is ready at http://localhost:%WEB_PORT%
-if /I "%AUDIO2TIMELINE_SKIP_BROWSER_OPEN%"=="1" exit /b 0
+echo TimelineForAudio is ready at http://localhost:%WEB_PORT%
+if /I "%TIMELINE_FOR_AUDIO_SKIP_BROWSER_OPEN%"=="1" exit /b 0
 
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\open-app-window.ps1" -Url "http://localhost:%WEB_PORT%" -Width 960 -Height 640
 exit /b %ERRORLEVEL%
 
 :failed
-echo audio2timeline did not become ready in time.
+echo TimelineForAudio did not become ready in time.
 echo.
 docker compose ps
 echo.

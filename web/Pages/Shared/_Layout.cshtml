@@ -1,7 +1,7 @@
-@inject Audio2Timeline.Web.Services.LanguageService LanguageService
-@inject Audio2Timeline.Web.Services.JsonLocalizationService Localizer
-@inject Audio2Timeline.Web.Services.AppInstanceService AppInstanceService
-@using Audio2Timeline.Web.Models
+@inject TimelineForAudio.Web.Services.LanguageService LanguageService
+@inject TimelineForAudio.Web.Services.JsonLocalizationService Localizer
+@inject TimelineForAudio.Web.Services.AppInstanceService AppInstanceService
+@using TimelineForAudio.Web.Models
 @{
     var lang = LanguageService.Resolve(Context.Request);
     var setupState = Context.Items["SetupState"] as SetupState;
@@ -33,7 +33,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - audio2timeline</title>
+    <title>@ViewData["Title"] - TimelineForAudio</title>
     <meta name="theme-color" content="#ffffff" />
     <link rel="icon" type="image/svg+xml" href="~/favicon.svg" asp-append-version="true" />
     <link rel="icon" type="image/x-icon" href="~/favicon.ico" asp-append-version="true" />
@@ -50,7 +50,7 @@
                     <a href="/" class="brand-link">
                         <img src="~/brand/logo-horizontal.svg"
                              asp-append-version="true"
-                             alt="audio2timeline"
+                             alt="TimelineForAudio"
                              class="brand-logo" />
                     </a>
                 </div>
@@ -86,9 +86,9 @@
             let pendingReload = false;
             let checking = false;
 
-            window.audio2timelineSetBusy = (value) => {
-                window.__audio2timelineBusy = Boolean(value);
-                if (!window.__audio2timelineBusy && pendingReload) {
+            window.timelineForAudioSetBusy = (value) => {
+                window.__timelineForAudioBusy = Boolean(value);
+                if (!window.__timelineForAudioBusy && pendingReload) {
                     location.reload();
                 }
             };
@@ -96,7 +96,7 @@
             const triggerReload = () => {
                 pendingReload = true;
                 banner?.classList.remove("hidden");
-                if (!window.__audio2timelineBusy) {
+                if (!window.__timelineForAudioBusy) {
                     location.reload();
                 }
             };

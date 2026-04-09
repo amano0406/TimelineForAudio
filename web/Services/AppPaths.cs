@@ -1,25 +1,25 @@
-namespace Audio2Timeline.Web.Services;
+namespace TimelineForAudio.Web.Services;
 
 public sealed class AppPaths(IConfiguration configuration)
 {
     public string RuntimeDefaultsPath { get; } =
-        configuration["AUDIO2TIMELINE_RUNTIME_DEFAULTS"] ?? "/app/config/runtime.defaults.json";
+        configuration["TIMELINE_FOR_AUDIO_RUNTIME_DEFAULTS"] ?? "/app/config/runtime.defaults.json";
 
     public string AppDataRoot { get; } =
-        configuration["AUDIO2TIMELINE_APPDATA_ROOT"] ?? "/shared/app-data";
+        configuration["TIMELINE_FOR_AUDIO_APPDATA_ROOT"] ?? "/shared/app-data";
 
     public string UploadsRoot { get; } =
-        configuration["AUDIO2TIMELINE_UPLOADS_ROOT"] ?? "/shared/uploads";
+        configuration["TIMELINE_FOR_AUDIO_UPLOADS_ROOT"] ?? "/shared/uploads";
 
     public string OutputsRoot { get; } =
-        configuration["AUDIO2TIMELINE_OUTPUTS_ROOT"] ??
-        Path.Combine(configuration["AUDIO2TIMELINE_APPDATA_ROOT"] ?? "/shared/app-data", "outputs");
+        configuration["TIMELINE_FOR_AUDIO_OUTPUTS_ROOT"] ??
+        Path.Combine(configuration["TIMELINE_FOR_AUDIO_APPDATA_ROOT"] ?? "/shared/app-data", "outputs");
 
     public string HuggingFaceCacheRoot { get; } =
-        configuration["AUDIO2TIMELINE_HF_CACHE_ROOT"] ?? "/cache/huggingface";
+        configuration["TIMELINE_FOR_AUDIO_HF_CACHE_ROOT"] ?? "/cache/huggingface";
 
     public string TorchCacheRoot { get; } =
-        configuration["AUDIO2TIMELINE_TORCH_CACHE_ROOT"] ?? "/cache/torch";
+        configuration["TIMELINE_FOR_AUDIO_TORCH_CACHE_ROOT"] ?? "/cache/torch";
 
     public string SettingsPath => Path.Combine(AppDataRoot, "settings.json");
 

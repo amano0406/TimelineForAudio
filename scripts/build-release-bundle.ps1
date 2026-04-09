@@ -157,10 +157,10 @@ if ([System.IO.Path]::IsPathRooted($OutputDir)) {
 else {
     $outputRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $OutputDir))
 }
-$bundleRootName = "audio2timeline-$tag"
+$bundleRootName = "TimelineForAudio-$tag"
 $bundleStageRoot = Join-Path $outputRoot "staging"
 $bundleRoot = Join-Path $bundleStageRoot $bundleRootName
-$zipPath = Join-Path $outputRoot "audio2timeline-windows-local.zip"
+$zipPath = Join-Path $outputRoot "TimelineForAudio-windows-local.zip"
 $checksumPath = Join-Path $outputRoot "SHA256SUMS.txt"
 
 if (Test-Path -LiteralPath $bundleStageRoot) {
@@ -204,7 +204,7 @@ finally {
 }
 
 $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-Set-Content -LiteralPath $checksumPath -Value "$hash  audio2timeline-windows-local.zip"
+Set-Content -LiteralPath $checksumPath -Value "$hash  TimelineForAudio-windows-local.zip"
 
 if (-not $KeepStaging -and (Test-Path -LiteralPath $bundleStageRoot)) {
     Remove-Item -LiteralPath $bundleStageRoot -Recurse -Force

@@ -1,10 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Audio2Timeline.Web.Infrastructure;
-using Audio2Timeline.Web.Models;
-using Audio2Timeline.Web.Services;
+using TimelineForAudio.Web.Infrastructure;
+using TimelineForAudio.Web.Models;
+using TimelineForAudio.Web.Services;
 
-namespace Audio2Timeline.Web.Pages.Runs;
+namespace TimelineForAudio.Web.Pages.Runs;
 
 public sealed class DetailsModel(RunStore runStore) : PageModel
 {

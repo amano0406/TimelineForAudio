@@ -1,8 +1,8 @@
 @page "/jobs/{jobId}/{mediaId}"
-@model Audio2Timeline.Web.Pages.Runs.MediaModel
-@using Audio2Timeline.Web.Infrastructure
-@inject Audio2Timeline.Web.Services.LanguageService LanguageService
-@inject Audio2Timeline.Web.Services.JsonLocalizationService Localizer
+@model TimelineForAudio.Web.Pages.Runs.MediaModel
+@using TimelineForAudio.Web.Infrastructure
+@inject TimelineForAudio.Web.Services.LanguageService LanguageService
+@inject TimelineForAudio.Web.Services.JsonLocalizationService Localizer
 @{
     var lang = LanguageService.Resolve(ViewContext.HttpContext.Request);
     string L(string key) => Localizer.Get(lang, key);

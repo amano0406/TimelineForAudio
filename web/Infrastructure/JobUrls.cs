@@ -1,4 +1,4 @@
-namespace Audio2Timeline.Web.Infrastructure;
+namespace TimelineForAudio.Web.Infrastructure;
 
 public static class JobUrls
 {

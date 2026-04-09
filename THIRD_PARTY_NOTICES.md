@@ -6,7 +6,7 @@ It is not a substitute for each dependency's original license text. If you redis
 
 ## Application License
 
-- `audio2timeline` application code: MIT
+- `TimelineForAudio` application code: MIT
 
 ## Bundled Frontend Libraries
 

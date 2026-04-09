@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from audio2timeline_worker.ffmpeg_utils import summarize_probe_payload
+from timeline_for_audio_worker.ffmpeg_utils import summarize_probe_payload
 
 
 class ProbeSummaryTests(unittest.TestCase):

@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-namespace Audio2Timeline.Web.Infrastructure;
+namespace TimelineForAudio.Web.Infrastructure;
 
 public static class ConversionSignature
 {
@@ -27,7 +27,7 @@ public static class ConversionSignature
     {
         var payload = new Dictionary<string, object?>
         {
-            ["pipeline"] = "audio2timeline",
+            ["pipeline"] = "TimelineForAudio",
             ["pipeline_version"] = PipelineVersion,
             ["compute_mode"] = NormalizeComputeMode(computeMode),
             ["processing_quality"] = NormalizeProcessingQuality(processingQuality),

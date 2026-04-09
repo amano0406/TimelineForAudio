@@ -51,7 +51,7 @@ def build_conversion_signature(
     transcript_normalization_glossary: str | None = None,
 ) -> str:
     payload = {
-        "pipeline": "audio2timeline",
+        "pipeline": "TimelineForAudio",
         "pipeline_version": PIPELINE_VERSION,
         "compute_mode": normalize_compute_mode(compute_mode),
         "processing_quality": normalize_processing_quality(processing_quality),

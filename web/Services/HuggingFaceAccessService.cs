@@ -1,8 +1,8 @@
 using System.Net;
 using System.Net.Http.Headers;
-using Audio2Timeline.Web.Models;
+using TimelineForAudio.Web.Models;
 
-namespace Audio2Timeline.Web.Services;
+namespace TimelineForAudio.Web.Services;
 
 public sealed class HuggingFaceAccessService(
     HttpClient httpClient,
@@ -18,7 +18,7 @@ public sealed class HuggingFaceAccessService(
     private const string FasterWhisperMediumModelId = "medium";
     private const string FasterWhisperLargeModelId = "large-v3";
 
-    private readonly string? _overrideState = configuration["AUDIO2TIMELINE_HF_ACCESS_OVERRIDE"];
+    private readonly string? _overrideState = configuration["TIMELINE_FOR_AUDIO_HF_ACCESS_OVERRIDE"];
 
     public async Task<HuggingFaceAccessSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default)
     {

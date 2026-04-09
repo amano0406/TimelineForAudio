@@ -1,5 +1,5 @@
 {
-  "project_name": "audio2timeline",
+  "project_name": "TimelineForAudio",
   "source_directories": [
     {
       "name": "audio_primary",

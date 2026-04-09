@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Audio2Timeline.Web.Models;
+namespace TimelineForAudio.Web.Models;
 
 public sealed class RootOption
 {

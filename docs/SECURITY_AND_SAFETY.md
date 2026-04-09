@@ -1,6 +1,6 @@
 # Security And Safety Notes
 
-`audio2timeline` is a local-first desktop-style tool packaged through Docker. It is not a multi-tenant hosted service and it does not attempt to sandbox the host machine.
+`TimelineForAudio` is a local-first desktop-style tool packaged through Docker. It is not a multi-tenant hosted service and it does not attempt to sandbox the host machine.
 
 That changes what matters most for safety.
 

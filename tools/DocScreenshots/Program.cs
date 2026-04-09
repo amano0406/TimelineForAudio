@@ -5,7 +5,7 @@ using System.Text.Json;
 using Microsoft.Playwright;
 
 var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-var tempRoot = Path.Combine(Path.GetTempPath(), $"audio2timeline-docshots-{Guid.NewGuid():N}");
+var tempRoot = Path.Combine(Path.GetTempPath(), $"TimelineForAudio-docshots-{Guid.NewGuid():N}");
 Directory.CreateDirectory(tempRoot);
 
 var appDataRoot = Path.Combine(tempRoot, "app-data");
@@ -23,7 +23,7 @@ await File.WriteAllTextAsync(
 await SeedSettingsAsync(appDataRoot, outputRoot);
 await SeedRunsAsync(outputRoot);
 
-var webProjectPath = Path.Combine(repoRoot, "web", "Audio2Timeline.Web.csproj");
+var webProjectPath = Path.Combine(repoRoot, "web", "TimelineForAudio.Web.csproj");
 var port = GetFreePort();
 var baseUrl = $"http://127.0.0.1:{port}";
 
@@ -34,17 +34,17 @@ var startInfo = new ProcessStartInfo("dotnet", $"run --project \"{webProjectPath
     RedirectStandardOutput = true,
     RedirectStandardError = true,
 };
-startInfo.Environment["AUDIO2TIMELINE_RUNTIME_DEFAULTS"] = runtimeDefaultsPath;
-startInfo.Environment["AUDIO2TIMELINE_APPDATA_ROOT"] = appDataRoot;
-startInfo.Environment["AUDIO2TIMELINE_UPLOADS_ROOT"] = uploadsRoot;
-startInfo.Environment["AUDIO2TIMELINE_OUTPUTS_ROOT"] = outputRoot;
-startInfo.Environment["AUDIO2TIMELINE_HF_ACCESS_OVERRIDE"] = "authorized";
+startInfo.Environment["TIMELINE_FOR_AUDIO_RUNTIME_DEFAULTS"] = runtimeDefaultsPath;
+startInfo.Environment["TIMELINE_FOR_AUDIO_APPDATA_ROOT"] = appDataRoot;
+startInfo.Environment["TIMELINE_FOR_AUDIO_UPLOADS_ROOT"] = uploadsRoot;
+startInfo.Environment["TIMELINE_FOR_AUDIO_OUTPUTS_ROOT"] = outputRoot;
+startInfo.Environment["TIMELINE_FOR_AUDIO_HF_ACCESS_OVERRIDE"] = "authorized";
 startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = "Development";
 
 var process = new Process { StartInfo = startInfo };
 if (!process.Start())
 {
-    throw new InvalidOperationException("Failed to start audio2timeline for documentation screenshots.");
+    throw new InvalidOperationException("Failed to start TimelineForAudio for documentation screenshots.");
 }
 
 try

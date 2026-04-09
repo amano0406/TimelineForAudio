@@ -7,13 +7,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from audio2timeline_worker.screens import (
+from timeline_for_audio_worker.screens import (
     candidate_timestamps,
     extract_screens,
     normalize_processing_quality,
     resolve_caption_model_id_for_quality,
 )
-from audio2timeline_worker.config import ChangeDetectionConfig
+from timeline_for_audio_worker.config import ChangeDetectionConfig
 
 
 class CandidateTimestampsTests(unittest.TestCase):
@@ -68,10 +68,10 @@ class ExtractScreensTests(unittest.TestCase):
                 )
             )
             with (
-                patch("audio2timeline_worker.screens.candidate_timestamps", return_value=[596.473]),
-                patch("audio2timeline_worker.screens.extract_frame", side_effect=fake_extract_frame),
-                patch("audio2timeline_worker.screens._load_ocr_components", return_value=(None, None)),
-                patch.dict("sys.modules", {"audio2timeline_worker.change_detection": fake_change_detection}),
+                patch("timeline_for_audio_worker.screens.candidate_timestamps", return_value=[596.473]),
+                patch("timeline_for_audio_worker.screens.extract_frame", side_effect=fake_extract_frame),
+                patch("timeline_for_audio_worker.screens._load_ocr_components", return_value=(None, None)),
+                patch.dict("sys.modules", {"timeline_for_audio_worker.change_detection": fake_change_detection}),
             ):
                 notes, diffs, warnings = extract_screens(
                     video_path=Path("/tmp/video.mp4"),
@@ -105,10 +105,10 @@ class ExtractScreensTests(unittest.TestCase):
                 )
             )
             with (
-                patch("audio2timeline_worker.screens.candidate_timestamps", return_value=[10.0, 20.0]),
-                patch("audio2timeline_worker.screens.extract_frame", side_effect=fake_extract_frame),
-                patch("audio2timeline_worker.screens._load_ocr_components", return_value=(None, None)),
-                patch.dict("sys.modules", {"audio2timeline_worker.change_detection": fake_change_detection}),
+                patch("timeline_for_audio_worker.screens.candidate_timestamps", return_value=[10.0, 20.0]),
+                patch("timeline_for_audio_worker.screens.extract_frame", side_effect=fake_extract_frame),
+                patch("timeline_for_audio_worker.screens._load_ocr_components", return_value=(None, None)),
+                patch.dict("sys.modules", {"timeline_for_audio_worker.change_detection": fake_change_detection}),
             ):
                 notes, diffs, warnings = extract_screens(
                     video_path=Path("/tmp/video.mp4"),

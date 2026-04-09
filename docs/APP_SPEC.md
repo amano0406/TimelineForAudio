@@ -2,7 +2,7 @@
 
 ## Goal
 
-`audio2timeline` converts local video files into timeline-oriented text that can be handed to ChatGPT or another LLM.
+`TimelineForAudio` converts local video files into timeline-oriented text that can be handed to ChatGPT or another LLM.
 
 The system prioritizes:
 

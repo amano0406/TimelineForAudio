@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Audio2Timeline.Web.Services;
+namespace TimelineForAudio.Web.Services;
 
 public sealed record SupportedLanguage(string Code, string NativeName);
 

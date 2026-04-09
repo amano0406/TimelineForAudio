@@ -8,7 +8,7 @@ from .fs_utils import ensure_dir
 
 
 def catalog_path(output_root: Path) -> Path:
-    return output_root / ".audio2timeline" / "catalog.jsonl"
+    return output_root / ".timeline-for-audio" / "catalog.jsonl"
 
 
 def catalog_key(source_hash: str, conversion_signature: str) -> str:

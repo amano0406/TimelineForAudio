@@ -1,7 +1,7 @@
 @page "/jobs/new"
-@model Audio2Timeline.Web.Pages.Jobs.NewModel
-@inject Audio2Timeline.Web.Services.LanguageService LanguageService
-@inject Audio2Timeline.Web.Services.JsonLocalizationService Localizer
+@model TimelineForAudio.Web.Pages.Jobs.NewModel
+@inject TimelineForAudio.Web.Services.LanguageService LanguageService
+@inject TimelineForAudio.Web.Services.JsonLocalizationService Localizer
 @{
     var lang = LanguageService.Resolve(ViewContext.HttpContext.Request);
     string L(string key) => Localizer.Get(lang, key);
@@ -377,8 +377,8 @@
             const collectFiles = () => selectedEntries.map((entry) => entry.file);
 
             const setBusy = (busy) => {
-                if (window.audio2timelineSetBusy) {
-                    window.audio2timelineSetBusy(busy);
+                if (window.timelineForAudioSetBusy) {
+                    window.timelineForAudioSetBusy(busy);
                 }
                 uploadInProgress = busy;
                 filesInput.disabled = busy;

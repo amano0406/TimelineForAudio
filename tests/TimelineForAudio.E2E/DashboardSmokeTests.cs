@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 using System.IO.Compression;
 using Microsoft.Playwright;
 
-namespace Audio2Timeline.E2E;
+namespace TimelineForAudio.E2E;
 
 [TestClass]
 public sealed class DashboardSmokeTests : PageTest

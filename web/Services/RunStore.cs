@@ -3,10 +3,10 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Audio2Timeline.Web.Infrastructure;
-using Audio2Timeline.Web.Models;
+using TimelineForAudio.Web.Infrastructure;
+using TimelineForAudio.Web.Models;
 
-namespace Audio2Timeline.Web.Services;
+namespace TimelineForAudio.Web.Services;
 
 public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanService scanService)
 {
@@ -745,7 +745,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         string outputRootPath,
         CancellationToken cancellationToken)
     {
-        var path = Path.Combine(outputRootPath, ".audio2timeline", "catalog.jsonl");
+        var path = Path.Combine(outputRootPath, ".timeline-for-audio", "catalog.jsonl");
         var rows = new Dictionary<string, CatalogRow>(StringComparer.OrdinalIgnoreCase);
         if (!File.Exists(path))
         {
@@ -884,7 +884,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             return rows;
         }
 
-        var path = Path.Combine(outputRootPath, ".audio2timeline", "catalog.jsonl");
+        var path = Path.Combine(outputRootPath, ".timeline-for-audio", "catalog.jsonl");
         if (!File.Exists(path))
         {
             return rows;
@@ -1499,7 +1499,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
                 "<html lang=\"en\">",
                 "<head>",
                 "  <meta charset=\"utf-8\">",
-                $"  <title>audio2timeline export {Encode(jobId)}</title>",
+                $"  <title>TimelineForAudio export {Encode(jobId)}</title>",
                 "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
                 "  <style>",
                 "    :root { color-scheme: light; }",
@@ -1518,7 +1518,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
                 "</head>",
                 "<body>",
                 "  <section class=\"panel\">",
-                "    <h1>audio2timeline export</h1>",
+                "    <h1>TimelineForAudio export</h1>",
                 $"    <p>Job ID: <code>{Encode(jobId)}</code></p>",
                 "    <p>Open the links below to inspect the generated markdown, transcript artifacts, and summaries.</p>",
                 "  </section>",

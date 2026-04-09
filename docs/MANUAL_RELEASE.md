@@ -1,10 +1,10 @@
 # Manual Release Guide
 
-This document defines the first public GitHub Release line for `audio2timeline`.
+This document defines the first public GitHub Release line for `TimelineForAudio`.
 
 ## Release Line
 
-- current public line example: `audio2timeline v0.3.3 Tech Preview`
+- current public line example: `TimelineForAudio v0.3.3 Tech Preview`
 - tag format: `v0.x.y`
 - first tag: `v0.3.0`
 - initial support contract:
@@ -27,7 +27,7 @@ This document defines the first public GitHub Release line for `audio2timeline`.
 
 Attach these files to the GitHub Release:
 
-- `audio2timeline-windows-local.zip`
+- `TimelineForAudio-windows-local.zip`
 - `SHA256SUMS.txt`
 
 Do not attach:
@@ -39,7 +39,7 @@ Do not attach:
 - tests
 - private screenshots or reports
 
-The Windows release bundle must contain a top folder named `audio2timeline-v0.x.y`.
+The Windows release bundle must contain a top folder named `TimelineForAudio-v0.x.y`.
 
 ## Manual Release Procedure
 
@@ -59,12 +59,12 @@ The Windows release bundle must contain a top folder named `audio2timeline-v0.x.
    ```
 
 6. Verify these files exist:
-   - `release\v0.3.3\audio2timeline-windows-local.zip`
+   - `release\v0.3.3\TimelineForAudio-windows-local.zip`
    - `release\v0.3.3\SHA256SUMS.txt`
 7. Create the annotated tag:
 
    ```powershell
-   git tag -a v0.3.3 -m "audio2timeline v0.3.3"
+   git tag -a v0.3.3 -m "TimelineForAudio v0.3.3"
    ```
 
 8. Push `main` and the tag:
@@ -75,28 +75,28 @@ The Windows release bundle must contain a top folder named `audio2timeline-v0.x.
    ```
 
 9. Create the GitHub Release manually:
-   - repository: `https://github.com/amano0406/audio2timeline`
-   - title: `audio2timeline v0.3.3 Tech Preview`
+   - repository: `https://github.com/amano0406/TimelineForAudio`
+   - title: `TimelineForAudio v0.3.3 Tech Preview`
    - tag: `v0.3.3`
    - latest release: enabled
    - pre-release: disabled
 10. Paste the release note template from `docs/RELEASE_NOTES_TEMPLATE.md`.
 11. Attach:
-   - `audio2timeline-windows-local.zip`
+   - `TimelineForAudio-windows-local.zip`
    - `SHA256SUMS.txt`
 12. Publish the release.
 13. After publish, verify:
-   - `https://github.com/amano0406/audio2timeline/releases/latest`
-   - `https://github.com/amano0406/audio2timeline/releases/latest/download/audio2timeline-windows-local.zip`
+   - `https://github.com/amano0406/TimelineForAudio/releases/latest`
+   - `https://github.com/amano0406/TimelineForAudio/releases/latest/download/TimelineForAudio-windows-local.zip`
 
 ## LP URL Policy
 
 - before the first release, the fallback URL is:
-  - `https://github.com/amano0406/audio2timeline`
+  - `https://github.com/amano0406/TimelineForAudio`
 - after the first release, the LP primary CTA should use:
-  - `https://github.com/amano0406/audio2timeline/releases/latest`
+  - `https://github.com/amano0406/TimelineForAudio/releases/latest`
 - the direct-download URL should be kept for future use, but not used as the initial LP primary CTA:
-  - `https://github.com/amano0406/audio2timeline/releases/latest/download/audio2timeline-windows-local.zip`
+  - `https://github.com/amano0406/TimelineForAudio/releases/latest/download/TimelineForAudio-windows-local.zip`
 
 The first LP CTA should send users to the release page, not directly to the asset, so they can read requirements and known limitations first.
 
@@ -106,7 +106,7 @@ Reasonable first automation scope:
 
 - validate version/tag format
 - run build and test steps
-- build `audio2timeline-windows-local.zip`
+- build `TimelineForAudio-windows-local.zip`
 - generate `SHA256SUMS.txt`
 - create a draft GitHub Release
 

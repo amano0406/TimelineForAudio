@@ -1,8 +1,8 @@
 using System.Text.Json;
-using Audio2Timeline.Web.Infrastructure;
-using Audio2Timeline.Web.Models;
+using TimelineForAudio.Web.Infrastructure;
+using TimelineForAudio.Web.Models;
 
-namespace Audio2Timeline.Web.Services;
+namespace TimelineForAudio.Web.Services;
 
 public sealed class SettingsStore(AppPaths paths)
 {

@@ -7,19 +7,19 @@ from typing import Any
 
 
 def appdata_root() -> Path:
-    return Path(os.getenv("AUDIO2TIMELINE_APPDATA_ROOT", "/shared/app-data"))
+    return Path(os.getenv("TIMELINE_FOR_AUDIO_APPDATA_ROOT", "/shared/app-data"))
 
 
 def uploads_root() -> Path:
-    return Path(os.getenv("AUDIO2TIMELINE_UPLOADS_ROOT", "/shared/uploads"))
+    return Path(os.getenv("TIMELINE_FOR_AUDIO_UPLOADS_ROOT", "/shared/uploads"))
 
 
 def outputs_root() -> Path:
-    return Path(os.getenv("AUDIO2TIMELINE_OUTPUTS_ROOT", str(appdata_root() / "outputs")))
+    return Path(os.getenv("TIMELINE_FOR_AUDIO_OUTPUTS_ROOT", str(appdata_root() / "outputs")))
 
 
 def runtime_defaults_path() -> Path:
-    return Path(os.getenv("AUDIO2TIMELINE_RUNTIME_DEFAULTS", "/app/config/runtime.defaults.json"))
+    return Path(os.getenv("TIMELINE_FOR_AUDIO_RUNTIME_DEFAULTS", "/app/config/runtime.defaults.json"))
 
 
 def load_runtime_defaults() -> dict[str, Any]:

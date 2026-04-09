@@ -23,7 +23,7 @@ For every input item:
 - resolve the source path
 - probe duration and file size with `ffprobe`
 - compute SHA-256
-- check duplicate state against `.audio2timeline/catalog.jsonl`
+- check duplicate state against `.timeline-for-audio/catalog.jsonl`
 
 The worker writes `manifest.json` before heavy processing starts.
 

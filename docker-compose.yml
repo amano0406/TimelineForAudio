@@ -1,4 +1,4 @@
-name: audio2timeline
+name: timeline-for-audio
 
 services:
   web:
@@ -7,14 +7,14 @@ services:
       dockerfile: docker/web.Dockerfile
     environment:
       ASPNETCORE_URLS: http://+:8080
-      AUDIO2TIMELINE_RUNTIME_DEFAULTS: /app/config/runtime.defaults.json
-      AUDIO2TIMELINE_APPDATA_ROOT: /shared/app-data
-      AUDIO2TIMELINE_UPLOADS_ROOT: /shared/uploads
-      AUDIO2TIMELINE_OUTPUTS_ROOT: /shared/outputs
-      AUDIO2TIMELINE_HF_CACHE_ROOT: /cache/huggingface
-      AUDIO2TIMELINE_TORCH_CACHE_ROOT: /cache/torch
+      TIMELINE_FOR_AUDIO_RUNTIME_DEFAULTS: /app/config/runtime.defaults.json
+      TIMELINE_FOR_AUDIO_APPDATA_ROOT: /shared/app-data
+      TIMELINE_FOR_AUDIO_UPLOADS_ROOT: /shared/uploads
+      TIMELINE_FOR_AUDIO_OUTPUTS_ROOT: /shared/outputs
+      TIMELINE_FOR_AUDIO_HF_CACHE_ROOT: /cache/huggingface
+      TIMELINE_FOR_AUDIO_TORCH_CACHE_ROOT: /cache/torch
     ports:
-      - "${AUDIO2TIMELINE_WEB_PORT}:8080"
+      - "${TIMELINE_FOR_AUDIO_WEB_PORT}:8080"
     volumes:
       - app-data:/shared/app-data
       - outputs:/shared/outputs
@@ -29,10 +29,10 @@ services:
       context: .
       dockerfile: docker/worker.Dockerfile
     environment:
-      AUDIO2TIMELINE_RUNTIME_DEFAULTS: /app/config/runtime.defaults.json
-      AUDIO2TIMELINE_APPDATA_ROOT: /shared/app-data
-      AUDIO2TIMELINE_UPLOADS_ROOT: /shared/uploads
-      AUDIO2TIMELINE_OUTPUTS_ROOT: /shared/outputs
+      TIMELINE_FOR_AUDIO_RUNTIME_DEFAULTS: /app/config/runtime.defaults.json
+      TIMELINE_FOR_AUDIO_APPDATA_ROOT: /shared/app-data
+      TIMELINE_FOR_AUDIO_UPLOADS_ROOT: /shared/uploads
+      TIMELINE_FOR_AUDIO_OUTPUTS_ROOT: /shared/outputs
       HF_HOME: /cache/huggingface
       TRANSFORMERS_CACHE: /cache/huggingface
       TORCH_HOME: /cache/torch

@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from audio2timeline_worker.timeline import render_timeline
+from timeline_for_audio_worker.timeline import render_timeline
 
 
 class TimelineTests(unittest.TestCase):

@@ -1,9 +1,9 @@
 @page "/jobs/{id}"
-@model Audio2Timeline.Web.Pages.Runs.DetailsModel
-@using Audio2Timeline.Web.Infrastructure
-@using Audio2Timeline.Web.Models
-@inject Audio2Timeline.Web.Services.LanguageService LanguageService
-@inject Audio2Timeline.Web.Services.JsonLocalizationService Localizer
+@model TimelineForAudio.Web.Pages.Runs.DetailsModel
+@using TimelineForAudio.Web.Infrastructure
+@using TimelineForAudio.Web.Models
+@inject TimelineForAudio.Web.Services.LanguageService LanguageService
+@inject TimelineForAudio.Web.Services.JsonLocalizationService Localizer
 @{
     var run = Model.Run!;
     var status = run.Status;

@@ -5,8 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from audio2timeline_worker.contracts import ManifestItem
-from audio2timeline_worker.eta import build_eta_predictor, estimate_remaining_seconds
+from timeline_for_audio_worker.contracts import ManifestItem
+from timeline_for_audio_worker.eta import build_eta_predictor, estimate_remaining_seconds
 
 
 def _write_run(

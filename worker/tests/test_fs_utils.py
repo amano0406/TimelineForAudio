@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from audio2timeline_worker.fs_utils import write_json_atomic
+from timeline_for_audio_worker.fs_utils import write_json_atomic
 
 
 class FsUtilsTests(unittest.TestCase):

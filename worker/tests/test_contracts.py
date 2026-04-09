@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from audio2timeline_worker.contracts import InputItem, JobRequest
+from timeline_for_audio_worker.contracts import InputItem, JobRequest
 
 
 class ContractsTests(unittest.TestCase):

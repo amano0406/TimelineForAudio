@@ -1,4 +1,4 @@
-namespace Audio2Timeline.Web.Services;
+namespace TimelineForAudio.Web.Services;
 
 public sealed class UploadCleanupService(RunStore runStore, ILogger<UploadCleanupService> logger) : BackgroundService
 {

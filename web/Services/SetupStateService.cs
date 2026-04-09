@@ -1,6 +1,6 @@
-using Audio2Timeline.Web.Models;
+using TimelineForAudio.Web.Models;
 
-namespace Audio2Timeline.Web.Services;
+namespace TimelineForAudio.Web.Services;
 
 public sealed class SetupStateService(SettingsStore settingsStore)
 {

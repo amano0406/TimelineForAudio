@@ -39,5 +39,5 @@ echo "Running Python lint..."
 "$python_cmd" -m ruff format --check worker/src worker/tests
 
 echo "Running .NET lint..."
-dotnet format web/Audio2Timeline.Web.csproj --verify-no-changes --verbosity minimal
-dotnet format tests/Audio2Timeline.E2E/Audio2Timeline.E2E.csproj --verify-no-changes --verbosity minimal
+dotnet format web/TimelineForAudio.Web.csproj --verify-no-changes --verbosity minimal
+dotnet format tests/TimelineForAudio.E2E/TimelineForAudio.E2E.csproj --verify-no-changes --verbosity minimal

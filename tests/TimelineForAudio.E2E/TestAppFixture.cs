@@ -5,7 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-namespace Audio2Timeline.E2E;
+namespace TimelineForAudio.E2E;
 
 internal sealed class TestAppFixture : IAsyncDisposable
 {
@@ -70,7 +70,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
     public static async Task<TestAppFixture> StartAsync()
     {
         var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"audio2timeline-e2e-{Guid.NewGuid():N}");
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"TimelineForAudio-e2e-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempRoot);
 
         var port = GetFreePort();
@@ -101,7 +101,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
         await SeedDuplicateSkippedRunAsync(outputRoot);
         await SeedLegacyDuplicateProgressRunAsync(outputRoot);
 
-        var appDllPath = Path.Combine(repoRoot, "web", "bin", "Debug", "net10.0", "Audio2Timeline.Web.dll");
+        var appDllPath = Path.Combine(repoRoot, "web", "bin", "Debug", "net10.0", "TimelineForAudio.Web.dll");
         var startInfo = new ProcessStartInfo("dotnet", $"\"{appDllPath}\" --urls http://127.0.0.1:{port}")
         {
             WorkingDirectory = repoRoot,
@@ -109,11 +109,11 @@ internal sealed class TestAppFixture : IAsyncDisposable
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
-        startInfo.Environment["AUDIO2TIMELINE_RUNTIME_DEFAULTS"] = runtimeDefaultsPath;
-        startInfo.Environment["AUDIO2TIMELINE_APPDATA_ROOT"] = appDataRoot;
-        startInfo.Environment["AUDIO2TIMELINE_UPLOADS_ROOT"] = uploadsRoot;
-        startInfo.Environment["AUDIO2TIMELINE_OUTPUTS_ROOT"] = outputRoot;
-        startInfo.Environment["AUDIO2TIMELINE_HF_ACCESS_OVERRIDE"] = "authorized";
+        startInfo.Environment["TIMELINE_FOR_AUDIO_RUNTIME_DEFAULTS"] = runtimeDefaultsPath;
+        startInfo.Environment["TIMELINE_FOR_AUDIO_APPDATA_ROOT"] = appDataRoot;
+        startInfo.Environment["TIMELINE_FOR_AUDIO_UPLOADS_ROOT"] = uploadsRoot;
+        startInfo.Environment["TIMELINE_FOR_AUDIO_OUTPUTS_ROOT"] = outputRoot;
+        startInfo.Environment["TIMELINE_FOR_AUDIO_HF_ACCESS_OVERRIDE"] = "authorized";
         startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = "Development";
 
         var process = new Process { StartInfo = startInfo };
@@ -274,7 +274,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
         Directory.CreateDirectory(Path.Combine(runRoot, "llm"));
         Directory.CreateDirectory(Path.Combine(runRoot, "logs"));
         Directory.CreateDirectory(Path.Combine(runRoot, "media", mediaId, "timeline"));
-        await File.WriteAllBytesAsync(uploadedPath, Encoding.UTF8.GetBytes("audio2timeline-e2e-completed-source"));
+        await File.WriteAllBytesAsync(uploadedPath, Encoding.UTF8.GetBytes("TimelineForAudio-e2e-completed-source"));
 
         var request = new
         {
@@ -405,11 +405,11 @@ internal sealed class TestAppFixture : IAsyncDisposable
         Directory.CreateDirectory(fixturesRoot);
 
         var duplicatePath = Path.Combine(fixturesRoot, "already-processed.mp4");
-        var duplicateBytes = Encoding.UTF8.GetBytes("audio2timeline-e2e-duplicate-seed");
+        var duplicateBytes = Encoding.UTF8.GetBytes("TimelineForAudio-e2e-duplicate-seed");
         await File.WriteAllBytesAsync(duplicatePath, duplicateBytes);
 
         var sha256 = Convert.ToHexString(SHA256.HashData(duplicateBytes)).ToLowerInvariant();
-        var catalogDirectory = Path.Combine(outputRoot, ".audio2timeline");
+        var catalogDirectory = Path.Combine(outputRoot, ".timeline-for-audio");
         Directory.CreateDirectory(catalogDirectory);
 
         var catalogRow = new
@@ -612,7 +612,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
         Directory.CreateDirectory(Path.Combine(runRoot, "llm"));
         Directory.CreateDirectory(Path.Combine(runRoot, "logs"));
 
-        var duplicateBytes = Encoding.UTF8.GetBytes("audio2timeline-e2e-duplicate-seed");
+        var duplicateBytes = Encoding.UTF8.GetBytes("TimelineForAudio-e2e-duplicate-seed");
         var sha256 = Convert.ToHexString(SHA256.HashData(duplicateBytes)).ToLowerInvariant();
         var referencedTimelinePath = Path.Combine(outputRoot, "job-e2e-completed", "media", "sample-media-001", "timeline", "timeline.md")
             .Replace("\\", "/");
@@ -737,7 +737,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
         Directory.CreateDirectory(Path.Combine(runRoot, "llm"));
         Directory.CreateDirectory(Path.Combine(runRoot, "logs"));
 
-        var duplicateBytes = Encoding.UTF8.GetBytes("audio2timeline-e2e-legacy-duplicate-seed");
+        var duplicateBytes = Encoding.UTF8.GetBytes("TimelineForAudio-e2e-legacy-duplicate-seed");
         var referencedTimelinePath = Path.Combine(outputRoot, "job-e2e-completed", "media", "sample-media-001", "timeline", "timeline.md")
             .Replace("\\", "/");
 

@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Audio2Timeline.Web.Services;
+using TimelineForAudio.Web.Services;
 
-namespace Audio2Timeline.Web.Pages.Runs;
+namespace TimelineForAudio.Web.Pages.Runs;
 
 public sealed class MediaModel(RunStore runStore) : PageModel
 {

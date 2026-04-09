@@ -36,7 +36,7 @@
 
 ## Navigation / Copy
 
-- サイドバーにアプリ名があるため、各ページ上部の `audio2timeline` 表示は不要。
+- サイドバーにアプリ名があるため、各ページ上部の `TimelineForAudio` 表示は不要。
 - UI 上の用語は `Run` より `Job` を優先し、表記を統一する。
 
 ## Upload / Processing Flow

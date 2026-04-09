@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 from pathlib import Path
 from unittest.mock import patch
 
-from audio2timeline_worker import processor
+from timeline_for_audio_worker import processor
 
 
 class ProcessorQueueTests(unittest.TestCase):

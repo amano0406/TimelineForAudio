@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from audio2timeline_worker.audio_features import (
+from timeline_for_audio_worker.audio_features import (
     build_diarization_summaries,
     build_overlap_summary,
 )

@@ -27,7 +27,7 @@ from .settings import (
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="audio2timeline worker")
+    parser = argparse.ArgumentParser(description="TimelineForAudio worker")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     settings_parser = subparsers.add_parser("settings", help="Show or update local settings.")
@@ -104,7 +104,7 @@ def write_json(path: Path, payload: dict[str, object]) -> None:
 def _runtime_config() -> AppConfig:
     defaults = load_runtime_defaults()
     return AppConfig(
-        project_name="audio2timeline",
+        project_name="TimelineForAudio",
         source_directories=[
             SourceDirectory(
                 name=str(row.get("id") or row.get("displayName") or "source"),

@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
-namespace Audio2Timeline.Web.Pages;
+namespace TimelineForAudio.Web.Pages;
 
 public class PrivacyModel : PageModel
 {

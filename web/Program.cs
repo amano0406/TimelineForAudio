@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.Features;
-using Audio2Timeline.Web.Infrastructure;
-using Audio2Timeline.Web.Models;
-using Audio2Timeline.Web.Services;
+using TimelineForAudio.Web.Infrastructure;
+using TimelineForAudio.Web.Models;
+using TimelineForAudio.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 var appPaths = new AppPaths(builder.Configuration);
@@ -21,10 +21,10 @@ builder.Services.AddSingleton(appPaths);
 builder.Services.AddSingleton<AppInstanceService>();
 builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionPath))
-    .SetApplicationName("audio2timeline");
+    .SetApplicationName("TimelineForAudio");
 builder.Services.AddAntiforgery(options =>
 {
-    options.Cookie.Name = "audio2timeline.antiforgery";
+    options.Cookie.Name = "TimelineForAudio.antiforgery";
 });
 builder.Services.Configure<FormOptions>(options =>
 {

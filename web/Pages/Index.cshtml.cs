@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Audio2Timeline.Web.Services;
+using TimelineForAudio.Web.Services;
 
-namespace Audio2Timeline.Web.Pages;
+namespace TimelineForAudio.Web.Pages;
 
 public sealed class IndexModel(SetupStateService setupStateService, RunStore runStore) : PageModel
 {

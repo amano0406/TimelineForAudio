@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "audio2timeline-worker"
+name = "timeline-for-audio-worker"
 version = "0.3.3"
-description = "Worker pipeline for audio2timeline."
+description = "Worker pipeline for TimelineForAudio."
 requires-python = ">=3.11"
 
 [tool.setuptools]

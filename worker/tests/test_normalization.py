@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from audio2timeline_worker.normalization import normalize_transcript_artifacts
+from timeline_for_audio_worker.normalization import normalize_transcript_artifacts
 
 
 class NormalizationTests(unittest.TestCase):

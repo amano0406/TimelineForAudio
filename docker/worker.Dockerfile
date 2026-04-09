@@ -18,4 +18,4 @@ COPY worker/ /app/worker/
 COPY configs/ /app/config/
 
 ENV PYTHONPATH=/app/worker/src
-ENTRYPOINT ["python", "-m", "audio2timeline_worker", "daemon", "--poll-interval", "5"]
+ENTRYPOINT ["python", "-m", "timeline_for_audio_worker", "daemon", "--poll-interval", "5"]

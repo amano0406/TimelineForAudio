@@ -1,10 +1,10 @@
-# audio2timeline MVP設計メモ
+# TimelineForAudio MVP設計メモ
 
 更新日: 2026-04-05 Asia/Tokyo
 
 ## 目的
 
-`audio2timeline` は `audio2timeline` とは別リポジトリ・別アプリとして作る。
+`TimelineForAudio` は `TimelineForAudio` とは別リポジトリ・別アプリとして作る。
 
 前提:
 
@@ -12,7 +12,7 @@
 - Docker Desktop 必須
 - Hugging Face token 必須
 - 不特定多数向けの導入簡略化より、手元での安定運用を優先
-- UI / job / settings / ZIP / rerun / duplicate の思想は `audio2timeline` に寄せる
+- UI / job / settings / ZIP / rerun / duplicate の思想は `TimelineForAudio` に寄せる
 - pipeline は音声専用で再設計し、video 固有概念は持ち込まない
 
 達成したい主出力:
@@ -25,7 +25,7 @@
 - ZIP
 - failure 時は `FAILURE_REPORT.md` と `worker.log`
 
-## 1. audio2timeline から継承する設計要素
+## 1. TimelineForAudio から継承する設計要素
 
 継承対象は主に UI / job orchestration / export 契約で、根拠は既存実装:
 
@@ -33,13 +33,13 @@
   - ASP.NET Core Razor Pages の `web`
   - Python の `worker`
   - worker 連携は HTTP ではなく shared filesystem
-  - 参照: `/mnt/c/apps/audio2timeline/docs/APP_SPEC.md`, `/mnt/c/apps/audio2timeline/docker-compose.yml`
+  - 参照: `/mnt/c/apps/TimelineForAudio/docs/APP_SPEC.md`, `/mnt/c/apps/TimelineForAudio/docker-compose.yml`
 - canonical route は `/jobs/...`
   - `GET /jobs`
   - `GET /jobs/new`
   - `GET /jobs/{id}`
   - `GET /jobs/{id}/download`
-  - 参照: `/mnt/c/apps/audio2timeline/web/Pages/Jobs/Index.cshtml`, `/mnt/c/apps/audio2timeline/web/Pages/Jobs/New.cshtml`, `/mnt/c/apps/audio2timeline/web/Pages/Runs/Details.cshtml`
+  - 参照: `/mnt/c/apps/TimelineForAudio/web/Pages/Jobs/Index.cshtml`, `/mnt/c/apps/TimelineForAudio/web/Pages/Jobs/New.cshtml`, `/mnt/c/apps/TimelineForAudio/web/Pages/Runs/Details.cshtml`
 - job 契約
   - `request.json`
   - `status.json`
@@ -48,46 +48,46 @@
   - `RUN_INFO.md`
   - `TRANSCRIPTION_INFO.md`
   - `NOTICE.md`
-  - 参照: `/mnt/c/apps/audio2timeline/web/Services/RunStore.cs`
+  - 参照: `/mnt/c/apps/TimelineForAudio/web/Services/RunStore.cs`
 - upload-first UI
   - file 選択
   - folder 選択
   - chunked upload session
   - duplicate preview modal
-  - 参照: `/mnt/c/apps/audio2timeline/web/Pages/Jobs/New.cshtml`, `/mnt/c/apps/audio2timeline/web/Services/UploadSessionStore.cs`
+  - 参照: `/mnt/c/apps/TimelineForAudio/web/Pages/Jobs/New.cshtml`, `/mnt/c/apps/TimelineForAudio/web/Services/UploadSessionStore.cs`
 - Jobs 一覧の思想
   - running job を先頭の特別枠で優先表示
   - 履歴一覧とは別に active panel を持つ
-  - 参照: `/mnt/c/apps/audio2timeline/web/Pages/Jobs/Index.cshtml`
+  - 参照: `/mnt/c/apps/TimelineForAudio/web/Pages/Jobs/Index.cshtml`
 - Job 詳細の思想
   - progress / elapsed / ETA
   - rerun with same settings
   - rerun with current settings
   - worker log tail
   - ZIP download
-  - 参照: `/mnt/c/apps/audio2timeline/web/Pages/Runs/Details.cshtml`
+  - 参照: `/mnt/c/apps/TimelineForAudio/web/Pages/Runs/Details.cshtml`
 - modal ベースの確認 UI
   - `alert` 不使用
   - duplicate / delete / missing input などを modal で処理
 - start / stop / Docker Desktop readiness check
   - `start.bat` で Docker Desktop を検査し、Compose 起動後に web readiness まで待つ
-  - 参照: `/mnt/c/apps/audio2timeline/start.bat`
+  - 参照: `/mnt/c/apps/TimelineForAudio/start.bat`
 - model cache / token / settings の保存場所
   - `app-data/settings.json`
   - `app-data/secrets/huggingface.token`
   - cache volume
-  - 参照: `/mnt/c/apps/audio2timeline/web/Services/SettingsStore.cs`, `/mnt/c/apps/audio2timeline/docker-compose.yml`
+  - 参照: `/mnt/c/apps/TimelineForAudio/web/Services/SettingsStore.cs`, `/mnt/c/apps/TimelineForAudio/docker-compose.yml`
 - failure artifact の考え方
   - 成功した timeline は ZIP 可能
   - 一部失敗時は `FAILURE_REPORT.md` と `logs/worker.log` を同梱
-  - 参照: `/mnt/c/apps/audio2timeline/web/Services/RunStore.cs`
+  - 参照: `/mnt/c/apps/TimelineForAudio/web/Services/RunStore.cs`
 - historical ETA の考え方
   - 過去 manifest の stage elapsed を使って予測する
-  - 参照: `/mnt/c/apps/audio2timeline/worker/src/audio2timeline_worker/eta.py`
+  - 参照: `/mnt/c/apps/TimelineForAudio/worker/src/timeline_for_audio_worker/eta.py`
 
-## 2. audio2timeline で捨てる概念
+## 2. TimelineForAudio で捨てる概念
 
-`audio2timeline` から切るべきもの:
+`TimelineForAudio` から切るべきもの:
 
 - 画面抽出
   - screenshot sampling
@@ -101,18 +101,18 @@
   - `frame_rate`
   - `has_video`
 - video timestamp を守るための silence trim + cut map 中心設計
-  - `audio2timeline` では音声自体が主データなので、trim ではなく canonical audio normalization + VAD segmentation を主軸にする
+  - `TimelineForAudio` では音声自体が主データなので、trim ではなく canonical audio normalization + VAD segmentation を主軸にする
 - `media` という曖昧語の内部使用
   - 内部契約は `item` または `audio` に寄せる
   - `videos_total` などの命名は廃止し、`items_total` に置き換える
 - screen note を timeline に差し込む構造
 - video archive 向けの screen-heavy LLM export
 
-## 3. audio2timeline で再設計する概念
+## 3. TimelineForAudio で再設計する概念
 
 ### 3.1 Worker 契約
 
-`audio2timeline` の `videos_total` 系は音声専用アプリでは不自然なので、契約を最初から汎化する。
+`TimelineForAudio` の `videos_total` 系は音声専用アプリでは不自然なので、契約を最初から汎化する。
 
 推奨:
 
@@ -127,7 +127,7 @@
 
 ### 3.2 Duplicate 判定
 
-`audio2timeline` は `sha256` 単独 catalog が中心だが、`audio2timeline` は最初から以下の 2 軸で持つ。
+`TimelineForAudio` は `sha256` 単独 catalog が中心だが、`TimelineForAudio` は最初から以下の 2 軸で持つ。
 
 - `source_hash`
   - 元ファイル bytes の SHA-256
@@ -148,7 +148,7 @@
 
 ### 3.3 Setup readiness
 
-`audio2timeline` では Hugging Face token を必須扱いにする。
+`TimelineForAudio` では Hugging Face token を必須扱いにする。
 
 MVP の開始条件:
 
@@ -156,7 +156,7 @@ MVP の開始条件:
 - Hugging Face token が保存済み
 - `pyannote/speaker-diarization-community-1` へのアクセス確認が通る
 
-これは `audio2timeline` より厳しくする。
+これは `TimelineForAudio` より厳しくする。
 
 ## 4. MVP 範囲
 
@@ -231,7 +231,7 @@ MVP で後回しにする:
 
 理由:
 
-- `audio2timeline` は screen pipeline を持たないため、ASR と diarization を明示的に分離した方が契約設計しやすい
+- `TimelineForAudio` は screen pipeline を持たないため、ASR と diarization を明示的に分離した方が契約設計しやすい
 - `faster-whisper` 単体で word timestamps と VAD を使える
 - `conversion_signature` に ASR backend / model / params を素直に入れやすい
 - `WhisperX` は有用だが、alignment model まで常時必須にすると Docker 運用の複雑度が上がる
@@ -615,7 +615,7 @@ MVP 推奨 stack:
 ```json
 {
   "schema_version": 1,
-  "project": "audio2timeline",
+  "project": "TimelineForAudio",
   "pipeline_version": "0.1.0-mvp1",
   "profile": "quality-first",
   "input_normalization": {
@@ -678,7 +678,7 @@ MVP 推奨 stack:
 
 ### 8.4 catalog の shape
 
-`.audio2timeline/catalog.jsonl`
+`.timeline-for-audio/catalog.jsonl`
 
 1 行に 1 completed artifact:
 
@@ -762,7 +762,7 @@ job-20260405-...
 ZIP:
 
 ```text
-audio2timeline-export.zip
+TimelineForAudio-export.zip
   README.md
   TRANSCRIPTION_INFO.md
   timelines/
@@ -853,7 +853,7 @@ label:
 
 ### Phase 0: 新規 repo scaffold
 
-- `audio2timeline` を直接流用せず、`audio2timeline` を新規作成
+- `TimelineForAudio` を直接流用せず、`TimelineForAudio` を新規作成
 - ただし初期骨格は以下をベースに移植
   - Docker Compose
   - start / stop scripts
@@ -863,12 +863,12 @@ label:
 
 ### Phase 1: generic contract への置換
 
-- env var を `AUDIO2TIMELINE_*` に変更
+- env var を `TIMELINE_FOR_AUDIO_*` に変更
 - namespace / project 名 / compose service 名を変更
 - `videos_*` -> `items_*`
 - `current_media` -> `current_item`
 - `media/` -> `items/`
-- `.audio2timeline/` -> `.audio2timeline/`
+- `.timeline-for-audio/` -> `.timeline-for-audio/`
 
 ### Phase 2: settings / duplicate / signature
 
@@ -937,7 +937,7 @@ label:
 
 最短で MVP に入るならこの順:
 
-1. `audio2timeline` web shell を複製して `audio2timeline` に rename
+1. `TimelineForAudio` web shell を複製して `TimelineForAudio` に rename
 2. generic contract へ名称整理
 3. upload / jobs / details / settings をまず動かす
 4. worker の preflight と duplicate/signature を先に固める
@@ -952,7 +952,7 @@ label:
 
 現時点の推奨:
 
-- `audio2timeline` は `audio2timeline` の UI / job / export 骨格を継承
+- `TimelineForAudio` は `TimelineForAudio` の UI / job / export 骨格を継承
 - ASR は `faster-whisper` を主軸
 - diarization は `pyannote community-1` を主軸
 - VAD は `Silero VAD` を主軸
@@ -961,4 +961,4 @@ label:
 - `speaker confidence` と `diarization quality` は heuristic summary として出す
 - `speaker embedding` は interface だけ用意し、MVP では主契約にしない
 
-この方針なら、`audio2timeline` に似た UX を維持しつつ、音声専用アプリとして無理のない MVP に落とせる。
+この方針なら、`TimelineForAudio` に似た UX を維持しつつ、音声専用アプリとして無理のない MVP に落とせる。

@@ -8,38 +8,38 @@ import zipfile
 from contextlib import contextmanager
 from pathlib import Path
 
-from audio2timeline_worker.job_store import (
+from timeline_for_audio_worker.job_store import (
     build_run_archive,
     collect_input_items,
     create_job,
     list_runs,
     settings_snapshot,
 )
-from audio2timeline_worker.settings import save_huggingface_token, save_settings
+from timeline_for_audio_worker.settings import save_huggingface_token, save_settings
 
 
 @contextmanager
 def isolated_settings_environment(root: Path):
-    previous_appdata = os.environ.get("AUDIO2TIMELINE_APPDATA_ROOT")
-    previous_defaults = os.environ.get("AUDIO2TIMELINE_RUNTIME_DEFAULTS")
+    previous_appdata = os.environ.get("TIMELINE_FOR_AUDIO_APPDATA_ROOT")
+    previous_defaults = os.environ.get("TIMELINE_FOR_AUDIO_RUNTIME_DEFAULTS")
     appdata_root = root / "app-data"
     appdata_root.mkdir(parents=True, exist_ok=True)
     (appdata_root / "secrets").mkdir(parents=True, exist_ok=True)
     defaults_path = root / "runtime.defaults.json"
     defaults_path.write_text("{}", encoding="utf-8")
-    os.environ["AUDIO2TIMELINE_APPDATA_ROOT"] = str(appdata_root)
-    os.environ["AUDIO2TIMELINE_RUNTIME_DEFAULTS"] = str(defaults_path)
+    os.environ["TIMELINE_FOR_AUDIO_APPDATA_ROOT"] = str(appdata_root)
+    os.environ["TIMELINE_FOR_AUDIO_RUNTIME_DEFAULTS"] = str(defaults_path)
     try:
         yield
     finally:
         if previous_appdata is None:
-            os.environ.pop("AUDIO2TIMELINE_APPDATA_ROOT", None)
+            os.environ.pop("TIMELINE_FOR_AUDIO_APPDATA_ROOT", None)
         else:
-            os.environ["AUDIO2TIMELINE_APPDATA_ROOT"] = previous_appdata
+            os.environ["TIMELINE_FOR_AUDIO_APPDATA_ROOT"] = previous_appdata
         if previous_defaults is None:
-            os.environ.pop("AUDIO2TIMELINE_RUNTIME_DEFAULTS", None)
+            os.environ.pop("TIMELINE_FOR_AUDIO_RUNTIME_DEFAULTS", None)
         else:
-            os.environ["AUDIO2TIMELINE_RUNTIME_DEFAULTS"] = previous_defaults
+            os.environ["TIMELINE_FOR_AUDIO_RUNTIME_DEFAULTS"] = previous_defaults
 
 
 class JobStoreTests(unittest.TestCase):

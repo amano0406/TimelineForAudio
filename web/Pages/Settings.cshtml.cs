@@ -1,10 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Audio2Timeline.Web.Infrastructure;
-using Audio2Timeline.Web.Models;
-using Audio2Timeline.Web.Services;
+using TimelineForAudio.Web.Infrastructure;
+using TimelineForAudio.Web.Models;
+using TimelineForAudio.Web.Services;
 
-namespace Audio2Timeline.Web.Pages;
+namespace TimelineForAudio.Web.Pages;
 
 public sealed class SettingsModel(
     HuggingFaceAccessService accessService,

@@ -1,4 +1,4 @@
-# audio2timeline v0.x.y Tech Preview
+# TimelineForAudio v0.x.y Tech Preview
 
 Local-first video-to-markdown packaging tool for LLM workflows.
 This is a desktop-style local tool, not a hosted SaaS product.
@@ -16,7 +16,7 @@ This is a desktop-style local tool, not a hosted SaaS product.
 
 ## Download
 
-- Windows: `audio2timeline-windows-local.zip`
+- Windows: `TimelineForAudio-windows-local.zip`
 - macOS: source-based, experimental path
 
 ## What's New
@@ -35,7 +35,7 @@ This is a desktop-style local tool, not a hosted SaaS product.
 
 ## Verification
 
-- `dotnet build web/Audio2Timeline.Web.csproj`
+- `dotnet build web/TimelineForAudio.Web.csproj`
 - `python -m unittest discover worker/tests` with `PYTHONPATH=worker/src`
 - `scripts/test-e2e.ps1`
 - one real local smoke run

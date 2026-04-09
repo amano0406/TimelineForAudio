@@ -1,4 +1,4 @@
-# audio2timeline
+# TimelineForAudio
 
 手元にある動画ファイルを、ChatGPT などの LLM に渡しやすいタイムライン資料へ変換するローカルツールです。
 
@@ -6,7 +6,7 @@
 
 ## Public Release Status
 
-現在の public release 系列は `audio2timeline v0.3.3 Tech Preview` です。
+現在の public release 系列は `TimelineForAudio v0.3.3 Tech Preview` です。
 
 現時点の public contract:
 
@@ -90,7 +90,7 @@
 例:
 
 ```text
-audio2timeline-export.zip
+TimelineForAudio-export.zip
   README.md
   TRANSCRIPTION_INFO.md
   timelines/
@@ -226,12 +226,12 @@ public release の baseline は CPU mode です。
 
 ```powershell
 $env:PYTHONPATH=".\worker\src"
-python -m audio2timeline_worker settings status
-python -m audio2timeline_worker settings save --token hf_xxx --terms-confirmed
-python -m audio2timeline_worker jobs create --file C:\path\to\clip.mp4
-python -m audio2timeline_worker jobs create --directory C:\path\to\folder
-python -m audio2timeline_worker jobs list
-python -m audio2timeline_worker jobs archive --job-id run-YYYYMMDD-HHMMSS-xxxx
+python -m timeline_for_audio_worker settings status
+python -m timeline_for_audio_worker settings save --token hf_xxx --terms-confirmed
+python -m timeline_for_audio_worker jobs create --file C:\path\to\clip.mp4
+python -m timeline_for_audio_worker jobs create --directory C:\path\to\folder
+python -m timeline_for_audio_worker jobs list
+python -m timeline_for_audio_worker jobs archive --job-id run-YYYYMMDD-HHMMSS-xxxx
 ```
 
 `jobs archive` を使うと、GUI でダウンロードするのと同じような ZIP 形式で出力できます。

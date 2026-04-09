@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from audio2timeline_worker.transcribe import (
+from timeline_for_audio_worker.transcribe import (
     _candidate_batch_sizes,
     _initial_batch_size,
     _is_cuda_oom,

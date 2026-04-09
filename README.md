@@ -1,4 +1,4 @@
-# audio2timeline
+# TimelineForAudio
 
 Turn video files you already have into timeline markdown packages that are easier to hand to ChatGPT or other LLM tools.
 
@@ -6,7 +6,7 @@ Turn video files you already have into timeline markdown packages that are easie
 
 ## Public Release Status
 
-The current public release line is `audio2timeline v0.3.3 Tech Preview`.
+The current public release line is `TimelineForAudio v0.3.3 Tech Preview`.
 
 Current public contract:
 
@@ -89,7 +89,7 @@ Most users only need:
 Example:
 
 ```text
-audio2timeline-export.zip
+TimelineForAudio-export.zip
   README.md
   TRANSCRIPTION_INFO.md
   timelines/
@@ -225,12 +225,12 @@ Example:
 
 ```powershell
 $env:PYTHONPATH=".\worker\src"
-python -m audio2timeline_worker settings status
-python -m audio2timeline_worker settings save --token hf_xxx --terms-confirmed
-python -m audio2timeline_worker jobs create --file C:\path\to\clip.mp4
-python -m audio2timeline_worker jobs create --directory C:\path\to\folder
-python -m audio2timeline_worker jobs list
-python -m audio2timeline_worker jobs archive --job-id run-YYYYMMDD-HHMMSS-xxxx
+python -m timeline_for_audio_worker settings status
+python -m timeline_for_audio_worker settings save --token hf_xxx --terms-confirmed
+python -m timeline_for_audio_worker jobs create --file C:\path\to\clip.mp4
+python -m timeline_for_audio_worker jobs create --directory C:\path\to\folder
+python -m timeline_for_audio_worker jobs list
+python -m timeline_for_audio_worker jobs archive --job-id run-YYYYMMDD-HHMMSS-xxxx
 ```
 
 `jobs archive` creates the same reduced ZIP-style handoff package that the GUI downloads.
