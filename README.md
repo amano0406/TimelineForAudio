@@ -1,115 +1,117 @@
 # audio2timeline
 
-Turn local audio files into timeline markdown packages that are easier to review, search, and hand to ChatGPT or other LLM tools.
+Turn video files you already have into timeline markdown packages that are easier to hand to ChatGPT or other LLM tools.
 
-[Japanese README](README.ja.md) | [Sample Timeline](docs/examples/sample-timeline.en.md) | [Third-Party Notices](THIRD_PARTY_NOTICES.md) | [Model and Runtime Notes](MODEL_AND_RUNTIME_NOTES.md) | [Security And Safety](docs/SECURITY_AND_SAFETY.md) | [License](LICENSE)
+[Japanese README](README.ja.md) | [Sample Timeline](docs/examples/sample-timeline.en.md) | [Third-Party Notices](THIRD_PARTY_NOTICES.md) | [Model and Runtime Notes](MODEL_AND_RUNTIME_NOTES.md) | [Security And Safety](docs/SECURITY_AND_SAFETY.md) | [Release Checklist](docs/PUBLIC_RELEASE_CHECKLIST.md) | [License](LICENSE)
 
-## Overview
+## Public Release Status
 
-- local-first desktop-style tool
-- audio-only pipeline, separate from `video2timeline`
-- main operating path: Windows + Docker Desktop
-- optimized for personal local use rather than broad end-user onboarding
-- speaker diarization uses `pyannote/speaker-diarization-community-1`
+The current public release line is `audio2timeline v0.3.3 Tech Preview`.
 
-## Current Capabilities
+Current public contract:
 
-- input formats: `.mp3`, `.wav`, `.m4a`, `.aac`, `.flac`
-- upload-first job creation from files or directories
-- transcription with `faster-whisper`
-- optional speaker diarization with `pyannote`
-- deterministic transcript normalization with:
-  - ASR initial prompt
-  - glossary-based text normalization
-- audio feature summaries for:
-  - pause / silence
-  - loudness
-  - speaking rate
-  - pitch
-  - overlap / interruption
-  - heuristic speaker confidence
-  - heuristic diarization quality
-- duplicate detection using both `source hash` and `conversion signature`
-- rerun with same settings
-- rerun with current settings
-- ZIP export
-- failure artifacts with `FAILURE_REPORT.md` and `logs/worker.log`
+- baseline support: Windows + Docker Desktop + CPU mode
+- macOS: source-based experimental path
+- GPU mode: optional, NVIDIA-only, best-effort
+- speaker diarization: optional, requires a Hugging Face token plus gated approval for `pyannote/speaker-diarization-community-1`
+- this is a local-first desktop-style tool, not a hosted SaaS product
 
-## Outputs
+## What This App Does
 
-Each completed job produces per-item markdown artifacts and a ZIP handoff package.
+This app takes video files on your computer and turns them into a ZIP package that is easier to upload to an LLM.
 
-Typical ZIP contents:
+Inside the app, the processing is simple:
+
+1. it listens to the speech in the video and turns it into text
+2. it checks what was on the screen and extracts useful text or screen notes
+3. it puts speech and screen changes into a timeline
+4. it puts the final result into a ZIP file
+
+You do not need to know model names or internal details to use it.
+
+## Typical Uses
+
+- meeting review
+- conversation history analysis
+- family or friend conversation analysis
+- screen recording review
+- turning old video archives into LLM-ready text material
+
+## Screenshots
+
+### Language
+
+![Language](docs/screenshots/language-en.png)
+
+### Settings
+
+![Settings](docs/screenshots/settings-en.png)
+
+### New Job
+
+![New Job](docs/screenshots/new-job-en.png)
+
+### Jobs
+
+![Jobs](docs/screenshots/jobs-en.png)
+
+### Job Details
+
+![Job Details](docs/screenshots/run-details-en.png)
+
+## Basic Flow
+
+1. choose your video files
+2. start processing
+3. wait for completion  
+   Advanced AI processing takes some time
+4. download the ZIP package
+5. upload that ZIP to ChatGPT, Claude, or another LLM if you want analysis
+
+Examples of what you can ask an LLM after that:
+
+- summarize the meeting
+- extract decisions and action items
+- review how I explained things
+- analyze conversation patterns
+- turn video history into searchable notes
+
+## What Is Inside The ZIP
+
+The ZIP is intentionally compact.
+
+Most users only need:
+
+- `README.md`
+- `TRANSCRIPTION_INFO.md`
+- `timelines/<captured-datetime>.md`
+
+Example:
 
 ```text
 audio2timeline-export.zip
-  README.html
+  README.md
   TRANSCRIPTION_INFO.md
   timelines/
-    2026-03-25 14-47-14.md
-  raw-transcripts/
-    2026-03-25 14-47-14.md
-  normalized-transcripts/
-    2026-03-25 14-47-14.md
-  normalization-reports/
-    2026-03-25 14-47-14.md
-  speaker-summaries/
-    2026-03-25 14-47-14.md
-  audio-feature-summaries/
-    2026-03-25 14-47-14.md
+    2026-03-26 18-00-00.md
+    2026-03-25 09-14-12.md
 ```
 
-Open `README.html` first. It links to the per-item timeline, transcript, normalization, speaker, and feature files.
+Each markdown file inside `timelines/` is one video timeline.
 
-On partial failure, the export can also include:
+## Internal Working Files vs ZIP Output
 
-- `FAILURE_REPORT.md`
-- `logs/worker.log`
+Inside Docker, the app keeps a larger working folder for processing, logs, and intermediate files.
 
-## Pipeline Summary
+That internal folder can contain:
 
-The current MVP pipeline is:
+- request and status JSON files
+- worker logs
+- intermediate transcript files
+- screenshot notes
+- temporary processing files
 
-1. probe the source audio and compute `source hash`
-2. normalize settings into a `conversion signature`
-3. transcribe with `faster-whisper`
-4. run diarization with `pyannote` when the Hugging Face prerequisites are available
-5. derive pause, loudness, speaking-rate, pitch, overlap, and diarization heuristics
-6. write:
-   - `timeline.md`
-   - raw transcript
-   - normalized transcript
-   - normalization report
-   - speaker summary
-   - audio feature summary
-7. build the ZIP export
-
-## Models And Runtime
-
-- transcription backend: `faster-whisper`
-- processing quality `standard`: `medium`
-- processing quality `high`: `large-v3`
-- diarization model: `pyannote/speaker-diarization-community-1`
-- VAD / silence stack: `silero-vad` metadata plus `ffmpeg` silence detection
-
-Compute modes:
-
-- `CPU`
-  - baseline path
-  - works on more machines
-  - slower
-- `GPU`
-  - optional
-  - requires Docker access to a supported NVIDIA GPU
-  - recommended for `high`
-
-`high` quality is intended for a GPU with roughly 10 GB or more of VRAM. CPU `high` runs are allowed but much slower.
-
-## Hugging Face Requirements
-
-For the full diarization pipeline, save a Hugging Face token in `Settings` and make sure the account is authorized for `pyannote/speaker-diarization-community-1`.
-
-If the token or approval is missing, the app can still transcribe audio, but diarization-dependent summaries will be unavailable.
+Those files are for the app itself. The downloadable ZIP is the reduced handoff package for LLM use.
 
 ## Quick Start
 
@@ -119,62 +121,95 @@ Windows:
 .\start.bat
 ```
 
-macOS source-based helper:
+This is the primary supported path for the `v0.3.3` public release line.
+
+macOS:
 
 ```bash
 ./start.command
 ```
 
+This path is available as an experimental source-based setup in `v0.3.3`. It is not the baseline support contract for the current public release line.
+
 Then:
 
-1. open `Settings`
-2. save your Hugging Face token if you want diarization
-3. choose `CPU` or `GPU`
-4. choose `Standard` or `High`
-5. optionally set:
-   - transcription initial prompt
-   - transcript normalization glossary
-6. create a job from files or a directory
-7. decide how to handle duplicates in the modal
-8. wait for completion and download the ZIP
+1. choose your language
+2. open `Settings`
+3. save your Hugging Face token if you want speaker diarization
+4. choose `CPU` or `GPU`
+5. choose processing quality
+6. create a new job
+7. wait for processing to finish
+8. download the ZIP package
 
-## Settings That Affect Reuse
+The start script tries to open an app-style window with Google Chrome, Microsoft Edge, Brave, or Chromium. If none of those are available, it falls back to a normal browser window.
 
-Duplicate reuse is not based on file hash alone.
+## Requirements
 
-The app stores:
+- Windows for the primary supported path
+- macOS only if you are comfortable with an experimental source-based setup
+- Docker Desktop
+- internet access on first run for container and model downloads
+- optional Hugging Face token if you want `pyannote` diarization
+- optional gated-model approval for `pyannote`
+- NVIDIA GPU plus Docker GPU access if you want GPU mode on a best-effort basis
 
-- `source hash`
-- `conversion signature`
+## Compute Modes
 
-The `conversion signature` includes the effective pipeline version, model family, compute mode, processing quality, diarization enabled state, initial prompt hash, and normalization settings. That means the same source audio can be reprocessed when the conversion settings change.
+The public release baseline is CPU mode.
 
-## Metadata Stored Per Item
+- `CPU`
+  - works on more machines
+  - slower
+- `GPU`
+  - requires NVIDIA GPU support inside Docker
+  - faster for the main ML workloads
+  - best-effort in the `v0.3.3` public release line
 
-The current pipeline stores metadata such as:
+Processing quality:
 
-- duration
-- size bytes
-- extension / container
-- audio codec
-- channels
-- sample rate
-- bitrate
-- model id
-- pipeline version
-- conversion signature
-- processing wall time
-- stage elapsed times
-- pause / silence summary
-- loudness summary
-- speaking-rate summary
-- pitch summary
-- speaker confidence summary
-- optional voice-feature summary
+- `Standard`
+  - `WhisperX medium`
+- `High`
+  - `WhisperX large-v3`
+  - available only when GPU mode is enabled and enough VRAM is detected
+
+In this development environment, GPU execution was verified on `NVIDIA GeForce RTX 4070` with Docker GPU access.
+
+## Supported Input Formats
+
+Primary support:
+
+- `.mp4`
+- `.mov`
+- `.m4v`
+- `.avi`
+- `.mkv`
+- `.webm`
+
+Actual decoding still depends on the `ffmpeg` build inside the runtime image.
+
+## Localization
+
+Supported locales:
+
+- `en`
+- `ja`
+- `zh-CN`
+- `zh-TW`
+- `ko`
+- `es`
+- `fr`
+- `de`
+- `pt`
+
+English is the default on first launch. The selected language is stored in the app settings data, not in `.env`.
 
 ## CLI
 
-The GUI is the main entry point, but the worker CLI is available for direct use.
+The GUI is the main entry point. A worker CLI is also available for scripting and direct local execution.
+
+For the initial public release, the GUI is the primary supported path. The CLI is an advanced path, and concurrent daemon plus CLI operation is not part of the public support guarantee.
 
 Common commands:
 
@@ -191,12 +226,22 @@ Example:
 ```powershell
 $env:PYTHONPATH=".\worker\src"
 python -m audio2timeline_worker settings status
+python -m audio2timeline_worker settings save --token hf_xxx --terms-confirmed
+python -m audio2timeline_worker jobs create --file C:\path\to\clip.mp4
+python -m audio2timeline_worker jobs create --directory C:\path\to\folder
 python -m audio2timeline_worker jobs list
-python -m audio2timeline_worker jobs show --job-id job-YYYYMMDD-HHMMSS-xxxx
-python -m audio2timeline_worker jobs archive --job-id job-YYYYMMDD-HHMMSS-xxxx
+python -m audio2timeline_worker jobs archive --job-id run-YYYYMMDD-HHMMSS-xxxx
 ```
 
+`jobs archive` creates the same reduced ZIP-style handoff package that the GUI downloads.
+
 ## Testing
+
+Current test coverage is intentionally lightweight:
+
+- Python worker unit tests
+- Playwright-based E2E smoke tests for the ASP.NET Core UI
+- manual smoke runs with real local jobs
 
 Run worker unit tests:
 
@@ -205,10 +250,16 @@ $env:PYTHONPATH=".\worker\src"
 python -m unittest discover .\worker\tests
 ```
 
-Build the Docker services:
+Run browser E2E tests:
 
 ```powershell
-docker compose build web worker
+.\scripts\test-e2e.ps1
+```
+
+Enable commit-time lint checks:
+
+```powershell
+git config core.hooksPath .githooks
 ```
 
 ## License
