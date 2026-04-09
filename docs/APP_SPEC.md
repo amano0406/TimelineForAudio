@@ -93,7 +93,7 @@ The GUI shows:
 
 - `items_done / items_total`
 - `current_stage`
-- `current_media`
+- `current_item`
 - `processed_duration_sec / total_duration_sec`
 - `estimated_remaining_sec`
 - elapsed time and stage elapsed time

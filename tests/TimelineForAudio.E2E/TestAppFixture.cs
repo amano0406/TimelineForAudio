@@ -399,7 +399,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
         await File.WriteAllTextAsync(Path.Combine(runRoot, "TRANSCRIPTION_INFO.md"), "# Transcription Info\n");
         await File.WriteAllTextAsync(Path.Combine(runRoot, "NOTICE.md"), "# Notice\n");
         await File.WriteAllTextAsync(Path.Combine(runRoot, "logs", "worker.log"), "[info] completed test run\n");
-        await File.WriteAllTextAsync(Path.Combine(runRoot, "llm", "timeline_index.jsonl"), "{\"media_id\":\"sample-media-001\"}\n");
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "llm", "timeline_index.jsonl"), "{\"audio_id\":\"sample-media-001\"}\n");
         await File.WriteAllTextAsync(
             Path.Combine(runRoot, "llm", "batch-001.md"),
             "# Batch 001\n\nIncluded: sample-media-001\n");
@@ -603,7 +603,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
             [error] broken-call.wav: CUDA failed with error unknown error
             [info] job finished with errors
             """);
-        await File.WriteAllTextAsync(Path.Combine(runRoot, "llm", "timeline_index.jsonl"), "{\"media_id\":\"sample-media-002\"}\n");
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "llm", "timeline_index.jsonl"), "{\"audio_id\":\"sample-media-002\"}\n");
         await File.WriteAllTextAsync(
             Path.Combine(runRoot, "llm", "batch-001.md"),
             "# Batch 001\n\nIncluded: sample-media-002\n");
@@ -787,8 +787,8 @@ internal sealed class TestAppFixture : IAsyncDisposable
                     input_id = "upload-0001",
                     source_kind = "upload",
                     source_id = "uploads",
-                    original_path = "legacy-duplicate.mp4",
-                    display_name = "legacy-duplicate.mp4",
+                    original_path = "legacy-duplicate.wav",
+                    display_name = "legacy-duplicate.wav",
                     size_bytes = duplicateBytes.Length,
                     uploaded_path = (string?)null,
                 },
@@ -846,8 +846,8 @@ internal sealed class TestAppFixture : IAsyncDisposable
                 {
                     input_id = "upload-0001",
                     source_kind = "upload",
-                    original_path = "legacy-duplicate.mp4",
-                    file_name = "legacy-duplicate.mp4",
+                    original_path = "legacy-duplicate.wav",
+                    file_name = "legacy-duplicate.wav",
                     size_bytes = duplicateBytes.Length,
                     duration_seconds = 18.0,
                     source_hash = "legacy-duplicate-sha256",
@@ -856,15 +856,11 @@ internal sealed class TestAppFixture : IAsyncDisposable
                     duplicate_of = referencedTimelinePath,
                     audio_id = mediaId,
                     status = "skipped_duplicate",
-                    container_name = "mp4",
-                    video_codec = "h264",
-                    audio_codec = "aac",
-                    width = 1920,
-                    height = 1080,
-                    frame_rate = 30.0,
-                    audio_channels = 2,
-                    audio_sample_rate = 48000,
-                    has_video = true,
+                    container_name = "wav",
+                    audio_codec = "pcm_s16le",
+                    audio_channels = 1,
+                    audio_sample_rate = 16000,
+                    has_video = false,
                     has_audio = true,
                     captured_at = "2026-03-23T10:30:00+09:00",
                     processing_wall_seconds = 0.0,
@@ -895,7 +891,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
 
         var warnings = new[]
         {
-            "orphaned-success.mp4: timeline output was not written",
+            "orphaned-success.wav: timeline output was not written",
         };
 
         var request = new
@@ -915,8 +911,8 @@ internal sealed class TestAppFixture : IAsyncDisposable
                     input_id = "upload-0001",
                     source_kind = "upload",
                     source_id = "uploads",
-                    original_path = "orphaned-success.mp4",
-                    display_name = "orphaned-success.mp4",
+                    original_path = "orphaned-success.wav",
+                    display_name = "orphaned-success.wav",
                     size_bytes = 1024,
                     uploaded_path = (string?)null,
                 },
@@ -973,8 +969,8 @@ internal sealed class TestAppFixture : IAsyncDisposable
                 {
                     input_id = "upload-0001",
                     source_kind = "upload",
-                    original_path = "orphaned-success.mp4",
-                    file_name = "orphaned-success.mp4",
+                    original_path = "orphaned-success.wav",
+                    file_name = "orphaned-success.wav",
                     size_bytes = 1024,
                     duration_seconds = 10.0,
                     source_hash = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
@@ -1140,8 +1136,8 @@ internal sealed class TestAppFixture : IAsyncDisposable
                     input_id = "upload-0001",
                     source_kind = "upload",
                     source_id = "uploads",
-                    original_path = "pending-call.mp4",
-                    display_name = "pending-call.mp4",
+                    original_path = "pending-call.wav",
+                    display_name = "pending-call.wav",
                     size_bytes = 1024,
                     uploaded_path = (string?)null,
                 },

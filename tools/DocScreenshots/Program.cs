@@ -195,11 +195,11 @@ static async Task WaitUntilReadyAsync(string baseUrl, Process process)
 
 static object CreateRuntimeDefaults(string outputRoot) => new
 {
-    videoExtensions = new[] { ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm" },
+    audioExtensions = new[] { ".mp3", ".wav", ".m4a", ".aac", ".flac" },
     inputRoots = new object[]
     {
-        new { id = "primary", displayName = "Primary Videos", path = "/shared/inputs/primary", enabled = true },
-        new { id = "secondary", displayName = "Secondary Videos", path = "/shared/inputs/secondary", enabled = true },
+        new { id = "primary", displayName = "Primary Audio", path = "/shared/inputs/primary", enabled = true },
+        new { id = "secondary", displayName = "Secondary Audio", path = "/shared/inputs/secondary", enabled = true },
         new { id = "uploads", displayName = "Uploaded Files", path = "/shared/uploads", enabled = true },
     },
     outputRoots = new object[]
@@ -216,11 +216,11 @@ static async Task SeedSettingsAsync(string appDataRoot, string outputRoot)
     var settings = new
     {
         schemaVersion = 1,
-        videoExtensions = new[] { ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm" },
+        audioExtensions = new[] { ".mp3", ".wav", ".m4a", ".aac", ".flac" },
         inputRoots = new object[]
         {
-            new { id = "primary", displayName = "Primary Videos", path = "/shared/inputs/primary", enabled = true },
-            new { id = "secondary", displayName = "Secondary Videos", path = "/shared/inputs/secondary", enabled = true },
+            new { id = "primary", displayName = "Primary Audio", path = "/shared/inputs/primary", enabled = true },
+            new { id = "secondary", displayName = "Secondary Audio", path = "/shared/inputs/secondary", enabled = true },
             new { id = "uploads", displayName = "Uploaded Files", path = "/shared/uploads", enabled = true },
         },
         outputRoots = new object[]
@@ -264,17 +264,17 @@ static async Task SeedRunsAsync(string outputRoot)
         mediaId: "active-media-001",
         state: "running",
         stage: "transcribe",
-        message: "Processing current file.",
-        videosTotal: 3,
-        videosDone: 1,
-        videosSkipped: 0,
-        videosFailed: 0,
+        message: "Processing current audio file.",
+        itemsTotal: 3,
+        itemsDone: 1,
+        itemsSkipped: 0,
+        itemsFailed: 0,
         progressPercent: 41.7,
         estimatedRemainingSec: 522,
         createdAt: "2026-03-26T10:20:00+09:00",
         updatedAt: "2026-03-26T10:24:30+09:00",
         completedAt: null,
-        currentMedia: "2026-03-25-team-sync.mp4",
+        currentItem: "2026-03-25-team-sync.wav",
         includeTimeline: true);
 
     await SeedRunAsync(
@@ -284,16 +284,16 @@ static async Task SeedRunsAsync(string outputRoot)
         state: "completed",
         stage: "completed",
         message: "Job completed.",
-        videosTotal: 1,
-        videosDone: 1,
-        videosSkipped: 0,
-        videosFailed: 0,
+        itemsTotal: 1,
+        itemsDone: 1,
+        itemsSkipped: 0,
+        itemsFailed: 0,
         progressPercent: 100.0,
         estimatedRemainingSec: 0,
         createdAt: "2026-03-24T09:00:00+09:00",
         updatedAt: "2026-03-24T09:02:10+09:00",
         completedAt: "2026-03-24T09:02:10+09:00",
-        currentMedia: null,
+        currentItem: null,
         includeTimeline: true);
 
     await SeedRunAsync(
@@ -303,16 +303,16 @@ static async Task SeedRunsAsync(string outputRoot)
         state: "pending",
         stage: "queued",
         message: "Queued for worker pickup.",
-        videosTotal: 2,
-        videosDone: 0,
-        videosSkipped: 0,
-        videosFailed: 0,
+        itemsTotal: 2,
+        itemsDone: 0,
+        itemsSkipped: 0,
+        itemsFailed: 0,
         progressPercent: 0.0,
         estimatedRemainingSec: null,
         createdAt: "2026-03-26T10:26:00+09:00",
         updatedAt: "2026-03-26T10:26:10+09:00",
         completedAt: null,
-        currentMedia: null,
+        currentItem: null,
         includeTimeline: false);
 }
 
@@ -323,16 +323,16 @@ static async Task SeedRunAsync(
     string state,
     string stage,
     string message,
-    int videosTotal,
-    int videosDone,
-    int videosSkipped,
-    int videosFailed,
+    int itemsTotal,
+    int itemsDone,
+    int itemsSkipped,
+    int itemsFailed,
     double progressPercent,
     double? estimatedRemainingSec,
     string createdAt,
     string updatedAt,
     string? completedAt,
-    string? currentMedia,
+    string? currentItem,
     bool includeTimeline)
 {
     var runRoot = Path.Combine(outputRoot, jobId);
@@ -362,8 +362,8 @@ static async Task SeedRunAsync(
                 input_id = "upload-0001",
                 source_kind = "upload",
                 source_id = "uploads",
-                original_path = "meeting-sample.mp4",
-                display_name = "meeting-sample.mp4",
+                original_path = "meeting-sample.wav",
+                display_name = "meeting-sample.wav",
                 size_bytes = 1048576,
                 uploaded_path = (string?)null,
             },
@@ -378,12 +378,13 @@ static async Task SeedRunAsync(
         current_stage = stage,
         message,
         warnings = Array.Empty<string>(),
-        videos_total = videosTotal,
-        videos_done = videosDone,
-        videos_skipped = videosSkipped,
-        videos_failed = videosFailed,
-        current_media = currentMedia,
-        current_media_elapsed_sec = 93.2,
+        items_total = itemsTotal,
+        items_done = itemsDone,
+        items_skipped = itemsSkipped,
+        items_failed = itemsFailed,
+        current_item = currentItem,
+        current_item_elapsed_sec = 93.2,
+        current_stage_elapsed_sec = 93.2,
         processed_duration_sec = 1420.5,
         total_duration_sec = 3410.7,
         estimated_remaining_sec = estimatedRemainingSec,
@@ -401,9 +402,9 @@ static async Task SeedRunAsync(
         run_dir = publicRunRoot,
         output_root_id = "runs",
         output_root_path = "/workspace/outputs/runs",
-        processed_count = videosDone,
-        skipped_count = videosSkipped,
-        error_count = videosFailed,
+        processed_count = itemsDone,
+        skipped_count = itemsSkipped,
+        error_count = itemsFailed,
         batch_count = 1,
         timeline_index_path = publicTimelineIndexPath,
         warnings = Array.Empty<string>(),
@@ -420,14 +421,14 @@ static async Task SeedRunAsync(
             {
                 input_id = "upload-0001",
                 source_kind = "upload",
-                original_path = "meeting-sample.mp4",
-                file_name = "meeting-sample.mp4",
+                original_path = "meeting-sample.wav",
+                file_name = "meeting-sample.wav",
                 size_bytes = 1048576,
                 duration_seconds = 70.417,
-                sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                source_hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 duplicate_status = "new",
                 duplicate_of = (string?)null,
-                media_id = mediaId,
+                audio_id = mediaId,
                 status = includeTimeline ? "completed" : state,
             },
         },
@@ -442,28 +443,24 @@ static async Task SeedRunAsync(
     await File.WriteAllTextAsync(Path.Combine(runRoot, "TRANSCRIPTION_INFO.md"), "# Transcription Info\n");
     await File.WriteAllTextAsync(Path.Combine(runRoot, "NOTICE.md"), "# Notice\n");
     await File.WriteAllTextAsync(Path.Combine(runRoot, "logs", "worker.log"), "[info] sample worker log line\n[info] transcribe in progress\n");
-    await File.WriteAllTextAsync(Path.Combine(runRoot, "llm", "timeline_index.jsonl"), $"{{\"media_id\":\"{mediaId}\"}}\n");
+    await File.WriteAllTextAsync(Path.Combine(runRoot, "llm", "timeline_index.jsonl"), $"{{\"audio_id\":\"{mediaId}\"}}\n");
     await File.WriteAllTextAsync(Path.Combine(runRoot, "llm", "batch-001.md"), $"# Batch 001\n\nIncluded: {mediaId}\n");
     if (includeTimeline)
     {
         await File.WriteAllTextAsync(
             Path.Combine(runRoot, "media", mediaId, "timeline", "timeline.md"),
             """
-            # Video Timeline
+            # Audio Timeline
 
-            - Source: `/workspace/inputs/meeting-sample.mp4`
-            - Media ID: `sample-media-001`
+            - Source: `/workspace/inputs/meeting-sample.wav`
+            - Audio ID: `sample-media-001`
             - Duration: `70.417s`
 
             ## 00:00:11.179 - 00:00:57.194
-            Speech:
-            SPEAKER_00: Hello, this is a public test sample.
-
-            Screen:
-            OCR detected text. Top lines: Example / Sample / Timeline
-
-            Screen change:
-            Initial frame.
+            - Speaker: `SPEAKER_00`
+            - Text: Hello, this is a public test sample.
+            - Pause before: `0.000s`
+            - Overlap with previous: `0.000s`
             """);
     }
 }
