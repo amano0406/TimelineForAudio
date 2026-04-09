@@ -1,4 +1,4 @@
-{
+﻿{
   "layout.dashboard": "Dashboard",
   "layout.new_job": "New Job",
   "layout.jobs": "Jobs",
@@ -128,7 +128,7 @@
   "settings.normalization.off": "Off",
   "settings.normalization.off_note": "Keep the raw transcript as the timeline source.",
   "settings.normalization.glossary": "Normalization Glossary",
-  "settings.normalization.placeholder": "speaker:SPEAKER_00 => Alice\nOpen AI => OpenAI\nWhisperX",
+  "settings.normalization.placeholder": "speaker:SPEAKER_00 => Alice\nOpen AI => OpenAI\nfaster-whisper",
   "settings.normalization.help": "One line per rule. Use `speaker:SPEAKER_00 => Alice` for speaker labels, `old => new` for text replacement, and plain lines for document context terms.",
   "settings.save_failed": "Failed to save settings.",
   "settings.save_success": "Settings saved. You can create a new job now.",
@@ -281,5 +281,6 @@
   "units.byte": "B",
   "units.kb": "KB",
   "units.mb": "MB",
-  "units.gb": "GB"
+  "units.gb": "GB",
+  "stage.normalize_transcript": "Normalize Transcript"
 }

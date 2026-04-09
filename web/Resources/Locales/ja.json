@@ -8,7 +8,7 @@
   "layout.update_detected": "新しいアプリの版を検知しました。再読み込みします。",
   "common.run": "ジョブ",
   "common.job": "ジョブ",
-  "common.media_id": "Audio ID",
+  "common.media_id": "音声 ID",
   "common.batch": "バッチ",
   "common.state": "状態",
   "common.progress": "進捗",
@@ -100,7 +100,7 @@
   "settings.normalization.off": "Off",
   "settings.normalization.off_note": "timeline 生成にも raw transcript をそのまま使います。",
   "settings.normalization.glossary": "正規化 glossary",
-  "settings.normalization.placeholder": "speaker:SPEAKER_00 => Alice\nOpen AI => OpenAI\nWhisperX",
+  "settings.normalization.placeholder": "speaker:SPEAKER_00 => Alice\nOpen AI => OpenAI\nfaster-whisper",
   "settings.normalization.help": "1 行 1 ルールです。話者名は `speaker:SPEAKER_00 => Alice`、表記置換は `旧表記 => 新表記`、文脈語はそのまま 1 行で書きます。",
   "settings.save_failed": "設定の保存に失敗しました。",
   "settings.save_success": "設定を保存しました。ジョブ作成ページへ移動します。",
@@ -244,5 +244,12 @@
   "units.byte": "B",
   "units.kb": "KB",
   "units.mb": "MB",
-  "units.gb": "GB"
+  "units.gb": "GB",
+  "index.header.description": "最初に Hugging Face / pyannote の設定を確認してから、音声ファイルまたはフォルダを選んでジョブを開始してください。",
+  "index.active.total_duration": "合計音声時間",
+  "index.form.files.description": "複数の音声ファイルを一度に選択できます。",
+  "index.form.directory.description": "Edge / Chrome 系ブラウザではフォルダを選んで、その中の音声ファイルを送れます。",
+  "index.form.select_input": "音声ファイルまたはフォルダを選択してください。",
+  "index.form.cache_notice": "アップロードした音声ファイルは一時キャッシュとして扱われます。ジョブ完了または失敗の 10 分後に削除され、ジョブを削除した場合は即時削除されます。",
+  "stage.normalize_transcript": "Transcript 正規化"
 }

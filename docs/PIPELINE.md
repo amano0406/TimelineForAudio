@@ -2,7 +2,7 @@
 
 ## 1. Request Creation
 
-The web app writes `request.json` into a new `run-*` directory under the selected output root.
+The web app writes `request.json` into a new `job-*` directory under the selected output root.
 
 The request contains:
 
@@ -11,111 +11,151 @@ The request contains:
 - duplicate policy
 - token-enabled flag
 - fully expanded input items
+- compute mode and processing quality
+- transcript normalization settings
 
 ## 2. Worker Pickup
 
-The Python worker daemon scans enabled output roots for `run-*` directories whose `status.json` is still `pending`.
+The Python worker daemon scans enabled output roots for `job-*` directories whose `status.json` is still `pending`.
 
 ## 3. Preflight
 
 For every input item:
 
 - resolve the source path
-- probe duration and file size with `ffprobe`
+- probe duration, codec, channels, sample rate, and file size with `ffprobe`
 - compute SHA-256
+- compute the conversion signature
 - check duplicate state against `.timeline-for-audio/catalog.jsonl`
 
 The worker writes `manifest.json` before heavy processing starts.
 
-## 4. Audio
+## 4. Audio Preparation
 
-The worker:
+The worker normalizes each input into a stable analysis format:
 
-1. extracts mono `16kHz` audio to `audio/extracted.mp3`
-2. detects silence with `ffmpeg silencedetect`
-3. trims silence with padding
-4. writes `audio/cut_map.json`
+1. decode the source audio with `ffmpeg`
+2. write mono `16kHz` `audio/normalized.wav`
+3. write `audio/cut_map.json`
 
-The final timeline still uses original video timestamps.
+In the current audio-only pipeline, `cut_map.json` is present for contract stability even when no trimming is applied.
 
 ## 5. Transcription
 
-The worker calls `whisperx` with:
+The worker calls `faster-whisper` with:
 
-- model: `medium`
+- model: `medium` for `standard`, `large-v3` for `high`
 - language: `ja`
-- device: `cpu`
-- compute type: `int8`
+- device: `cpu` or `cuda`
+- built-in VAD filtering
+- optional `initial_prompt`
 
-Alignment is attempted when available.
+If GPU transcription fails, the worker can fall back to CPU and records a warning in the transcript metadata.
 
-If `pyannote` is available and the Hugging Face prerequisites are satisfied, diarization is applied.
+## 6. Optional Diarization
 
-## 6. Screen Extraction
+If `pyannote/speaker-diarization-community-1` is available and the Hugging Face prerequisites are satisfied, diarization is applied to the transcript segments.
 
-Candidate frame timestamps are sampled across the video duration.
+If diarization is unavailable or fails:
 
-Each candidate frame is compared with the previous frame using:
+- transcription still completes
+- `diarization_used` stays false
+- the error is recorded in transcript metadata
 
-- perceptual hash distance
-- difference hash distance
-- mean pixel difference
-- changed pixel ratio
+## 7. Transcript Normalization
 
-The result is classified as:
+The worker preserves the raw transcript, then optionally applies deterministic normalization:
 
-- `same`
-- `minor_change`
-- `major_change`
+- speaker label rewrites such as `speaker:SPEAKER_00 => Alice`
+- text replacements such as `Open AI => OpenAI`
+- context term tracking for the report
 
-## 7. OCR And Caption
+Artifacts written here:
 
-The worker only expands frames when:
+- `transcript/raw.json`
+- `transcript/raw.md`
+- `transcript/normalized.json`
+- `transcript/normalized.md`
+- `transcript/normalization_report.json`
+- `transcript/normalization_report.md`
 
-- it is the first frame, or
-- the frame is `major_change`
+## 8. Audio Analysis
 
-The current v1 stack is:
+The worker computes audio-oriented summaries from `audio/normalized.wav` and the normalized transcript:
 
-- OCR: `EasyOCR`
-- caption: `Florence-2 base`
+- pause and silence summary
+- loudness summary
+- speaking rate summary
+- pitch summary
+- overlap and interruption summary
+- speaker confidence summary
+- diarization quality summary
+- optional voice feature summary
 
-`same` and `minor_change` frames are intentionally compressed.
+Artifacts written here:
 
-## 8. Timeline Rendering
+- `analysis/speaker_summary.json`
+- `analysis/speaker_summary.md`
+- `analysis/audio_features.json`
+- `analysis/audio_features.md`
+
+## 9. Timeline Rendering
 
 `timeline.md` is rendered from:
 
-- transcript segments
-- original timestamps
-- nearest earlier screen note
-- matching screen diff summary
+- source metadata
+- normalized transcript segments
+- speaker summary
+- audio feature summary
 
 The main output shape is:
 
 ```md
+# Audio Timeline
+
+- Source: `...`
+- Audio ID: `...`
+- Duration: `...`
+- Model: `...`
+- Diarization used: `...`
+- Transcript normalization mode: `...`
+
+## Summary
+
+- Speakers: `...`
+- Silence seconds: `...`
+- Loudness LUFS: `...`
+- Estimated units/min: `...`
+- Median pitch Hz: `...`
+- Overlap segments: `...`
+- Interruptions: `...`
+- Speaker confidence mean ratio: `...`
+- Diarization quality: `...`
+
 ## 00:00:12.345 - 00:00:15.678
-Speech:
-SPEAKER_01: ...
 
-Screen:
-...
-
-Screen change:
-...
+- Speaker: `SPEAKER_01`
+- Text: ...
+- Pause before: `...`
+- Overlap with previous: `...`
+- Estimated units/min: `...`
 ```
 
-## 9. LLM Export
+## 10. Export Packaging
 
-After all media items finish, the worker builds:
+After the job finishes, the app can build a reduced review package containing:
 
-- `llm/timeline_index.jsonl`
-- `llm/batch-001.md`, `batch-002.md`, ...
+- `README.html`
+- `TRANSCRIPTION_INFO.md`
+- `FAILURE_REPORT.md` when needed
+- `logs/worker.log` when needed
+- the per-item markdown artifacts grouped by type
 
-These are grouped, text-only deliverables intended for direct LLM input.
+`README.html` is the human entrypoint for exported results.
 
-## 10. Failure Model
+## 11. Failure Model
 
-- item-level failures do not abort the entire run
+- item-level failures do not abort the entire job when other items can still complete
 - the worker logs stack traces to `logs/worker.log`
 - `status.json` and `result.json` are updated even on failure
+- failed or warning jobs can still export successful artifacts plus failure diagnostics

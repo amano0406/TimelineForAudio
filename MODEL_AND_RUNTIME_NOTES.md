@@ -13,30 +13,27 @@ The current public release line is `TimelineForAudio v0.3.3 Tech Preview`.
 
 ## Models Used by the Worker
 
-`TimelineForAudio` uses a local-first pipeline and downloads model/data assets only when they are actually needed.
+`TimelineForAudio` uses a local-first audio pipeline and downloads model/data assets only when they are actually needed.
 
 Current main components:
 
-- `whisperx`
+- `faster-whisper`
   - transcription
-  - timestamp alignment
-  - optional diarization integration
-- `EasyOCR`
-  - OCR for screenshots when a frame is important enough to inspect
-- `pytesseract` / Tesseract
-  - supplemental OCR backend
-- `florence-community/Florence-2-base`
-  - screenshot captioning / image description when screen changes are important
+  - timestamped segment generation
+  - built-in VAD filtering during transcription
 - `pyannote/speaker-diarization-community-1`
   - optional speaker diarization
+- `librosa`
+  - pitch and speaking-rate-adjacent feature extraction
+- `ffmpeg`
+  - decode, probing, and audio normalization
 
 ## First-Run Downloads
 
 On first use, the worker may download:
 
 - Python package dependencies
-- Hugging Face model weights
-- OCR-related model/data files
+- Hugging Face model weights for transcription and diarization
 
 These downloads are cached for reuse. The exact cache location depends on the runtime environment. In the Docker setup, cache volumes are mounted so the app does not need to download the same assets on every restart.
 
@@ -51,31 +48,42 @@ Without those two conditions, the app does not fail the whole job. It continues 
 
 For the initial public release, this remains an optional feature, not part of the baseline support contract.
 
-## OCR and Image Notes
+## Transcript Normalization Notes
 
-The app does not run OCR or captioning on every frame.
+The app preserves the raw transcript and can optionally create a normalized transcript variant.
 
-Current behavior:
+Current normalization behavior:
 
-- frames are sampled from the video
-- lightweight screen-diff logic classifies each frame change
-- OCR and image-caption steps run only on the initial frame or on major screen changes
-- minor cursor movement or trivial UI movement is intentionally suppressed
+- deterministic glossary-based text replacement
+- deterministic speaker-label replacement
+- separate normalization report generation
 
-This keeps exported timelines smaller and more useful for LLM workflows.
+This is not an LLM rewrite pass. The raw transcript remains available for review and provenance checks.
 
-## Silence Trimming
+## Audio Feature Notes
 
-Silence trimming is used internally as a processing optimization.
+The app computes additional summaries from normalized audio and transcript timing, including:
 
-- It can reduce unnecessary transcription work.
-- It does not redefine the authoritative timeline.
-- Final exported timeline entries are aligned back to original media time.
-- `cut_map.json` is written so the mapping remains inspectable.
+- pause and silence summaries
+- loudness summaries
+- speaking-rate summaries
+- pitch summaries
+- overlap and interruption summaries
+- heuristic speaker-confidence and diarization-quality summaries
+
+These summaries are intended as review aids. They are not identity guarantees or ground-truth labels.
+
+## Audio Preparation Notes
+
+Inputs are normalized into a stable worker format before transcription.
+
+- source files are decoded with `ffmpeg`
+- normalized worker audio is written as mono `16kHz` WAV
+- timing metadata remains inspectable through `source.json` and `cut_map.json`
 
 ## Intended Workflow
 
-The generated run output is designed to be reviewed locally, then compressed and uploaded to ChatGPT or another LLM for follow-up analysis.
+The generated output is designed to be reviewed locally, then compressed and uploaded to ChatGPT or another LLM for follow-up analysis.
 
 Typical follow-up use cases:
 
@@ -83,7 +91,7 @@ Typical follow-up use cases:
 - topic extraction
 - communication analysis
 - personal conversation review over time
-- turning many local recordings into a structured corpus for downstream prompts
+- turning many local recordings into a structured prompt-ready archive
 
 ## Public Samples
 

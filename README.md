@@ -1,6 +1,6 @@
 # TimelineForAudio
 
-Turn video files you already have into timeline markdown packages that are easier to hand to ChatGPT or other LLM tools.
+Turn audio files you already have into timeline markdown packages that are easier to hand to ChatGPT or other LLM tools.
 
 [Japanese README](README.ja.md) | [Sample Timeline](docs/examples/sample-timeline.en.md) | [Third-Party Notices](THIRD_PARTY_NOTICES.md) | [Model and Runtime Notes](MODEL_AND_RUNTIME_NOTES.md) | [Security And Safety](docs/SECURITY_AND_SAFETY.md) | [Release Checklist](docs/PUBLIC_RELEASE_CHECKLIST.md) | [License](LICENSE)
 
@@ -18,24 +18,26 @@ Current public contract:
 
 ## What This App Does
 
-This app takes video files on your computer and turns them into a ZIP package that is easier to upload to an LLM.
+This app takes audio files on your computer and turns them into a ZIP package that is easier to upload to an LLM.
 
 Inside the app, the processing is simple:
 
-1. it listens to the speech in the video and turns it into text
-2. it checks what was on the screen and extracts useful text or screen notes
-3. it puts speech and screen changes into a timeline
-4. it puts the final result into a ZIP file
+1. it normalizes the input audio into a stable worker format
+2. it transcribes speech into timestamped text
+3. it applies optional speaker diarization
+4. it applies deterministic transcript normalization rules when configured
+5. it computes audio summaries such as pauses, loudness, speaking rate, pitch, and overlap
+6. it packages the final results into a ZIP file
 
 You do not need to know model names or internal details to use it.
 
 ## Typical Uses
 
 - meeting review
+- interview or call review
+- voice memo and podcast archive review
 - conversation history analysis
-- family or friend conversation analysis
-- screen recording review
-- turning old video archives into LLM-ready text material
+- turning local audio archives into LLM-ready notes
 
 ## Screenshots
 
@@ -61,12 +63,13 @@ You do not need to know model names or internal details to use it.
 
 ## Basic Flow
 
-1. choose your video files
+1. choose your audio files
 2. start processing
 3. wait for completion  
    Advanced AI processing takes some time
 4. download the ZIP package
-5. upload that ZIP to ChatGPT, Claude, or another LLM if you want analysis
+5. open `README.html` inside the ZIP
+6. upload the ZIP to ChatGPT, Claude, or another LLM if you want downstream analysis
 
 Examples of what you can ask an LLM after that:
 
@@ -74,30 +77,44 @@ Examples of what you can ask an LLM after that:
 - extract decisions and action items
 - review how I explained things
 - analyze conversation patterns
-- turn video history into searchable notes
+- turn voice archives into searchable notes
 
 ## What Is Inside The ZIP
 
-The ZIP is intentionally compact.
+The ZIP is intentionally compact, but it keeps the key review artifacts separated.
 
-Most users only need:
+Typical contents:
 
-- `README.md`
+- `README.html`
 - `TRANSCRIPTION_INFO.md`
 - `timelines/<captured-datetime>.md`
+- `raw-transcripts/<captured-datetime>.md`
+- `normalized-transcripts/<captured-datetime>.md`
+- `normalization-reports/<captured-datetime>.md`
+- `speaker-summaries/<captured-datetime>.md`
+- `audio-feature-summaries/<captured-datetime>.md`
 
 Example:
 
 ```text
 TimelineForAudio-export.zip
-  README.md
+  README.html
   TRANSCRIPTION_INFO.md
   timelines/
     2026-03-26 18-00-00.md
-    2026-03-25 09-14-12.md
+  raw-transcripts/
+    2026-03-26 18-00-00.md
+  normalized-transcripts/
+    2026-03-26 18-00-00.md
+  normalization-reports/
+    2026-03-26 18-00-00.md
+  speaker-summaries/
+    2026-03-26 18-00-00.md
+  audio-feature-summaries/
+    2026-03-26 18-00-00.md
 ```
 
-Each markdown file inside `timelines/` is one video timeline.
+`README.html` is the export entrypoint. It links to each generated timeline, transcript variant, normalization report, speaker summary, and audio feature summary.
 
 ## Internal Working Files vs ZIP Output
 
@@ -105,10 +122,11 @@ Inside Docker, the app keeps a larger working folder for processing, logs, and i
 
 That internal folder can contain:
 
-- request and status JSON files
+- request, status, result, and manifest JSON files
 - worker logs
-- intermediate transcript files
-- screenshot notes
+- normalized audio and probe metadata
+- raw and normalized transcript JSON and markdown
+- speaker and audio feature summaries in JSON and markdown
 - temporary processing files
 
 Those files are for the app itself. The downloadable ZIP is the reduced handoff package for LLM use.
@@ -169,9 +187,9 @@ The public release baseline is CPU mode.
 Processing quality:
 
 - `Standard`
-  - `WhisperX medium`
+  - `faster-whisper medium`
 - `High`
-  - `WhisperX large-v3`
+  - `faster-whisper large-v3`
   - available only when GPU mode is enabled and enough VRAM is detected
 
 In this development environment, GPU execution was verified on `NVIDIA GeForce RTX 4070` with Docker GPU access.
@@ -180,12 +198,11 @@ In this development environment, GPU execution was verified on `NVIDIA GeForce R
 
 Primary support:
 
-- `.mp4`
-- `.mov`
-- `.m4v`
-- `.avi`
-- `.mkv`
-- `.webm`
+- `.mp3`
+- `.wav`
+- `.m4a`
+- `.aac`
+- `.flac`
 
 Actual decoding still depends on the `ffmpeg` build inside the runtime image.
 
@@ -227,7 +244,7 @@ Example:
 $env:PYTHONPATH=".\worker\src"
 python -m timeline_for_audio_worker settings status
 python -m timeline_for_audio_worker settings save --token hf_xxx --terms-confirmed
-python -m timeline_for_audio_worker jobs create --file C:\path\to\clip.mp4
+python -m timeline_for_audio_worker jobs create --file C:\path\to\clip.wav
 python -m timeline_for_audio_worker jobs create --directory C:\path\to\folder
 python -m timeline_for_audio_worker jobs list
 python -m timeline_for_audio_worker jobs archive --job-id run-YYYYMMDD-HHMMSS-xxxx

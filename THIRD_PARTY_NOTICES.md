@@ -25,23 +25,19 @@ These are the direct worker dependencies currently pinned in `worker/requirement
 
 | Package | Version | License |
 | --- | --- | --- |
-| ImageHash | 4.3.1 | BSD-2-Clause |
-| Pillow | 11.1.0 | MIT-CMU |
-| python-dotenv | 1.2.2 | BSD-3-Clause |
-| pytesseract | 0.3.13 | Apache-2.0 |
-| easyocr | 1.7.2 | Apache-2.0 |
-| transformers | 4.57.6 | Apache-2.0 |
-| torch | 2.8.0 | BSD-3-Clause |
-| torchaudio | 2.8.0 | BSD-style |
-| torchvision | 0.23.0 | BSD-style |
-| whisperx | 3.8.1 | BSD-2-Clause |
+| `torch` | `2.8.0+cpu` | BSD-3-Clause |
+| `torchaudio` | `2.8.0+cpu` | BSD-style |
+| `faster-whisper` | `1.2.1` | MIT |
+| `pyannote.audio` | `4.0.1` | MIT |
+| `librosa` | `0.11.0` | ISC |
+| `soundfile` | `0.13.1` | BSD-3-Clause |
+| `python-dotenv` | `1.2.2` | BSD-3-Clause |
 
 ## Runtime Tools and Services
 
 | Component | Role | License / Terms |
 | --- | --- | --- |
-| FFmpeg | media probing, extraction, screenshots | FFmpeg is LGPL-2.1-or-later by default, but some build configurations pull the whole binary under GPL. Verify the exact build you redistribute. |
-| Tesseract OCR | OCR backend | Apache-2.0 |
+| FFmpeg | media probing, decoding, and audio normalization | FFmpeg is LGPL-2.1-or-later by default, but some build configurations pull the whole binary under GPL. Verify the exact build you redistribute. |
 | Hugging Face Hub | model download and gated access | service terms apply separately from code licenses |
 
 ## Model Weights and Gated Models
@@ -53,7 +49,7 @@ Important model-specific conditions currently used by the app:
 | Model / Asset | Purpose | License / Access |
 | --- | --- | --- |
 | `pyannote/speaker-diarization-community-1` | optional speaker diarization | CC-BY-4.0, plus gated-access approval and Hugging Face token required |
-| `florence-community/Florence-2-base` | screenshot captioning / image notes | MIT |
+| Whisper model weights used through `faster-whisper` | local transcription | verify the specific upstream model card and license for the model you ship or document |
 
 See [MODEL_AND_RUNTIME_NOTES.md](MODEL_AND_RUNTIME_NOTES.md) for operational notes about model downloads, gated access, and first-run behavior.
 
@@ -64,4 +60,3 @@ See [MODEL_AND_RUNTIME_NOTES.md](MODEL_AND_RUNTIME_NOTES.md) for operational not
 - If you publish Docker images, confirm the exact FFmpeg package and its license conditions for that image.
 - If you upgrade pinned Python dependencies, review the resulting license set again.
 - Transitive dependencies pulled by `pip` or `dotnet restore` are not exhaustively listed here.
-- This project intentionally avoids `simple-diarizer` in the public v1 worker path to avoid pulling GPL-3.0 into the main application path.

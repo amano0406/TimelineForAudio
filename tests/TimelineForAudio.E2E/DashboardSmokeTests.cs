@@ -75,9 +75,9 @@ public sealed class DashboardSmokeTests : PageTest
 
         await Page.GetByRole(AriaRole.Button, new() { Name = "Start" }).ClickAsync();
 
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Choose Videos First" })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Choose Audio Files First" })).ToBeVisibleAsync();
         await Page.GetByRole(AriaRole.Button, new() { Name = "OK" }).ClickAsync();
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Choose Videos First" })).ToHaveCountAsync(0);
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Choose Audio Files First" })).ToHaveCountAsync(0);
     }
 
     [TestMethod]
@@ -86,12 +86,12 @@ public sealed class DashboardSmokeTests : PageTest
         await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/new");
 
         await Page.Locator("#upload-files-input").SetInputFilesAsync(_fixture.DuplicateUploadPath);
-        await Expect(Page.Locator("#selected-items-list").GetByText("already-processed.mp4")).ToBeVisibleAsync();
+        await Expect(Page.Locator("#selected-items-list").GetByText("already-processed.wav")).ToBeVisibleAsync();
 
         await Page.GetByRole(AriaRole.Button, new() { Name = "Start" }).ClickAsync();
 
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Previously Converted Files Found" })).ToBeVisibleAsync();
-        await Expect(Page.Locator("#decision-modal-list").GetByText("already-processed.mp4")).ToBeVisibleAsync();
+        await Expect(Page.Locator("#decision-modal-list").GetByText("already-processed.wav")).ToBeVisibleAsync();
         await Page.GetByRole(AriaRole.Button, new() { Name = "Cancel" }).ClickAsync();
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Previously Converted Files Found" })).ToHaveCountAsync(0);
         await Expect(Page).ToHaveURLAsync(new Regex(".*/jobs/new$"));
@@ -104,7 +104,6 @@ public sealed class DashboardSmokeTests : PageTest
 
         var row = Page.Locator("tr").Filter(new() { HasText = _fixture.CompletedJobId });
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Jobs", Exact = true })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("Now Processing")).ToHaveCountAsync(0);
         await Expect(Page.GetByText(_fixture.CompletedJobId)).ToBeVisibleAsync();
         await Expect(row).ToContainTextAsync("1 MB");
         await Expect(row).ToContainTextAsync("1m 10s");
@@ -176,7 +175,7 @@ public sealed class DashboardSmokeTests : PageTest
 
         await Page.GetByRole(AriaRole.Link, new() { Name = _fixture.CompletedMediaId }).ClickAsync();
         await Expect(Page).ToHaveURLAsync(new Regex($".*/jobs/{_fixture.CompletedJobId}/{_fixture.CompletedMediaId}$"));
-        await Expect(Page.Locator("pre")).ToContainTextAsync("Video Timeline");
+        await Expect(Page.Locator("pre")).ToContainTextAsync("Audio Timeline");
         await Expect(Page.Locator("pre")).ToContainTextAsync("public test sample");
     }
 
@@ -194,7 +193,7 @@ public sealed class DashboardSmokeTests : PageTest
 
         await Page.GetByRole(AriaRole.Link, new() { Name = _fixture.DuplicateSkippedMediaId }).ClickAsync();
         await Expect(Page).ToHaveURLAsync(new Regex($".*/jobs/{_fixture.DuplicateSkippedJobId}/{_fixture.DuplicateSkippedMediaId}$"));
-        await Expect(Page.Locator("pre")).ToContainTextAsync("Video Timeline");
+        await Expect(Page.Locator("pre")).ToContainTextAsync("Audio Timeline");
         await Expect(Page.Locator("pre")).ToContainTextAsync("public test sample");
     }
 
@@ -262,7 +261,7 @@ public sealed class DashboardSmokeTests : PageTest
 
         using var reportReader = new StreamReader(archive.GetEntry("FAILURE_REPORT.md")!.Open());
         var reportText = await reportReader.ReadToEndAsync();
-        StringAssert.Contains(reportText, "broken-call.mp4");
+        StringAssert.Contains(reportText, "broken-call.wav");
         StringAssert.Contains(reportText, "CUDA failed with error unknown error");
     }
 

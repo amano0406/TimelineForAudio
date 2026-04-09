@@ -9,6 +9,7 @@ namespace TimelineForAudio.E2E;
 
 internal sealed class TestAppFixture : IAsyncDisposable
 {
+    private const string CurrentConversionSignature = "c681195f95a364a381faec19ae5d1b9632f633ed844c36cfde0dec2e757324c2";
     private readonly StringBuilder _logs = new();
     private readonly Process _process;
 
@@ -65,7 +66,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
 
     public string LegacyDuplicateProgressJobId => "job-e2e-legacy-duplicate";
 
-    public string DuplicateUploadPath => Path.Combine(TempRoot, "fixtures", "already-processed.mp4");
+    public string DuplicateUploadPath => Path.Combine(TempRoot, "fixtures", "already-processed.wav");
 
     public static async Task<TestAppFixture> StartAsync()
     {
@@ -101,8 +102,11 @@ internal sealed class TestAppFixture : IAsyncDisposable
         await SeedDuplicateSkippedRunAsync(outputRoot);
         await SeedLegacyDuplicateProgressRunAsync(outputRoot);
 
-        var appDllPath = Path.Combine(repoRoot, "web", "bin", "Debug", "net10.0", "TimelineForAudio.Web.dll");
-        var startInfo = new ProcessStartInfo("dotnet", $"\"{appDllPath}\" --urls http://127.0.0.1:{port}")
+        var appDllPath = ResolveAppDllPath(repoRoot);
+        var dotnetHostPath = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
+        var startInfo = new ProcessStartInfo(
+            string.IsNullOrWhiteSpace(dotnetHostPath) ? "dotnet" : dotnetHostPath,
+            $"\"{appDllPath}\" --urls http://127.0.0.1:{port}")
         {
             WorkingDirectory = repoRoot,
             UseShellExecute = false,
@@ -126,6 +130,26 @@ internal sealed class TestAppFixture : IAsyncDisposable
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
         return fixture;
+    }
+
+    private static string ResolveAppDllPath(string repoRoot)
+    {
+        var candidates = new[]
+        {
+            Path.Combine(repoRoot, "web", "bin", "Debug", "net10.0", "TimelineForAudio.Web.dll"),
+            Path.Combine(repoRoot, "web", "bin", "Release", "net10.0", "TimelineForAudio.Web.dll"),
+        };
+
+        foreach (var candidate in candidates)
+        {
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        throw new FileNotFoundException(
+            $"TimelineForAudio.Web.dll was not found in any expected build output.{Environment.NewLine}{string.Join(Environment.NewLine, candidates)}");
     }
 
     public async Task<string> CreateRunningRunAsync()
@@ -214,11 +238,11 @@ internal sealed class TestAppFixture : IAsyncDisposable
 
     private static object CreateRuntimeDefaults(string outputRoot) => new
     {
-        videoExtensions = new[] { ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm" },
+        audioExtensions = new[] { ".mp3", ".wav", ".m4a", ".aac", ".flac" },
         inputRoots = new object[]
         {
-            new { id = "primary", displayName = "Primary Videos", path = "/shared/inputs/primary", enabled = true },
-            new { id = "secondary", displayName = "Secondary Videos", path = "/shared/inputs/secondary", enabled = true },
+            new { id = "primary", displayName = "Primary Audio", path = "/shared/inputs/primary", enabled = true },
+            new { id = "secondary", displayName = "Secondary Audio", path = "/shared/inputs/secondary", enabled = true },
             new { id = "uploads", displayName = "Uploaded Files", path = "/shared/uploads", enabled = true },
         },
         outputRoots = new object[]
@@ -235,11 +259,11 @@ internal sealed class TestAppFixture : IAsyncDisposable
         var settings = new
         {
             schemaVersion = 1,
-            videoExtensions = new[] { ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm" },
+            audioExtensions = new[] { ".mp3", ".wav", ".m4a", ".aac", ".flac" },
             inputRoots = new object[]
             {
-                new { id = "primary", displayName = "Primary Videos", path = "/shared/inputs/primary", enabled = true },
-                new { id = "secondary", displayName = "Secondary Videos", path = "/shared/inputs/secondary", enabled = true },
+                new { id = "primary", displayName = "Primary Audio", path = "/shared/inputs/primary", enabled = true },
+                new { id = "secondary", displayName = "Secondary Audio", path = "/shared/inputs/secondary", enabled = true },
                 new { id = "uploads", displayName = "Uploaded Files", path = "/shared/uploads", enabled = true },
             },
             outputRoots = new object[]
@@ -268,7 +292,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
 
         var runRoot = Path.Combine(outputRoot, jobId);
         var fixturesRoot = Path.Combine(tempRoot, "fixtures");
-        var uploadedPath = Path.Combine(fixturesRoot, "sample-call.mp4");
+        var uploadedPath = Path.Combine(fixturesRoot, "sample-call.wav");
         Directory.CreateDirectory(fixturesRoot);
         Directory.CreateDirectory(runRoot);
         Directory.CreateDirectory(Path.Combine(runRoot, "llm"));
@@ -295,8 +319,8 @@ internal sealed class TestAppFixture : IAsyncDisposable
                     input_id = "upload-0001",
                     source_kind = "upload",
                     source_id = "uploads",
-                    original_path = "sample-call.mp4",
-                    display_name = "sample-call.mp4",
+                    original_path = "sample-call.wav",
+                    display_name = "sample-call.wav",
                     size_bytes = 1048576,
                     uploaded_path = uploadedPath.Replace("\\", "/"),
                 },
@@ -311,12 +335,12 @@ internal sealed class TestAppFixture : IAsyncDisposable
             current_stage = "completed",
             message = "Job completed.",
             warnings = Array.Empty<string>(),
-            videos_total = 1,
-            videos_done = 1,
-            videos_skipped = 0,
-            videos_failed = 0,
-            current_media = (string?)null,
-            current_media_elapsed_sec = 0.0,
+            items_total = 1,
+            items_done = 1,
+            items_skipped = 0,
+            items_failed = 0,
+            current_item = (string?)null,
+            current_item_elapsed_sec = 0.0,
             processed_duration_sec = 70.417,
             total_duration_sec = 70.417,
             estimated_remaining_sec = 0.0,
@@ -352,14 +376,15 @@ internal sealed class TestAppFixture : IAsyncDisposable
                 {
                     input_id = "upload-0001",
                     source_kind = "upload",
-                    original_path = "sample-call.mp4",
-                    file_name = "sample-call.mp4",
+                    original_path = "sample-call.wav",
+                    file_name = "sample-call.wav",
                     size_bytes = 1048576,
                     duration_seconds = 70.417,
-                    sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    source_hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    conversion_signature = CurrentConversionSignature,
                     duplicate_status = "new",
                     duplicate_of = (string?)null,
-                    media_id = mediaId,
+                    audio_id = mediaId,
                     status = "completed",
                 },
             },
@@ -381,21 +406,18 @@ internal sealed class TestAppFixture : IAsyncDisposable
         await File.WriteAllTextAsync(
             Path.Combine(runRoot, "media", mediaId, "timeline", "timeline.md"),
             """
-            # Video Timeline
+            # Audio Timeline
 
-            - Source: `sample-call.mp4`
-            - Media ID: `sample-media-001`
+            - Source: `sample-call.wav`
+            - Audio ID: `sample-media-001`
             - Duration: `70.417s`
 
             ## 00:00:11.179 - 00:00:57.194
-            Speech:
-            SPEAKER_00: Hello, this is a public test sample.
-
-            Screen:
-            OCR detected text. Top lines: Example / Sample / Timeline
-
-            Screen change:
-            Initial frame.
+            - Speaker: `SPEAKER_00`
+            - Text: Hello, this is a public test sample.
+            - Pause before: `0.000s`
+            - Overlap with previous: `0.000s`
+            - Estimated units/min: `155.4`
             """);
     }
 
@@ -404,11 +426,11 @@ internal sealed class TestAppFixture : IAsyncDisposable
         var fixturesRoot = Path.Combine(tempRoot, "fixtures");
         Directory.CreateDirectory(fixturesRoot);
 
-        var duplicatePath = Path.Combine(fixturesRoot, "already-processed.mp4");
+        var duplicatePath = Path.Combine(fixturesRoot, "already-processed.wav");
         var duplicateBytes = Encoding.UTF8.GetBytes("TimelineForAudio-e2e-duplicate-seed");
         await File.WriteAllBytesAsync(duplicatePath, duplicateBytes);
 
-        var sha256 = Convert.ToHexString(SHA256.HashData(duplicateBytes)).ToLowerInvariant();
+        var source_hash = Convert.ToHexString(SHA256.HashData(duplicateBytes)).ToLowerInvariant();
         var catalogDirectory = Path.Combine(outputRoot, ".timeline-for-audio");
         Directory.CreateDirectory(catalogDirectory);
 
@@ -416,9 +438,10 @@ internal sealed class TestAppFixture : IAsyncDisposable
         {
             job_id = "job-e2e-completed",
             run_dir = Path.Combine(outputRoot, "job-e2e-completed").Replace("\\", "/"),
-            media_id = "sample-media-001",
-            sha256,
-            original_path = "already-processed.mp4",
+            audio_id = "sample-media-001",
+            source_hash,
+            conversion_signature = CurrentConversionSignature,
+            original_path = "already-processed.wav",
             duration_seconds = 12.5,
             timeline_path = Path.Combine(outputRoot, "job-e2e-completed", "media", "sample-media-001", "timeline", "timeline.md").Replace("\\", "/"),
             created_at = "2026-03-24T09:02:07+09:00",
@@ -457,8 +480,8 @@ internal sealed class TestAppFixture : IAsyncDisposable
                     input_id = "upload-0001",
                     source_kind = "upload",
                     source_id = "uploads",
-                    original_path = "good-call.mp4",
-                    display_name = "good-call.mp4",
+                    original_path = "good-call.wav",
+                    display_name = "good-call.wav",
                     size_bytes = 2097152,
                     uploaded_path = (string?)null,
                 },
@@ -467,8 +490,8 @@ internal sealed class TestAppFixture : IAsyncDisposable
                     input_id = "upload-0002",
                     source_kind = "upload",
                     source_id = "uploads",
-                    original_path = "broken-call.mp4",
-                    display_name = "broken-call.mp4",
+                    original_path = "broken-call.wav",
+                    display_name = "broken-call.wav",
                     size_bytes = 3145728,
                     uploaded_path = (string?)null,
                 },
@@ -477,7 +500,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
 
         var warnings = new[]
         {
-            "broken-call.mp4: CUDA failed with error unknown error",
+            "broken-call.wav: CUDA failed with error unknown error",
         };
 
         var status = new
@@ -488,12 +511,12 @@ internal sealed class TestAppFixture : IAsyncDisposable
             current_stage = "failed",
             message = "Job finished with errors.",
             warnings,
-            videos_total = 2,
-            videos_done = 1,
-            videos_skipped = 0,
-            videos_failed = 1,
-            current_media = (string?)null,
-            current_media_elapsed_sec = 0.0,
+            items_total = 2,
+            items_done = 1,
+            items_skipped = 0,
+            items_failed = 1,
+            current_item = (string?)null,
+            current_item_elapsed_sec = 0.0,
             processed_duration_sec = 120.125,
             total_duration_sec = 180.775,
             estimated_remaining_sec = 0.0,
@@ -530,28 +553,28 @@ internal sealed class TestAppFixture : IAsyncDisposable
                 {
                     input_id = "upload-0001",
                     source_kind = "upload",
-                    original_path = "good-call.mp4",
-                    file_name = "good-call.mp4",
+                    original_path = "good-call.wav",
+                    file_name = "good-call.wav",
                     size_bytes = 2097152,
                     duration_seconds = 120.125,
-                    sha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                    source_hash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
                     duplicate_status = "new",
                     duplicate_of = (string?)null,
-                    media_id = mediaId,
+                    audio_id = mediaId,
                     status = "completed",
                 },
                 new
                 {
                     input_id = "upload-0002",
                     source_kind = "upload",
-                    original_path = "broken-call.mp4",
-                    file_name = "broken-call.mp4",
+                    original_path = "broken-call.wav",
+                    file_name = "broken-call.wav",
                     size_bytes = 3145728,
                     duration_seconds = 60.650,
-                    sha256 = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                    source_hash = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
                     duplicate_status = "new",
                     duplicate_of = (string?)null,
-                    media_id = "broken-media-003",
+                    audio_id = "broken-media-003",
                     status = "failed",
                 },
             },
@@ -559,9 +582,9 @@ internal sealed class TestAppFixture : IAsyncDisposable
 
         var sourceInfo = new
         {
-            original_path = "good-call.mp4",
-            resolved_path = "good-call.mp4",
-            display_name = "good-call.mp4",
+            original_path = "good-call.wav",
+            resolved_path = "good-call.wav",
+            display_name = "good-call.wav",
             captured_at = "2026-03-24 10-00-00",
         };
 
@@ -576,8 +599,8 @@ internal sealed class TestAppFixture : IAsyncDisposable
         await File.WriteAllTextAsync(
             Path.Combine(runRoot, "logs", "worker.log"),
             """
-            [info] completed good-call.mp4
-            [error] broken-call.mp4: CUDA failed with error unknown error
+            [info] completed good-call.wav
+            [error] broken-call.wav: CUDA failed with error unknown error
             [info] job finished with errors
             """);
         await File.WriteAllTextAsync(Path.Combine(runRoot, "llm", "timeline_index.jsonl"), "{\"media_id\":\"sample-media-002\"}\n");
@@ -590,15 +613,18 @@ internal sealed class TestAppFixture : IAsyncDisposable
         await File.WriteAllTextAsync(
             Path.Combine(runRoot, "media", mediaId, "timeline", "timeline.md"),
             """
-            # Video Timeline
+            # Audio Timeline
 
-            - Source: `good-call.mp4`
-            - Media ID: `sample-media-002`
+            - Source: `good-call.wav`
+            - Audio ID: `sample-media-002`
             - Duration: `120.125s`
 
             ## 00:00:05.000 - 00:01:10.000
-            Speech:
-            SPEAKER_00: This is the successful part of a partially failed run.
+            - Speaker: `SPEAKER_00`
+            - Text: This is the successful part of a partially failed run.
+            - Pause before: `0.000s`
+            - Overlap with previous: `0.000s`
+            - Estimated units/min: `149.2`
             """);
     }
 
@@ -613,7 +639,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
         Directory.CreateDirectory(Path.Combine(runRoot, "logs"));
 
         var duplicateBytes = Encoding.UTF8.GetBytes("TimelineForAudio-e2e-duplicate-seed");
-        var sha256 = Convert.ToHexString(SHA256.HashData(duplicateBytes)).ToLowerInvariant();
+        var source_hash = Convert.ToHexString(SHA256.HashData(duplicateBytes)).ToLowerInvariant();
         var referencedTimelinePath = Path.Combine(outputRoot, "job-e2e-completed", "media", "sample-media-001", "timeline", "timeline.md")
             .Replace("\\", "/");
 
@@ -634,8 +660,8 @@ internal sealed class TestAppFixture : IAsyncDisposable
                     input_id = "upload-0001",
                     source_kind = "upload",
                     source_id = "uploads",
-                    original_path = "already-processed.mp4",
-                    display_name = "already-processed.mp4",
+                    original_path = "already-processed.wav",
+                    display_name = "already-processed.wav",
                     size_bytes = duplicateBytes.Length,
                     uploaded_path = (string?)null,
                 },
@@ -650,14 +676,14 @@ internal sealed class TestAppFixture : IAsyncDisposable
             current_stage = "completed",
             message = "Job completed with duplicate skips.",
             warnings = Array.Empty<string>(),
-            current_media = (string?)null,
-            videos_total = 1,
-            videos_done = 0,
-            videos_skipped = 1,
-            videos_failed = 0,
+            current_item = (string?)null,
+            items_total = 1,
+            items_done = 0,
+            items_skipped = 1,
+            items_failed = 0,
             total_duration_sec = 12.5,
             processed_duration_sec = 12.5,
-            current_media_elapsed_sec = 0.0,
+            current_item_elapsed_sec = 0.0,
             current_stage_elapsed_sec = 0.0,
             estimated_remaining_sec = 0.0,
             progress_percent = 100.0,
@@ -693,14 +719,15 @@ internal sealed class TestAppFixture : IAsyncDisposable
                 {
                     input_id = "upload-0001",
                     source_kind = "upload",
-                    original_path = "already-processed.mp4",
-                    file_name = "already-processed.mp4",
+                    original_path = "already-processed.wav",
+                    file_name = "already-processed.wav",
                     size_bytes = duplicateBytes.Length,
                     duration_seconds = 12.5,
-                    sha256,
+                    source_hash,
+                    conversion_signature = CurrentConversionSignature,
                     duplicate_status = "duplicate_skip",
                     duplicate_of = referencedTimelinePath,
-                    media_id = mediaId,
+                    audio_id = mediaId,
                     status = "skipped_duplicate",
                     container_name = "mp4",
                     video_codec = "h264",
@@ -776,14 +803,14 @@ internal sealed class TestAppFixture : IAsyncDisposable
             current_stage = "completed",
             message = "Legacy duplicate run completed.",
             warnings = Array.Empty<string>(),
-            current_media = (string?)null,
-            videos_total = 1,
-            videos_done = 0,
-            videos_skipped = 1,
-            videos_failed = 0,
+            current_item = (string?)null,
+            items_total = 1,
+            items_done = 0,
+            items_skipped = 1,
+            items_failed = 0,
             total_duration_sec = 18.0,
             processed_duration_sec = 18.0,
-            current_media_elapsed_sec = 0.0,
+            current_item_elapsed_sec = 0.0,
             current_stage_elapsed_sec = 0.0,
             estimated_remaining_sec = 0.0,
             progress_percent = 0.0,
@@ -823,10 +850,11 @@ internal sealed class TestAppFixture : IAsyncDisposable
                     file_name = "legacy-duplicate.mp4",
                     size_bytes = duplicateBytes.Length,
                     duration_seconds = 18.0,
-                    sha256 = "legacy-duplicate-sha256",
+                    source_hash = "legacy-duplicate-sha256",
+                    conversion_signature = CurrentConversionSignature,
                     duplicate_status = "duplicate_skip",
                     duplicate_of = referencedTimelinePath,
-                    media_id = mediaId,
+                    audio_id = mediaId,
                     status = "skipped_duplicate",
                     container_name = "mp4",
                     video_codec = "h264",
@@ -903,12 +931,12 @@ internal sealed class TestAppFixture : IAsyncDisposable
             current_stage = "failed",
             message = "Job finished with errors.",
             warnings,
-            videos_total = 1,
-            videos_done = 1,
-            videos_skipped = 0,
-            videos_failed = 0,
-            current_media = (string?)null,
-            current_media_elapsed_sec = 0.0,
+            items_total = 1,
+            items_done = 1,
+            items_skipped = 0,
+            items_failed = 0,
+            current_item = (string?)null,
+            current_item_elapsed_sec = 0.0,
             processed_duration_sec = 10.0,
             total_duration_sec = 10.0,
             estimated_remaining_sec = 0.0,
@@ -949,10 +977,10 @@ internal sealed class TestAppFixture : IAsyncDisposable
                     file_name = "orphaned-success.mp4",
                     size_bytes = 1024,
                     duration_seconds = 10.0,
-                    sha256 = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                    source_hash = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
                     duplicate_status = "new",
                     duplicate_of = (string?)null,
-                    media_id = "orphaned-media-001",
+                    audio_id = "orphaned-media-001",
                     status = "completed",
                 },
             },
@@ -996,8 +1024,8 @@ internal sealed class TestAppFixture : IAsyncDisposable
                     input_id = "upload-0001",
                     source_kind = "upload",
                     source_id = "uploads",
-                    original_path = "running-call.mp4",
-                    display_name = "running-call.mp4",
+                    original_path = "running-call.wav",
+                    display_name = "running-call.wav",
                     size_bytes = 2048,
                     uploaded_path = (string?)null,
                 },
@@ -1010,14 +1038,14 @@ internal sealed class TestAppFixture : IAsyncDisposable
             job_id = jobId,
             state = "running",
             current_stage = "transcribe",
-            message = "Running WhisperX transcription.",
+            message = "Running faster-whisper transcription.",
             warnings = Array.Empty<string>(),
-            videos_total = 1,
-            videos_done = 1,
-            videos_skipped = 0,
-            videos_failed = 0,
-            current_media = "running-call.mp4",
-            current_media_elapsed_sec = 30.0,
+            items_total = 1,
+            items_done = 1,
+            items_skipped = 0,
+            items_failed = 0,
+            current_item = "running-call.wav",
+            current_item_elapsed_sec = 30.0,
             processed_duration_sec = 30.0,
             total_duration_sec = 60.0,
             estimated_remaining_sec = 30.0,
@@ -1054,14 +1082,14 @@ internal sealed class TestAppFixture : IAsyncDisposable
                 {
                     input_id = "upload-0001",
                     source_kind = "upload",
-                    original_path = "running-call.mp4",
-                    file_name = "running-call.mp4",
+                    original_path = "running-call.wav",
+                    file_name = "running-call.wav",
                     size_bytes = 2048,
                     duration_seconds = 60.0,
-                    sha256 = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                    source_hash = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
                     duplicate_status = "new",
                     duplicate_of = (string?)null,
-                    media_id = mediaId,
+                    audio_id = mediaId,
                     status = "completed",
                 },
             },
@@ -1079,10 +1107,10 @@ internal sealed class TestAppFixture : IAsyncDisposable
         await File.WriteAllTextAsync(
             Path.Combine(runRoot, "media", mediaId, "timeline", "timeline.md"),
             """
-            # Video Timeline
+            # Audio Timeline
 
-            - Source: `running-call.mp4`
-            - Media ID: `sample-media-running`
+            - Source: `running-call.wav`
+            - Audio ID: `sample-media-running`
             """);
     }
 
@@ -1128,12 +1156,12 @@ internal sealed class TestAppFixture : IAsyncDisposable
             current_stage = "queued",
             message = "Queued for worker pickup.",
             warnings = Array.Empty<string>(),
-            videos_total = 1,
-            videos_done = 0,
-            videos_skipped = 0,
-            videos_failed = 0,
-            current_media = (string?)null,
-            current_media_elapsed_sec = 0.0,
+            items_total = 1,
+            items_done = 0,
+            items_skipped = 0,
+            items_failed = 0,
+            current_item = (string?)null,
+            current_item_elapsed_sec = 0.0,
             current_stage_elapsed_sec = 0.0,
             processed_duration_sec = 0.0,
             total_duration_sec = 45.0,
