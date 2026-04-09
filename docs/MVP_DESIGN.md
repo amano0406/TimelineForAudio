@@ -212,21 +212,19 @@ MVP で後回しにする:
 
 - `openai/whisper`
 - `faster-whisper`
-- `WhisperX`
+- wav2vec2 系 alignment layer
 
 調査結果:
 
 - `faster-whisper` は CTranslate2 ベースで、同 README では `openai/whisper` より同精度で最大 4 倍高速・省メモリとされ、`word_timestamps=True` と `vad_filter=True` を持つ
   - 出典: [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
-- `WhisperX` は `faster-whisper` backend, word-level timestamps, wav2vec2 alignment, pyannote diarization, VAD preprocessing を前提にしている
-  - 出典: [WhisperX](https://github.com/m-bain/whisperX)
-- `WhisperX` README 自体が、production では GitHub 版ではなく stable PyPI release を使うよう明記している
-  - 出典: [WhisperX](https://github.com/m-bain/whisperX)
+- 明示的な alignment layer を足すと word-level timestamp の補正余地は増えるが、追加モデル管理と Docker 運用の複雑度も増える
+- 現行の ASR 契約では、ASR と diarization を分離した方が `conversion_signature` と rerun 判定を素直に保てる
 
 推奨判断:
 
 - MVP の ASR コアは `faster-whisper`
-- `WhisperX` は phase 2 の alignment layer として残す
+- alignment layer は phase 2 の optional 追加要素として残す
 - `openai/whisper` は reference/fallback に留め、既定実装にはしない
 
 理由:
@@ -234,7 +232,7 @@ MVP で後回しにする:
 - `TimelineForAudio` は screen pipeline を持たないため、ASR と diarization を明示的に分離した方が契約設計しやすい
 - `faster-whisper` 単体で word timestamps と VAD を使える
 - `conversion_signature` に ASR backend / model / params を素直に入れやすい
-- `WhisperX` は有用だが、alignment model まで常時必須にすると Docker 運用の複雑度が上がる
+- alignment model を常時必須にすると Docker 運用の複雑度が上がる
 
 推奨モデル構成:
 
@@ -251,7 +249,7 @@ phase 2:
 
 - `high+aligned`
   - `faster-whisper large-v3`
-  - `WhisperX` alignment を追加
+  - alignment layer を追加
 
 ### 5.2 Diarization 候補
 
@@ -259,7 +257,7 @@ phase 2:
 
 - `pyannote/speaker-diarization-community-1`
 - NVIDIA NeMo diarization
-- WhisperX 内蔵統合経由の pyannote
+- ASR-integrated diarization wrapper
 
 調査結果:
 
