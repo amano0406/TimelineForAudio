@@ -4,7 +4,7 @@ This document explains what `TimelineForAudio` downloads or expects at runtime a
 
 ## Public Release Contract
 
-The current public release line is `TimelineForAudio v0.3.3 Tech Preview`.
+The current public release line is `TimelineForAudio v0.3.4 Tech Preview`.
 
 - baseline support is Windows + Docker Desktop + CPU mode
 - macOS is an experimental source-based path

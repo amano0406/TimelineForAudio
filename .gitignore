@@ -19,3 +19,4 @@ worker/.venv/
 worker/.pytest_cache/
 worker/__pycache__/
 output/playwright/
+release/

@@ -6,7 +6,7 @@
 
 ## Public Release Status
 
-現在の public release 系列は `TimelineForAudio v0.3.3 Tech Preview` です。
+現在の public release 系列は `TimelineForAudio v0.3.4 Tech Preview` です。
 
 現時点の public contract:
 
@@ -140,7 +140,7 @@ Windows:
 .\start.bat
 ```
 
-`v0.3.3` の public release では、これが primary supported path です。
+`v0.3.4` の public release では、これが primary supported path です。
 
 macOS:
 
@@ -148,7 +148,7 @@ macOS:
 ./start.command
 ```
 
-こちらは `v0.3.3` では experimental な source-based path です。現在の public release line の baseline support には含めません。
+こちらは `v0.3.4` では experimental な source-based path です。現在の public release line の baseline support には含めません。
 
 起動後の流れ:
 
@@ -183,7 +183,7 @@ public release の baseline は CPU mode です。
 - `GPU`
   - Docker から使える NVIDIA GPU が必要
   - 主な AI 処理が高速になる
-  - `v0.3.3` では best-effort 扱い
+  - `v0.3.4` では best-effort 扱い
 
 処理精度:
 
