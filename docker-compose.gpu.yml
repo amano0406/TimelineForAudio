@@ -1,6 +1,11 @@
 services:
   worker:
+    image: timeline-for-audio-worker-gpu:latest
+    build:
+      context: .
+      dockerfile: docker/worker.gpu.Dockerfile
     gpus: all
     environment:
+      TIMELINE_FOR_AUDIO_WORKER_FLAVOR: gpu
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility

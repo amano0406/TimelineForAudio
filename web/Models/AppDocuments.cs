@@ -47,15 +47,6 @@ public sealed class AppSettingsDocument
     [JsonPropertyName("processingQuality")]
     public string ProcessingQuality { get; set; } = "standard";
 
-    [JsonPropertyName("transcriptionInitialPrompt")]
-    public string TranscriptionInitialPrompt { get; set; } = "";
-
-    [JsonPropertyName("transcriptNormalizationMode")]
-    public string TranscriptNormalizationMode { get; set; } = "deterministic";
-
-    [JsonPropertyName("transcriptNormalizationGlossary")]
-    public string TranscriptNormalizationGlossary { get; set; } = "";
-
     [JsonPropertyName("uiLanguage")]
     public string UiLanguage { get; set; } = "en";
 
@@ -163,6 +154,9 @@ public sealed class CreateJobCommand
 
     [JsonPropertyName("uploadedFiles")]
     public List<UploadedFileReference> UploadedFiles { get; set; } = [];
+
+    [JsonPropertyName("supplementalContextText")]
+    public string? SupplementalContextText { get; set; }
 }
 
 public sealed class DuplicatePreviewRequest
@@ -172,6 +166,9 @@ public sealed class DuplicatePreviewRequest
 
     [JsonPropertyName("uploadedFiles")]
     public List<UploadedFileReference> UploadedFiles { get; set; } = [];
+
+    [JsonPropertyName("supplementalContextText")]
+    public string? SupplementalContextText { get; set; }
 }
 
 public sealed class DuplicatePreviewItem
@@ -385,14 +382,14 @@ public sealed class JobRequestDocument
     [JsonPropertyName("transcription_model_id")]
     public string TranscriptionModelId { get; set; } = "";
 
-    [JsonPropertyName("transcription_initial_prompt")]
-    public string? TranscriptionInitialPrompt { get; set; }
+    [JsonPropertyName("supplemental_context_text")]
+    public string? SupplementalContextText { get; set; }
 
-    [JsonPropertyName("transcript_normalization_mode")]
-    public string TranscriptNormalizationMode { get; set; } = "deterministic";
+    [JsonPropertyName("second_pass_enabled")]
+    public bool SecondPassEnabled { get; set; } = true;
 
-    [JsonPropertyName("transcript_normalization_glossary")]
-    public string? TranscriptNormalizationGlossary { get; set; }
+    [JsonPropertyName("context_builder_version")]
+    public string ContextBuilderVersion { get; set; } = "context-builder-v1";
 
     [JsonPropertyName("diarization_enabled")]
     public bool DiarizationEnabled { get; set; }

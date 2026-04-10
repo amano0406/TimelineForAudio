@@ -11,17 +11,21 @@ _TERMINAL_ITEM_STATES = {"completed", "failed", "skipped_duplicate"}
 _MAX_MATCH_SCORE = 9.0
 _STAGE_ORDER = [
     "extract_audio",
-    "transcribe",
-    "normalize_transcript",
+    "transcribe_pass1",
+    "build_context",
+    "transcribe_pass2",
+    "diarize_audio",
     "analyze_audio",
     "timeline_render",
 ]
 _DEFAULT_STAGE_SHARES = {
-    "extract_audio": 0.16,
-    "transcribe": 0.56,
-    "normalize_transcript": 0.08,
-    "analyze_audio": 0.14,
-    "timeline_render": 0.06,
+    "extract_audio": 0.12,
+    "transcribe_pass1": 0.30,
+    "build_context": 0.08,
+    "transcribe_pass2": 0.28,
+    "diarize_audio": 0.10,
+    "analyze_audio": 0.12,
+    "timeline_render": 0.04,
 }
 
 

@@ -37,7 +37,7 @@ Use this checklist before switching the repository from private to public.
 - third-party notices and model/runtime notes match current dependencies
 - the current `TimelineForAudio v0.x.y Tech Preview` wording is consistent where needed
 - `Windows primary / macOS experimental` wording is consistent where needed
-- `Docker Desktop required`, `first-run downloads`, and `GPU best-effort` wording are consistent where needed
+- `Docker Desktop required`, `first-run downloads`, and `GPU compose overlay` wording are consistent where needed
 - speaker diarization is clearly described as optional and gated by token + approval
 
 ## Release Package

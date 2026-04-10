@@ -256,69 +256,38 @@
                                 <span class="block text-xs text-slate-500">@L("settings.processing_quality.standard_note")</span>
                             </span>
                         </label>
-                        <label class="flex items-start gap-3 rounded-[18px] border border-slate-200 bg-white/70 px-4 py-4 text-sm text-slate-700 @(!Model.CanUseHighQuality ? "opacity-60 cursor-not-allowed" : "")">
+                        <label class="flex items-start gap-3 rounded-[18px] border border-slate-200 bg-white/70 px-4 py-4 text-sm text-slate-700">
                             <input asp-for="ProcessingQuality"
                                    type="radio"
                                    value="high"
-                                   disabled="@(!Model.CanUseHighQuality)"
                                    class="mt-1 h-4 w-4 border-slate-300 text-slate-900" />
                             <span>
                                 <span class="block font-medium text-slate-900">@L("settings.processing_quality.high")</span>
                                 <span class="block text-xs text-slate-500">@L("settings.processing_quality.high_note")</span>
-                                @if (!Model.CanUseHighQuality)
-                                {
-                                    <span class="mt-2 block text-xs text-amber-700">@L("settings.processing_quality.high_unavailable_note")</span>
-                                }
                             </span>
                         </label>
                     </div>
-                </div>
-
-                <div class="space-y-2">
-                    <div class="text-sm font-medium text-slate-900">@L("settings.transcription_prompt.title")</div>
-                    <p class="text-xs text-slate-500">@L("settings.transcription_prompt.description")</p>
-                    <textarea asp-for="TranscriptionInitialPrompt"
-                              rows="4"
-                              class="form-input w-full"
-                              spellcheck="false"
-                              placeholder="@L("settings.transcription_prompt.placeholder")"></textarea>
-                    <p class="text-xs text-slate-500">@L("settings.transcription_prompt.help")</p>
-                </div>
-
-                <div class="space-y-3">
-                    <div class="text-sm font-medium text-slate-900">@L("settings.normalization.title")</div>
-                    <p class="text-xs text-slate-500">@L("settings.normalization.description")</p>
-                    <div class="grid gap-3 md:grid-cols-2">
-                        <label class="flex items-start gap-3 rounded-[18px] border border-slate-200 bg-white/70 px-4 py-4 text-sm text-slate-700">
-                            <input asp-for="TranscriptNormalizationMode"
-                                   type="radio"
-                                   value="deterministic"
-                                   class="mt-1 h-4 w-4 border-slate-300 text-slate-900" />
-                            <span>
-                                <span class="block font-medium text-slate-900">@L("settings.normalization.deterministic")</span>
-                                <span class="block text-xs text-slate-500">@L("settings.normalization.deterministic_note")</span>
-                            </span>
-                        </label>
-                        <label class="flex items-start gap-3 rounded-[18px] border border-slate-200 bg-white/70 px-4 py-4 text-sm text-slate-700">
-                            <input asp-for="TranscriptNormalizationMode"
-                                   type="radio"
-                                   value="off"
-                                   class="mt-1 h-4 w-4 border-slate-300 text-slate-900" />
-                            <span>
-                                <span class="block font-medium text-slate-900">@L("settings.normalization.off")</span>
-                                <span class="block text-xs text-slate-500">@L("settings.normalization.off_note")</span>
-                            </span>
-                        </label>
-                    </div>
-                    <div class="space-y-2 pt-1">
-                        <label asp-for="TranscriptNormalizationGlossary" class="text-sm font-medium text-slate-900">@L("settings.normalization.glossary")</label>
-                        <textarea asp-for="TranscriptNormalizationGlossary"
-                                  rows="8"
-                                  class="form-input w-full font-mono text-sm"
-                                  spellcheck="false"
-                                  placeholder="@L("settings.normalization.placeholder")"></textarea>
-                        <p class="text-xs text-slate-500">@L("settings.normalization.help")</p>
-                    </div>
+                    @if (string.Equals(Model.ProcessingQuality, "high", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <div class="rounded-[18px] border border-amber-200 bg-amber-50/80 px-4 py-3 text-xs leading-6 text-amber-900">
+                            @if (string.Equals(Model.ComputeMode, "cpu", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <span>@L("settings.processing_quality.high_cpu_expert_note")</span>
+                            }
+                            else if (Model.IsGpuHighQualityLowMemory)
+                            {
+                                <span>@L("settings.processing_quality.high_gpu_low_vram_note")</span>
+                            }
+                            else if (Model.IsGpuHighQualityExperimental)
+                            {
+                                <span>@L("settings.processing_quality.high_gpu_experimental_note")</span>
+                            }
+                            else
+                            {
+                                <span>@L("settings.processing_quality.high_gpu_recommended_note")</span>
+                            }
+                        </div>
+                    }
                 </div>
 
                 <div class="flex flex-wrap items-center gap-3">

@@ -254,8 +254,9 @@ class EtaPredictorTests(unittest.TestCase):
                         "bitrate": 64000,
                         "stage_elapsed_seconds": {
                             "extract_audio": 1.0,
-                            "transcribe": 5.0,
-                            "normalize_transcript": 1.0,
+                            "transcribe_pass1": 3.0,
+                            "build_context": 1.0,
+                            "transcribe_pass2": 2.0,
                             "analyze_audio": 2.0,
                             "timeline_render": 1.0,
                         },
@@ -291,14 +292,14 @@ class EtaPredictorTests(unittest.TestCase):
                 legacy_remaining_sec=None,
                 current_item_index=0,
                 current_item_elapsed_sec=6.0,
-                current_stage_name="transcribe",
+                current_stage_name="transcribe_pass2",
                 current_stage_elapsed_sec=1.0,
                 include_export_stage=False,
             )
 
             self.assertIsNotNone(remaining)
             assert remaining is not None
-            self.assertAlmostEqual(remaining, 8.0, places=3)
+            self.assertAlmostEqual(remaining, 4.0, places=3)
 
 
 if __name__ == "__main__":

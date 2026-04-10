@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from pathlib import Path
 
@@ -166,6 +167,7 @@ def cmd_daemon(poll_interval: int) -> int:
 def _write_worker_capabilities() -> None:
     payload: dict[str, object] = {
         "generatedAt": now_iso(),
+        "workerFlavor": os.getenv("TIMELINE_FOR_AUDIO_WORKER_FLAVOR", "cpu"),
         "torchInstalled": False,
         "torchCudaBuilt": False,
         "gpuAvailable": False,

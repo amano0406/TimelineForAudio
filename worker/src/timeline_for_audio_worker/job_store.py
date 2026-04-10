@@ -11,9 +11,11 @@ from typing import Any
 from uuid import uuid4
 
 from .contracts import InputItem, JobRequest, JobResult, JobStatus
+from .context_builder import CONTEXT_BUILDER_VERSION
 from .discovery import discover_audio
 from .fs_utils import ensure_dir, now_iso, slugify, write_text
 from .signature import (
+    CONTEXT_BUILDER_VERSION as SIGNATURE_CONTEXT_BUILDER_VERSION,
     DIARIZATION_MODEL_ID,
     PIPELINE_VERSION,
     TRANSCRIPTION_BACKEND,
@@ -24,11 +26,7 @@ from .signature import (
     normalize_processing_quality,
     resolve_transcription_model_id,
 )
-from .settings import (
-    load_huggingface_token,
-    load_settings,
-    normalize_transcript_normalization_mode,
-)
+from .settings import load_huggingface_token, load_settings
 
 _DATETIME_PATTERNS = [
     re.compile(
@@ -247,15 +245,15 @@ def build_run_archive(
 
 def _build_export_package(run_dir: Path, job_id: str, export_root: Path) -> None:
     timelines_root = export_root / "timelines"
-    raw_transcripts_root = export_root / "raw-transcripts"
-    normalized_transcripts_root = export_root / "normalized-transcripts"
-    normalization_reports_root = export_root / "normalization-reports"
+    pass1_transcripts_root = export_root / "pass1-transcripts"
+    pass2_transcripts_root = export_root / "pass2-transcripts"
+    context_docs_root = export_root / "context-docs"
     speaker_summaries_root = export_root / "speaker-summaries"
     feature_summaries_root = export_root / "audio-feature-summaries"
     timelines_root.mkdir(parents=True, exist_ok=True)
-    raw_transcripts_root.mkdir(parents=True, exist_ok=True)
-    normalized_transcripts_root.mkdir(parents=True, exist_ok=True)
-    normalization_reports_root.mkdir(parents=True, exist_ok=True)
+    pass1_transcripts_root.mkdir(parents=True, exist_ok=True)
+    pass2_transcripts_root.mkdir(parents=True, exist_ok=True)
+    context_docs_root.mkdir(parents=True, exist_ok=True)
     speaker_summaries_root.mkdir(parents=True, exist_ok=True)
     feature_summaries_root.mkdir(parents=True, exist_ok=True)
     timelines: list[dict[str, str]] = []
@@ -280,11 +278,9 @@ def _build_export_package(run_dir: Path, job_id: str, export_root: Path) -> None
                     "timeline_path": str(timeline_path),
                     "label": label,
                     "source_path": str(source_info.get("original_path") or ""),
-                    "raw_transcript_path": str(media_dir / "transcript" / "raw.md"),
-                    "normalized_transcript_path": str(media_dir / "transcript" / "normalized.md"),
-                    "normalization_report_path": str(
-                        media_dir / "transcript" / "normalization_report.md"
-                    ),
+                    "pass1_transcript_path": str(media_dir / "transcript" / "pass1.md"),
+                    "pass2_transcript_path": str(media_dir / "transcript" / "pass2.md"),
+                    "context_doc_path": str(media_dir / "transcript" / "context_merged.txt"),
                     "speaker_summary_path": str(media_dir / "analysis" / "speaker_summary.md"),
                     "audio_feature_summary_path": str(
                         media_dir / "analysis" / "audio_features.md"
@@ -301,8 +297,8 @@ def _build_export_package(run_dir: Path, job_id: str, export_root: Path) -> None
     used_names: set[str] = set()
     exported_rows: list[dict[str, str]] = []
     for row in timelines:
-        file_name = _ensure_unique_export_file_name(f"{row['label']}.md", used_names)
-        destination = timelines_root / file_name
+        timeline_file_name = _ensure_unique_export_file_name(f"{row['label']}.md", used_names)
+        destination = timelines_root / timeline_file_name
         destination.write_text(
             Path(row["timeline_path"]).read_text(encoding="utf-8", errors="replace"),
             encoding="utf-8",
@@ -310,27 +306,29 @@ def _build_export_package(run_dir: Path, job_id: str, export_root: Path) -> None
         exported_row = {
             "label": row["label"],
             "source_path": row["source_path"],
-            "timeline_path": f"timelines/{file_name}",
-            "raw_transcript_path": "",
-            "normalized_transcript_path": "",
-            "normalization_report_path": "",
+            "timeline_path": f"timelines/{timeline_file_name}",
+            "pass1_transcript_path": "",
+            "pass2_transcript_path": "",
+            "context_doc_path": "",
             "speaker_summary_path": "",
             "audio_feature_summary_path": "",
         }
-        for source_key, target_root in (
-            ("raw_transcript_path", raw_transcripts_root),
-            ("normalized_transcript_path", normalized_transcripts_root),
-            ("normalization_report_path", normalization_reports_root),
-            ("speaker_summary_path", speaker_summaries_root),
-            ("audio_feature_summary_path", feature_summaries_root),
-        ):
+        export_specs = (
+            ("pass1_transcript_path", pass1_transcripts_root, ".md"),
+            ("pass2_transcript_path", pass2_transcripts_root, ".md"),
+            ("context_doc_path", context_docs_root, ".txt"),
+            ("speaker_summary_path", speaker_summaries_root, ".md"),
+            ("audio_feature_summary_path", feature_summaries_root, ".md"),
+        )
+        for source_key, target_root, extension in export_specs:
             source_path = Path(row[source_key])
             if source_path.exists():
-                target_root.joinpath(file_name).write_text(
+                target_name = f"{Path(timeline_file_name).stem}{extension}"
+                target_root.joinpath(target_name).write_text(
                     source_path.read_text(encoding="utf-8", errors="replace"),
                     encoding="utf-8",
                 )
-                exported_row[source_key] = f"{target_root.name}/{file_name}"
+                exported_row[source_key] = f"{target_root.name}/{target_name}"
         exported_rows.append(exported_row)
 
     _write_export_index_html(
@@ -374,9 +372,9 @@ def _write_export_index_html(
                     f"<td>{html.escape(row['label'])}</td>",
                     f"<td><code>{html.escape(row['source_path'] or '')}</code></td>",
                     f"<td>{anchor(row['timeline_path'], 'timeline')}</td>",
-                    f"<td>{anchor(row['raw_transcript_path'], 'raw')}</td>",
-                    f"<td>{anchor(row['normalized_transcript_path'], 'normalized')}</td>",
-                    f"<td>{anchor(row['normalization_report_path'], 'report')}</td>",
+                    f"<td>{anchor(row['pass1_transcript_path'], 'pass1')}</td>",
+                    f"<td>{anchor(row['pass2_transcript_path'], 'pass2')}</td>",
+                    f"<td>{anchor(row['context_doc_path'], 'context')}</td>",
                     f"<td>{anchor(row['speaker_summary_path'], 'speaker')}</td>",
                     f"<td>{anchor(row['audio_feature_summary_path'], 'features')}</td>",
                     "</tr>",
@@ -421,7 +419,7 @@ def _write_export_index_html(
             "    <h2>Per-item artifacts</h2>",
             "    <table>",
             "      <thead>",
-            "        <tr><th>Item</th><th>Source</th><th>Timeline</th><th>Raw</th><th>Normalized</th><th>Report</th><th>Speaker</th><th>Features</th></tr>",
+            "        <tr><th>Item</th><th>Source</th><th>Timeline</th><th>Pass1</th><th>Pass2</th><th>Context</th><th>Speaker</th><th>Features</th></tr>",
             "      </thead>",
             "      <tbody>",
             *item_rows,
@@ -533,21 +531,15 @@ def create_job(
             compute_mode=settings.get("computeMode"),
             processing_quality=settings.get("processingQuality"),
             diarization_enabled=diarization_enabled,
-            transcription_initial_prompt=settings.get("transcriptionInitialPrompt"),
-            transcript_normalization_mode=settings.get("transcriptNormalizationMode"),
-            transcript_normalization_glossary=settings.get("transcriptNormalizationGlossary"),
+            supplemental_context_text=None,
+            second_pass_enabled=True,
+            context_builder_version=SIGNATURE_CONTEXT_BUILDER_VERSION,
         ),
         transcription_backend=TRANSCRIPTION_BACKEND,
         transcription_model_id=resolve_transcription_model_id(settings.get("processingQuality")),
-        transcription_initial_prompt=str(settings.get("transcriptionInitialPrompt") or "").strip()
-        or None,
-        transcript_normalization_mode=normalize_transcript_normalization_mode(
-            settings.get("transcriptNormalizationMode")
-        ),
-        transcript_normalization_glossary=str(
-            settings.get("transcriptNormalizationGlossary") or ""
-        )
-        or None,
+        supplemental_context_text=None,
+        second_pass_enabled=True,
+        context_builder_version=CONTEXT_BUILDER_VERSION,
         diarization_enabled=diarization_enabled,
         diarization_model_id=DIARIZATION_MODEL_ID if diarization_enabled else None,
         vad_backend=VAD_BACKEND,
@@ -614,12 +606,9 @@ def settings_snapshot(settings: dict[str, Any] | None = None) -> dict[str, Any]:
         "ready": bool(token) and bool(settings.get("huggingfaceTermsConfirmed", False)),
         "compute_mode": str(settings.get("computeMode") or "cpu"),
         "processing_quality": str(settings.get("processingQuality") or "standard"),
-        "transcription_initial_prompt": str(settings.get("transcriptionInitialPrompt") or ""),
-        "transcript_normalization_mode": normalize_transcript_normalization_mode(
-            settings.get("transcriptNormalizationMode")
-        ),
-        "transcript_normalization_glossary": str(
-            settings.get("transcriptNormalizationGlossary") or ""
+        "second_pass_enabled": bool(settings.get("secondPassEnabled", True)),
+        "context_builder_version": str(
+            settings.get("contextBuilderVersion") or CONTEXT_BUILDER_VERSION
         ),
         "input_roots": _enabled_input_roots(settings),
         "output_roots": _enabled_output_root_list(settings),

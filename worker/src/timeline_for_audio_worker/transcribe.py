@@ -8,17 +8,22 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .fs_utils import now_iso, write_text
+from .runtime_profile import (
+    TRANSCRIPTION_LANGUAGE,
+    normalize_compute_mode,
+    normalize_processing_quality as _normalize_processing_quality,
+    resolve_model_name_for_quality as _resolve_model_name_for_quality,
+    resolve_runtime_lane,
+)
 from .settings import load_huggingface_token, load_settings
-
-_DIARIZATION_MODEL_ID = "pyannote/speaker-diarization-community-1"
 
 
 def normalize_processing_quality(value: str | None) -> str:
-    return "high" if str(value or "").strip().lower() == "high" else "standard"
+    return _normalize_processing_quality(value)
 
 
 def resolve_model_name_for_quality(value: str | None) -> str:
-    return "large-v3" if normalize_processing_quality(value) == "high" else "medium"
+    return _resolve_model_name_for_quality(value)
 
 
 def _is_cuda_oom(exc: Exception) -> bool:
@@ -152,33 +157,48 @@ def _timestamp_label(seconds: float) -> str:
     return f"{hours:02}:{minutes:02}:{secs:02}.{millis:03}"
 
 
+def _build_word_rows(segment: Any, cut_map: list[dict[str, float]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for word_index, word in enumerate(getattr(segment, "words", []) or [], start=1):
+        word_start = float(getattr(word, "start", getattr(segment, "start", 0.0)) or 0.0)
+        word_end = float(getattr(word, "end", word_start) or word_start)
+        rows.append(
+            {
+                "index": word_index,
+                "trimmed_start": word_start,
+                "trimmed_end": max(word_start, word_end),
+                "original_start": _map_trimmed_to_original(word_start, cut_map),
+                "original_end": _map_trimmed_to_original(word_end, cut_map),
+                "text": str(getattr(word, "word", None) or getattr(word, "text", "") or ""),
+            }
+        )
+    return rows
+
+
 def _build_records(
     segments: list[dict[str, Any]],
-    diarization_rows: list[dict[str, Any]] | None,
-    cut_map: list[dict[str, float]],
 ) -> list[SegmentRecord]:
     records: list[SegmentRecord] = []
     for idx, segment in enumerate(segments, start=1):
-        start = float(segment.get("start", 0.0) or 0.0)
-        end = float(segment.get("end", start) or start)
+        start = float(
+            segment.get("trimmed_start", segment.get("start", segment.get("original_start", 0.0)))
+            or 0.0
+        )
+        end = float(
+            segment.get("trimmed_end", segment.get("end", segment.get("original_end", start)))
+            or start
+        )
         text = _normalize_text(segment.get("text"))
         if not text:
             continue
         speaker = str(segment.get("speaker") or "SPEAKER_00")
-        if diarization_rows:
-            best_overlap = 0.0
-            for row in diarization_rows:
-                overlap = max(0.0, min(end, float(row["end"])) - max(start, float(row["start"])))
-                if overlap > best_overlap:
-                    best_overlap = overlap
-                    speaker = str(row["speaker"])
         records.append(
             SegmentRecord(
                 index=idx,
                 trimmed_start=start,
                 trimmed_end=end,
-                original_start=_map_trimmed_to_original(start, cut_map),
-                original_end=_map_trimmed_to_original(end, cut_map),
+                original_start=float(segment.get("original_start", start) or start),
+                original_end=float(segment.get("original_end", end) or end),
                 speaker=speaker,
                 text=text,
             )
@@ -194,6 +214,7 @@ def _render_markdown(
         "",
         "## Metadata",
         "",
+        f"- Pass: `{metadata.get('pass_name', '')}`",
         f"- Model: `{metadata['model']}`",
         f"- Processing quality: `{metadata.get('processing_quality', 'standard')}`",
         f"- Language: `{metadata['language']}`",
@@ -204,6 +225,9 @@ def _render_markdown(
         f"- Compute type: `{metadata['compute_type']}`",
         f"- Batch size: `{metadata.get('batch_size', '')}`",
         f"- Alignment used: `{metadata['alignment_used']}`",
+        f"- Context prompt configured: `{metadata.get('context_prompt_configured', False)}`",
+        f"- Context prompt length: `{metadata.get('context_prompt_length', 0)}`",
+        f"- Diarization requested: `{metadata.get('diarization_requested', False)}`",
         f"- Diarization used: `{metadata['diarization_used']}`",
         f"- Diarization error: `{metadata.get('diarization_error') or ''}`",
         "",
@@ -238,52 +262,112 @@ def _render_markdown(
     return "\n".join(lines) + "\n"
 
 
+def _records_from_payload_segments(segments: list[dict[str, Any]]) -> list[SegmentRecord]:
+    rows: list[SegmentRecord] = []
+    for index, segment in enumerate(segments, start=1):
+        trimmed_start = float(
+            segment.get("trimmed_start", segment.get("start", segment.get("original_start", 0.0)))
+            or 0.0
+        )
+        trimmed_end = float(
+            segment.get("trimmed_end", segment.get("end", segment.get("original_end", trimmed_start)))
+            or trimmed_start
+        )
+        original_start = float(segment.get("original_start", trimmed_start) or trimmed_start)
+        original_end = float(segment.get("original_end", trimmed_end) or trimmed_end)
+        rows.append(
+            SegmentRecord(
+                index=int(segment.get("index", index) or index),
+                trimmed_start=trimmed_start,
+                trimmed_end=max(trimmed_start, trimmed_end),
+                original_start=original_start,
+                original_end=max(original_start, original_end),
+                speaker=str(segment.get("speaker") or "SPEAKER_00"),
+                text=_normalize_text(segment.get("text")),
+            )
+        )
+    return rows
+
+
+def _write_transcript_payload(
+    *,
+    source_name: str,
+    transcript_dir: Path,
+    artifact_stem: str,
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    transcript_dir.mkdir(parents=True, exist_ok=True)
+    rendered_segments = (
+        metadata.get("speaker_segments")
+        or metadata.get("segments")
+        or metadata.get("raw_segments")
+        or []
+    )
+    records = _records_from_payload_segments(rendered_segments)
+    (transcript_dir / f"{artifact_stem}.json").write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    write_text(
+        transcript_dir / f"{artifact_stem}.md",
+        _render_markdown(source_name, metadata, records),
+    )
+    return metadata
+
+
 def _error_payload(
     *,
     source_name: str,
     transcript_dir: Path,
+    artifact_stem: str,
+    pass_name: str,
     error_message: str,
     processing_quality: str | None,
+    context_prompt: str | None,
+    diarization_requested: bool,
 ) -> dict[str, Any]:
+    resolved_context_prompt = _normalize_prompt(context_prompt)
     payload = {
         "status": "error",
+        "pass_name": pass_name,
         "error": error_message,
         "generated_at": now_iso(),
         "model": resolve_model_name_for_quality(processing_quality),
         "processing_quality": normalize_processing_quality(processing_quality),
+        "model_id": resolve_model_name_for_quality(processing_quality),
         "device": "cpu",
+        "requested_compute_mode": "cpu",
+        "effective_compute_mode": "cpu",
+        "gpu_available": False,
         "compute_type": "int8",
-        "language": "ja",
+        "batch_size": 4,
+        "language": TRANSCRIPTION_LANGUAGE,
+        "language_probability": None,
         "alignment_used": False,
+        "context_prompt_configured": bool(resolved_context_prompt),
+        "context_prompt_sha256": (
+            hashlib.sha256(resolved_context_prompt.encode("utf-8")).hexdigest()
+            if resolved_context_prompt
+            else None
+        ),
+        "context_prompt_length": len(resolved_context_prompt or ""),
+        "diarization_requested": diarization_requested,
         "diarization_used": False,
+        "diarization_error": None,
+        "transcription_warnings": [],
         "segments": [],
+        "speaker_segments": [],
+        "raw_segments": [],
+        "words": [],
+        "speaker_assignment_method": "none",
         "speaker_turns": [],
     }
-    transcript_dir.mkdir(parents=True, exist_ok=True)
-    (transcript_dir / "raw.json").write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    return _write_transcript_payload(
+        source_name=source_name,
+        transcript_dir=transcript_dir,
+        artifact_stem=artifact_stem,
+        metadata=payload,
     )
-    write_text(transcript_dir / "raw.md", _render_markdown(source_name, payload, []))
-    return payload
-
-
-def _iterate_diarization_rows(diarization_output: Any) -> list[dict[str, Any]]:
-    annotation = getattr(diarization_output, "exclusive_speaker_diarization", None)
-    if annotation is None or not hasattr(annotation, "itertracks"):
-        annotation = getattr(diarization_output, "speaker_diarization", None)
-    if annotation is None or not hasattr(annotation, "itertracks"):
-        annotation = diarization_output
-
-    rows: list[dict[str, Any]] = []
-    for turn, _, speaker in annotation.itertracks(yield_label=True):
-        rows.append(
-            {
-                "start": float(turn.start),
-                "end": float(turn.end),
-                "speaker": str(speaker),
-            }
-        )
-    return rows
 
 
 def transcribe_audio(
@@ -291,14 +375,15 @@ def transcribe_audio(
     source_name: str,
     audio_path: Path,
     transcript_dir: Path,
+    artifact_stem: str,
+    pass_name: str,
     cut_map: list[dict[str, float]],
     compute_mode: str | None = None,
     processing_quality: str | None = None,
     initial_prompt: str | None = None,
+    diarization_enabled: bool = True,
 ) -> dict[str, Any]:
     settings = load_settings()
-    token = load_huggingface_token()
-    terms_confirmed = bool(settings.get("huggingfaceTermsConfirmed"))
 
     try:
         from faster_whisper import BatchedInferencePipeline, WhisperModel
@@ -306,8 +391,12 @@ def transcribe_audio(
         return _error_payload(
             source_name=source_name,
             transcript_dir=transcript_dir,
+            artifact_stem=artifact_stem,
+            pass_name=pass_name,
             error_message=f"faster-whisper is not available: {exc}",
             processing_quality=processing_quality,
+            context_prompt=initial_prompt,
+            diarization_requested=diarization_enabled,
         )
 
     try:
@@ -327,16 +416,15 @@ def transcribe_audio(
 
         torch = _TorchShim()
 
-    requested_compute_mode = str(compute_mode or settings.get("computeMode") or "cpu").lower()
+    requested_compute_mode = normalize_compute_mode(compute_mode or settings.get("computeMode"))
     gpu_available = bool(getattr(torch.cuda, "is_available", lambda: False)())
+    runtime_lane = resolve_runtime_lane(requested_compute_mode, processing_quality or settings.get("processingQuality"))
     device = "cuda" if requested_compute_mode == "gpu" and gpu_available else "cpu"
     effective_compute_mode = "gpu" if device == "cuda" else "cpu"
-    compute_type = "float16" if device == "cuda" else "int8"
-    resolved_quality = normalize_processing_quality(
-        processing_quality or settings.get("processingQuality")
-    )
-    model_name = resolve_model_name_for_quality(resolved_quality)
-    language = "ja"
+    compute_type = runtime_lane.compute_types[0] if device == "cuda" else "int8"
+    resolved_quality = runtime_lane.processing_quality
+    model_name = runtime_lane.model_id
+    language = TRANSCRIPTION_LANGUAGE
     resolved_initial_prompt = _normalize_prompt(initial_prompt)
 
     transcription_warnings: list[str] = []
@@ -375,14 +463,20 @@ def transcribe_audio(
                 vad_filter=True,
                 vad_parameters={"min_silence_duration_ms": 500},
                 initial_prompt=resolved_initial_prompt,
+                word_timestamps=pass_name == "pass2",
             )
             segment_rows = [
                 {
-                    "start": float(segment.start),
-                    "end": float(segment.end),
+                    "index": index,
+                    "trimmed_start": float(segment.start),
+                    "trimmed_end": float(getattr(segment, "end", segment.start) or segment.start),
+                    "original_start": _map_trimmed_to_original(float(segment.start), cut_map),
+                    "original_end": _map_trimmed_to_original(float(getattr(segment, "end", segment.start) or segment.start), cut_map),
                     "text": getattr(segment, "text", ""),
+                    "speaker": "SPEAKER_00",
+                    "words": _build_word_rows(segment, cut_map),
                 }
-                for segment in list(segments)
+                for index, segment in enumerate(list(segments), start=1)
             ]
             batch_size = candidate_batch_size
             if device == "cuda" and candidate_batch_size != _initial_batch_size(
@@ -432,14 +526,20 @@ def transcribe_audio(
             vad_filter=True,
             vad_parameters={"min_silence_duration_ms": 500},
             initial_prompt=resolved_initial_prompt,
+            word_timestamps=pass_name == "pass2",
         )
         segment_rows = [
             {
-                "start": float(segment.start),
-                "end": float(segment.end),
+                "index": index,
+                "trimmed_start": float(segment.start),
+                "trimmed_end": float(getattr(segment, "end", segment.start) or segment.start),
+                "original_start": _map_trimmed_to_original(float(segment.start), cut_map),
+                "original_end": _map_trimmed_to_original(float(getattr(segment, "end", segment.start) or segment.start), cut_map),
                 "text": getattr(segment, "text", ""),
+                "speaker": "SPEAKER_00",
+                "words": _build_word_rows(segment, cut_map),
             }
-            for segment in list(segments)
+            for index, segment in enumerate(list(segments), start=1)
         ]
 
     if segment_rows is None:
@@ -447,33 +547,19 @@ def transcribe_audio(
             raise last_error
         raise RuntimeError("Transcription did not produce a result.")
 
-    diarization_rows: list[dict[str, Any]] | None = None
-    diarization_used = False
-    diarization_error: str | None = None
-    if token and terms_confirmed:
-        try:
-            from pyannote.audio import Pipeline
+    if not any(_normalize_text(segment.get("text")) for segment in segment_rows):
+        transcription_warnings.append("No speech was transcribed after VAD.")
 
-            diarizer = Pipeline.from_pretrained(_DIARIZATION_MODEL_ID, token=token)
-            if device == "cuda" and hasattr(diarizer, "to") and hasattr(torch, "device"):
-                diarizer.to(torch.device("cuda"))
-            diarization_rows = _iterate_diarization_rows(diarizer(str(audio_path)))
-            diarization_used = True
-        except Exception as exc:
-            diarization_rows = None
-            diarization_error = str(exc)
-    elif not token:
-        diarization_error = "Hugging Face token is not configured."
-    elif not terms_confirmed:
-        diarization_error = "Hugging Face gated model terms are not confirmed."
-
-    records = _build_records(segment_rows, diarization_rows, cut_map)
+    records = _build_records(segment_rows)
+    words = [word for segment in segment_rows for word in segment.get("words", []) or []]
     payload = {
         "status": "ok",
+        "pass_name": pass_name,
         "generated_at": now_iso(),
         "model": model_name,
         "processing_quality": resolved_quality,
         "model_id": model_name,
+        "runtime_lane": runtime_lane.lane_id,
         "device": device,
         "requested_compute_mode": requested_compute_mode,
         "effective_compute_mode": effective_compute_mode,
@@ -482,25 +568,31 @@ def transcribe_audio(
         "batch_size": batch_size,
         "language": getattr(info, "language", None) or language,
         "language_probability": getattr(info, "language_probability", None),
-        "initial_prompt_configured": bool(resolved_initial_prompt),
-        "initial_prompt_sha256": (
+        "context_prompt_configured": bool(resolved_initial_prompt),
+        "context_prompt_sha256": (
             hashlib.sha256(resolved_initial_prompt.encode("utf-8")).hexdigest()
             if resolved_initial_prompt
             else None
         ),
-        "initial_prompt_length": len(resolved_initial_prompt or ""),
+        "context_prompt_length": len(resolved_initial_prompt or ""),
         "alignment_used": False,
-        "diarization_used": diarization_used,
-        "diarization_error": diarization_error,
+        "diarization_requested": diarization_enabled,
+        "diarization_used": False,
+        "diarization_error": None,
         "transcription_warnings": transcription_warnings,
         "segments": [asdict(record) for record in records],
-        "speaker_turns": diarization_rows or [],
+        "speaker_segments": [asdict(record) for record in records],
+        "raw_segments": segment_rows,
+        "words": words,
+        "speaker_assignment_method": "none",
+        "speaker_turns": [],
     }
-    transcript_dir.mkdir(parents=True, exist_ok=True)
-    (transcript_dir / "raw.json").write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    _write_transcript_payload(
+        source_name=source_name,
+        transcript_dir=transcript_dir,
+        artifact_stem=artifact_stem,
+        metadata=payload,
     )
-    write_text(transcript_dir / "raw.md", _render_markdown(source_name, payload, records))
     del model
     _clear_torch_memory(torch)
     return payload

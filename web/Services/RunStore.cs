@@ -114,7 +114,9 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         }
 
         var hasToken = await settingsStore.HasTokenAsync(cancellationToken);
-        var diarizationEnabled = hasToken && settings.HuggingfaceTermsConfirmed;
+        var diarizationEnabled = RuntimeProfile.ResolveDiarizationDefault(
+            settings.ComputeMode,
+            hasToken && settings.HuggingfaceTermsConfirmed);
         return await CreateJobFromInputsAsync(
             outputRoot,
             inputItems,
@@ -123,9 +125,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             diarizationEnabled,
             settings.ComputeMode,
             settings.ProcessingQuality,
-            settings.TranscriptionInitialPrompt,
-            settings.TranscriptNormalizationMode,
-            settings.TranscriptNormalizationGlossary,
+            command.SupplementalContextText,
             cancellationToken);
     }
 
@@ -143,7 +143,10 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         var hasToken = await settingsStore.HasTokenAsync(cancellationToken);
         var conversionSignature = ResolveConversionSignature(
             settings,
-            hasToken && settings.HuggingfaceTermsConfirmed);
+            RuntimeProfile.ResolveDiarizationDefault(
+                settings.ComputeMode,
+                hasToken && settings.HuggingfaceTermsConfirmed),
+            request.SupplementalContextText);
         var duplicates = await FindDuplicateUploadsAsync(
             outputRoot.Path,
             request.UploadedFiles,
@@ -208,7 +211,9 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
 
         var hasToken = await settingsStore.HasTokenAsync(cancellationToken);
         var diarizationEnabled = useCurrentSettings
-            ? hasToken && settings.HuggingfaceTermsConfirmed
+            ? RuntimeProfile.ResolveDiarizationDefault(
+                settings.ComputeMode,
+                hasToken && settings.HuggingfaceTermsConfirmed)
             : existingRequest.DiarizationEnabled;
         return await CreateJobFromInputsAsync(
             outputRoot,
@@ -218,9 +223,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             diarizationEnabled,
             useCurrentSettings ? settings.ComputeMode : existingRequest.ComputeMode,
             useCurrentSettings ? settings.ProcessingQuality : existingRequest.ProcessingQuality,
-            useCurrentSettings ? settings.TranscriptionInitialPrompt : existingRequest.TranscriptionInitialPrompt,
-            useCurrentSettings ? settings.TranscriptNormalizationMode : existingRequest.TranscriptNormalizationMode,
-            useCurrentSettings ? settings.TranscriptNormalizationGlossary : existingRequest.TranscriptNormalizationGlossary,
+            existingRequest.SupplementalContextText,
             cancellationToken);
     }
 
@@ -561,9 +564,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         bool diarizationEnabled,
         string computeMode,
         string processingQuality,
-        string? transcriptionInitialPrompt,
-        string? transcriptNormalizationMode,
-        string? transcriptNormalizationGlossary,
+        string? supplementalContextText,
         CancellationToken cancellationToken)
     {
         var jobId = $"job-{DateTimeOffset.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}"[..28];
@@ -588,19 +589,16 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
                 computeMode,
                 processingQuality,
                 diarizationEnabled,
-                transcriptionInitialPrompt,
-                transcriptNormalizationMode,
-                transcriptNormalizationGlossary),
+                supplementalContextText,
+                secondPassEnabled: true,
+                contextBuilderVersion: ConversionSignature.ContextBuilderVersion),
             TranscriptionBackend = ConversionSignature.TranscriptionBackend,
             TranscriptionModelId = ConversionSignature.ResolveTranscriptionModelId(processingQuality),
-            TranscriptionInitialPrompt = string.IsNullOrWhiteSpace(transcriptionInitialPrompt)
+            SupplementalContextText = string.IsNullOrWhiteSpace(supplementalContextText)
                 ? null
-                : transcriptionInitialPrompt.Trim(),
-            TranscriptNormalizationMode = ConversionSignature.NormalizeTranscriptNormalizationMode(
-                transcriptNormalizationMode),
-            TranscriptNormalizationGlossary = string.IsNullOrWhiteSpace(transcriptNormalizationGlossary)
-                ? null
-                : transcriptNormalizationGlossary,
+                : supplementalContextText.Replace("\r\n", "\n").Replace('\r', '\n').Trim(),
+            SecondPassEnabled = true,
+            ContextBuilderVersion = ConversionSignature.ContextBuilderVersion,
             DiarizationEnabled = diarizationEnabled,
             DiarizationModelId = diarizationEnabled ? ConversionSignature.DiarizationModelId : null,
             VadBackend = ConversionSignature.VadBackend,
@@ -924,14 +922,17 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             OriginalPath = GetOptionalString(payload, "original_path"),
         };
 
-    private static string ResolveConversionSignature(AppSettingsDocument settings, bool diarizationEnabled) =>
+    private static string ResolveConversionSignature(
+        AppSettingsDocument settings,
+        bool diarizationEnabled,
+        string? supplementalContextText) =>
         ConversionSignature.Build(
             settings.ComputeMode,
             settings.ProcessingQuality,
             diarizationEnabled,
-            settings.TranscriptionInitialPrompt,
-            settings.TranscriptNormalizationMode,
-            settings.TranscriptNormalizationGlossary);
+            supplementalContextText,
+            secondPassEnabled: true,
+            contextBuilderVersion: ConversionSignature.ContextBuilderVersion);
 
     private static string BuildCatalogKey(string? sourceHash, string? conversionSignature) =>
         $"{(sourceHash ?? "").Trim().ToLowerInvariant()}::{(conversionSignature ?? "").Trim().ToLowerInvariant()}";
@@ -1149,15 +1150,15 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
     {
         Directory.CreateDirectory(exportRoot);
         var timelinesRoot = Path.Combine(exportRoot, "timelines");
-        var rawTranscriptsRoot = Path.Combine(exportRoot, "raw-transcripts");
-        var normalizedTranscriptsRoot = Path.Combine(exportRoot, "normalized-transcripts");
-        var normalizationReportsRoot = Path.Combine(exportRoot, "normalization-reports");
+        var pass1TranscriptsRoot = Path.Combine(exportRoot, "pass1-transcripts");
+        var pass2TranscriptsRoot = Path.Combine(exportRoot, "pass2-transcripts");
+        var contextDocsRoot = Path.Combine(exportRoot, "context-docs");
         var speakerSummariesRoot = Path.Combine(exportRoot, "speaker-summaries");
         var featureSummariesRoot = Path.Combine(exportRoot, "audio-feature-summaries");
         Directory.CreateDirectory(timelinesRoot);
-        Directory.CreateDirectory(rawTranscriptsRoot);
-        Directory.CreateDirectory(normalizedTranscriptsRoot);
-        Directory.CreateDirectory(normalizationReportsRoot);
+        Directory.CreateDirectory(pass1TranscriptsRoot);
+        Directory.CreateDirectory(pass2TranscriptsRoot);
+        Directory.CreateDirectory(contextDocsRoot);
         Directory.CreateDirectory(speakerSummariesRoot);
         Directory.CreateDirectory(featureSummariesRoot);
         var timelineRows = ResolveExportTimelineRows(runDirectory, request, manifest);
@@ -1192,20 +1193,21 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
                 SourcePath = row.SourcePath,
                 TimelinePath = $"timelines/{fileName}",
             };
-            if (!string.IsNullOrWhiteSpace(row.RawTranscriptPath) && File.Exists(row.RawTranscriptPath))
+            if (!string.IsNullOrWhiteSpace(row.Pass1TranscriptPath) && File.Exists(row.Pass1TranscriptPath))
             {
-                File.Copy(row.RawTranscriptPath, Path.Combine(rawTranscriptsRoot, fileName), overwrite: true);
-                exportedRow.RawTranscriptPath = $"raw-transcripts/{fileName}";
+                File.Copy(row.Pass1TranscriptPath, Path.Combine(pass1TranscriptsRoot, fileName), overwrite: true);
+                exportedRow.Pass1TranscriptPath = $"pass1-transcripts/{fileName}";
             }
-            if (!string.IsNullOrWhiteSpace(row.NormalizedTranscriptPath) && File.Exists(row.NormalizedTranscriptPath))
+            if (!string.IsNullOrWhiteSpace(row.Pass2TranscriptPath) && File.Exists(row.Pass2TranscriptPath))
             {
-                File.Copy(row.NormalizedTranscriptPath, Path.Combine(normalizedTranscriptsRoot, fileName), overwrite: true);
-                exportedRow.NormalizedTranscriptPath = $"normalized-transcripts/{fileName}";
+                File.Copy(row.Pass2TranscriptPath, Path.Combine(pass2TranscriptsRoot, fileName), overwrite: true);
+                exportedRow.Pass2TranscriptPath = $"pass2-transcripts/{fileName}";
             }
-            if (!string.IsNullOrWhiteSpace(row.NormalizationReportPath) && File.Exists(row.NormalizationReportPath))
+            if (!string.IsNullOrWhiteSpace(row.ContextDocPath) && File.Exists(row.ContextDocPath))
             {
-                File.Copy(row.NormalizationReportPath, Path.Combine(normalizationReportsRoot, fileName), overwrite: true);
-                exportedRow.NormalizationReportPath = $"normalization-reports/{fileName}";
+                var contextFileName = $"{Path.GetFileNameWithoutExtension(fileName)}.txt";
+                File.Copy(row.ContextDocPath, Path.Combine(contextDocsRoot, contextFileName), overwrite: true);
+                exportedRow.ContextDocPath = $"context-docs/{contextFileName}";
             }
             if (!string.IsNullOrWhiteSpace(row.SpeakerSummaryPath) && File.Exists(row.SpeakerSummaryPath))
             {
@@ -1229,7 +1231,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             hasWorkerLog: File.Exists(Path.Combine(exportRoot, "logs", "worker.log")));
     }
 
-    private static List<(string AudioId, string Label, string TimelinePath, string SourcePath, string? RawTranscriptPath, string? NormalizedTranscriptPath, string? NormalizationReportPath, string? SpeakerSummaryPath, string? AudioFeatureSummaryPath)> ResolveExportTimelineRows(
+    private static List<(string AudioId, string Label, string TimelinePath, string SourcePath, string? Pass1TranscriptPath, string? Pass2TranscriptPath, string? ContextDocPath, string? SpeakerSummaryPath, string? AudioFeatureSummaryPath)> ResolveExportTimelineRows(
         string runDirectory,
         JobRequestDocument? request,
         ManifestDocument? manifest)
@@ -1240,7 +1242,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             return [];
         }
 
-        var timelineRows = new List<(string AudioId, string Label, string TimelinePath, string SourcePath, string? RawTranscriptPath, string? NormalizedTranscriptPath, string? NormalizationReportPath, string? SpeakerSummaryPath, string? AudioFeatureSummaryPath)>();
+        var timelineRows = new List<(string AudioId, string Label, string TimelinePath, string SourcePath, string? Pass1TranscriptPath, string? Pass2TranscriptPath, string? ContextDocPath, string? SpeakerSummaryPath, string? AudioFeatureSummaryPath)>();
         foreach (var item in resolvedItems)
         {
             SourceInfoExportDocument? sourceInfo = null;
@@ -1262,9 +1264,9 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
                 BestExportLabel(item.MediaId, sourceInfo, item.SourcePath),
                 item.TimelinePath,
                 item.SourcePath,
-                ResolveSiblingArtifactPath(item.TimelinePath, "transcript/raw.md"),
-                ResolveSiblingArtifactPath(item.TimelinePath, "transcript/normalized.md"),
-                ResolveSiblingArtifactPath(item.TimelinePath, "transcript/normalization_report.md"),
+                ResolveSiblingArtifactPath(item.TimelinePath, "transcript/pass1.md"),
+                ResolveSiblingArtifactPath(item.TimelinePath, "transcript/pass2.md"),
+                ResolveSiblingArtifactPath(item.TimelinePath, "transcript/context_merged.txt"),
                 ResolveSiblingArtifactPath(item.TimelinePath, "analysis/speaker_summary.md"),
                 ResolveSiblingArtifactPath(item.TimelinePath, "analysis/audio_features.md")));
         }
@@ -1481,14 +1483,14 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         foreach (var row in rows)
         {
             bodyRows.AppendLine("<tr>");
-            bodyRows.AppendLine($"<td>{Encode(row.Label)}</td>");
-            bodyRows.AppendLine($"<td><code>{Encode(row.SourcePath)}</code></td>");
-            bodyRows.AppendLine($"<td>{LinkOrMuted(row.TimelinePath, "timeline")}</td>");
-            bodyRows.AppendLine($"<td>{LinkOrMuted(row.RawTranscriptPath, "raw")}</td>");
-            bodyRows.AppendLine($"<td>{LinkOrMuted(row.NormalizedTranscriptPath, "normalized")}</td>");
-            bodyRows.AppendLine($"<td>{LinkOrMuted(row.NormalizationReportPath, "report")}</td>");
-            bodyRows.AppendLine($"<td>{LinkOrMuted(row.SpeakerSummaryPath, "speaker")}</td>");
-            bodyRows.AppendLine($"<td>{LinkOrMuted(row.AudioFeatureSummaryPath, "features")}</td>");
+            bodyRows.AppendLine(string.Concat("<td>", Encode(row.Label), "</td>"));
+            bodyRows.AppendLine(string.Concat("<td><code>", Encode(row.SourcePath), "</code></td>"));
+            bodyRows.AppendLine(string.Concat("<td>", LinkOrMuted(row.TimelinePath, "timeline"), "</td>"));
+            bodyRows.AppendLine(string.Concat("<td>", LinkOrMuted(row.Pass1TranscriptPath, "pass1"), "</td>"));
+            bodyRows.AppendLine(string.Concat("<td>", LinkOrMuted(row.Pass2TranscriptPath, "pass2"), "</td>"));
+            bodyRows.AppendLine(string.Concat("<td>", LinkOrMuted(row.ContextDocPath, "context"), "</td>"));
+            bodyRows.AppendLine(string.Concat("<td>", LinkOrMuted(row.SpeakerSummaryPath, "speaker"), "</td>"));
+            bodyRows.AppendLine(string.Concat("<td>", LinkOrMuted(row.AudioFeatureSummaryPath, "features"), "</td>"));
             bodyRows.AppendLine("</tr>");
         }
 
@@ -1530,7 +1532,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
                 "    <h2>Per-item artifacts</h2>",
                 "    <table>",
                 "      <thead>",
-                "        <tr><th>Item</th><th>Source</th><th>Timeline</th><th>Raw</th><th>Normalized</th><th>Report</th><th>Speaker</th><th>Features</th></tr>",
+                "        <tr><th>Item</th><th>Source</th><th>Timeline</th><th>Pass1</th><th>Pass2</th><th>Context</th><th>Speaker</th><th>Features</th></tr>",
                 "      </thead>",
                 "      <tbody>",
                 bodyRows.ToString(),
@@ -1550,9 +1552,9 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         public string Label { get; set; } = "";
         public string SourcePath { get; set; } = "";
         public string TimelinePath { get; set; } = "";
-        public string? RawTranscriptPath { get; set; }
-        public string? NormalizedTranscriptPath { get; set; }
-        public string? NormalizationReportPath { get; set; }
+        public string? Pass1TranscriptPath { get; set; }
+        public string? Pass2TranscriptPath { get; set; }
+        public string? ContextDocPath { get; set; }
         public string? SpeakerSummaryPath { get; set; }
         public string? AudioFeatureSummaryPath { get; set; }
     }

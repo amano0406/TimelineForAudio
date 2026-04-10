@@ -8,7 +8,7 @@ The current public release line is `TimelineForAudio v0.3.4 Tech Preview`.
 
 - baseline support is Windows + Docker Desktop + CPU mode
 - macOS is an experimental source-based path
-- GPU mode is available only on supported NVIDIA + Docker GPU setups and is best-effort, not baseline support
+- GPU mode is available on supported NVIDIA + Docker GPU setups through a dedicated GPU worker image
 - this app is local-first and desktop-style, not a hosted SaaS service
 
 ## Models Used by the Worker
@@ -23,6 +23,7 @@ Current main components:
   - built-in VAD filtering during transcription
 - `pyannote/speaker-diarization-community-1`
   - optional speaker diarization
+  - driven from worker-preloaded waveform input instead of direct file-path decoding
 - `librosa`
   - pitch and speaking-rate-adjacent feature extraction
 - `ffmpeg`
@@ -48,17 +49,16 @@ Without those two conditions, the app does not fail the whole job. It continues 
 
 For the initial public release, this remains an optional feature, not part of the baseline support contract.
 
-## Transcript Normalization Notes
+## Two-Pass Transcript Notes
 
-The app preserves the raw transcript and can optionally create a normalized transcript variant.
+The app uses a two-pass ASR flow:
 
-Current normalization behavior:
+- pass1 creates a first full transcript
+- deterministic context builder output is created from pass1 plus optional user-supplied supplemental context
+- pass2 reruns ASR on the same audio with that merged context text
+- speaker diarization runs after pass2 so the final transcript text stays fixed and only speaker metadata is added
 
-- deterministic glossary-based text replacement
-- deterministic speaker-label replacement
-- separate normalization report generation
-
-This is not an LLM rewrite pass. The raw transcript remains available for review and provenance checks.
+Pass2 becomes the final transcript. The app does not run glossary-style lexical rewrites after pass2.
 
 ## Audio Feature Notes
 

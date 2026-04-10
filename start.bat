@@ -30,9 +30,26 @@ if not exist ".env" (
 )
 
 set "WEB_PORT=38090"
+set "HAS_WEB_PORT="
+set "LEGACY_WEB_PORT="
 
 for /f "usebackq tokens=1,* delims==" %%A in (".env") do (
-  if /I "%%A"=="TIMELINE_FOR_AUDIO_WEB_PORT" set "WEB_PORT=%%B"
+  if /I "%%A"=="TIMELINE_FOR_AUDIO_WEB_PORT" (
+    set "WEB_PORT=%%B"
+    set "HAS_WEB_PORT=1"
+  )
+  if /I "%%A"=="VIDEO2TIMELINE_WEB_PORT" set "LEGACY_WEB_PORT=%%B"
+)
+
+if not defined HAS_WEB_PORT (
+  if defined LEGACY_WEB_PORT (
+    set "WEB_PORT=!LEGACY_WEB_PORT!"
+    powershell -NoLogo -NoProfile -Command "$path = '.env'; $lines = @(Get-Content $path -ErrorAction SilentlyContinue) | Where-Object { $_ -notmatch '^(TIMELINE_FOR_AUDIO|VIDEO2TIMELINE)_WEB_PORT=' }; $lines + 'TIMELINE_FOR_AUDIO_WEB_PORT=!WEB_PORT!' | Set-Content $path -Encoding ascii"
+    echo Updated .env to use TIMELINE_FOR_AUDIO_WEB_PORT=!WEB_PORT!.
+  ) else (
+    >> ".env" echo TIMELINE_FOR_AUDIO_WEB_PORT=%WEB_PORT%
+    echo Added TIMELINE_FOR_AUDIO_WEB_PORT=%WEB_PORT% to .env.
+  )
 )
 
 echo Starting web and worker containers...

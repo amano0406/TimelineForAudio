@@ -2,6 +2,12 @@
 
 更新日: 2026-04-05 Asia/Tokyo
 
+注記:
+
+- この設計メモには旧検討案が残っています。
+- 現行実装は `pass1 -> context builder -> pass2` の 2-pass ASR を採用しており、glossary ベースの transcript normalization は採用していません。
+- 最新の実装契約は `README.md` と `docs/PIPELINE.md` を優先してください。
+
 ## 目的
 
 `TimelineForAudio` は `TimelineForAudio` とは別リポジトリ・別アプリとして作る。

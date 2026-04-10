@@ -25,10 +25,12 @@ services:
       - worker
 
   worker:
+    image: timeline-for-audio-worker-cpu:latest
     build:
       context: .
       dockerfile: docker/worker.Dockerfile
     environment:
+      TIMELINE_FOR_AUDIO_WORKER_FLAVOR: cpu
       TIMELINE_FOR_AUDIO_RUNTIME_DEFAULTS: /app/config/runtime.defaults.json
       TIMELINE_FOR_AUDIO_APPDATA_ROOT: /shared/app-data
       TIMELINE_FOR_AUDIO_UPLOADS_ROOT: /shared/uploads

@@ -84,6 +84,22 @@
             </section>
         </div>
 
+        <section class="panel">
+            <div class="space-y-2">
+                <h2 class="section-title">@L("jobs.new.supplemental_context.title")</h2>
+                <p class="text-sm text-slate-600">@L("jobs.new.supplemental_context.description")</p>
+            </div>
+            <div class="mt-4 space-y-2">
+                <textarea asp-for="SupplementalContextText"
+                          rows="8"
+                          class="form-input w-full"
+                          spellcheck="false"
+                          id="supplemental-context-text"
+                          placeholder="@L("jobs.new.supplemental_context.placeholder")"></textarea>
+                <p class="text-xs text-slate-500">@L("jobs.new.supplemental_context.help")</p>
+            </div>
+        </section>
+
         <section class="panel subtle-panel text-sm text-slate-600">
             @L("jobs.new.cache_notice")
         </section>
@@ -167,8 +183,9 @@
             const decisionModalCancel = document.getElementById("decision-modal-cancel");
             const decisionModalSecondary = document.getElementById("decision-modal-secondary");
             const decisionModalPrimary = document.getElementById("decision-modal-primary");
+            const supplementalContextText = document.getElementById("supplemental-context-text");
 
-            if (!form || !filesInput || !directoryInput || !pickFilesButton || !pickFolderButton || !executeButton || !selectedItemsList || !selectedItemsEmpty || !selectedItemsCount || !selectionCountLabel || !selectionFeedback || !progressPanel || !progressTitle || !progressMessage || !progressPercent || !progressBar || !cancelButton || !decisionModal || !decisionModalTitle || !decisionModalMessage || !decisionModalList || !decisionModalCancel || !decisionModalSecondary || !decisionModalPrimary) {
+            if (!form || !filesInput || !directoryInput || !pickFilesButton || !pickFolderButton || !executeButton || !selectedItemsList || !selectedItemsEmpty || !selectedItemsCount || !selectionCountLabel || !selectionFeedback || !progressPanel || !progressTitle || !progressMessage || !progressPercent || !progressBar || !cancelButton || !decisionModal || !decisionModalTitle || !decisionModalMessage || !decisionModalList || !decisionModalCancel || !decisionModalSecondary || !decisionModalPrimary || !supplementalContextText) {
                 return;
             }
 
@@ -219,6 +236,10 @@
             let uploadInProgress = false;
             let cancelRequested = false;
             let suppressLeaveWarning = false;
+
+            function getSupplementalContextValue() {
+                return (supplementalContextText.value || "").trim();
+            }
             let selectionSequence = 0;
             let decisionModalResolve = null;
             const selectedEntries = [];
@@ -686,7 +707,8 @@
                         headers: { "Content-Type": "application/json" },
                         signal: uploadController.signal,
                         body: JSON.stringify({
-                            uploadedFiles: uploadedItems
+                            uploadedFiles: uploadedItems,
+                            supplementalContextText: getSupplementalContextValue()
                         })
                     });
                     if (!duplicateResponse.ok) {
@@ -761,7 +783,8 @@
                         signal: uploadController.signal,
                         body: JSON.stringify({
                             uploadedFiles: filesForJob,
-                            reprocessDuplicates
+                            reprocessDuplicates,
+                            supplementalContextText: getSupplementalContextValue()
                         })
                     });
                     if (!jobResponse.ok) {

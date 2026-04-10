@@ -9,9 +9,9 @@
 - Audio ID: `2026-03-09-12-15-56-example`
 - Duration: `70.417s`
 - Model: `medium`
+- Transcript source: `pass2`
+- Supplemental context configured: `true`
 - Diarization used: `true`
-- Transcript normalization mode: `deterministic`
-- Normalized segments changed: `1`
 
 ## Summary
 
@@ -45,6 +45,7 @@
 ポイント:
 
 - `timelines/*.md` には、タイムスタンプ付きの最終タイムラインが入ります
-- `raw-transcripts/*.md` には、正規化前の transcript を残します
-- `normalized-transcripts/*.md` には、deterministic な表記補正後の transcript を出します
+- `pass1-transcripts/*.md` には、1 回目の ASR transcript を残します
+- `pass2-transcripts/*.md` には、最終 transcript として使われた 2 回目の ASR 結果を残します
+- `context-docs/*.txt` には、pass2 に注入した merged context を残します
 - `audio-feature-summaries/*.md` には、pause、loudness、pitch、overlap などの要約が入ります

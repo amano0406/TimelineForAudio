@@ -35,6 +35,11 @@ def render_timeline(
     speaker_summary: dict[str, Any],
     audio_feature_summary: dict[str, Any],
 ) -> str:
+    transcript_source = str(
+        transcript_payload.get("pass_name")
+        or source_info.get("timeline_transcript_variant")
+        or "pass2"
+    )
     lines = [
         "# Audio Timeline",
         "",
@@ -42,9 +47,9 @@ def render_timeline(
         f"- Audio ID: `{source_info.get('audio_id') or source_info.get('media_id')}`",
         f"- Duration: `{source_info.get('duration_seconds', 0):.3f}s`",
         f"- Model: `{source_info.get('model_id') or transcript_payload.get('model', '')}`",
+        f"- Transcript source: `{transcript_source}`",
+        f"- Supplemental context configured: `{bool(source_info.get('supplemental_context_configured', False))}`",
         f"- Diarization used: `{transcript_payload.get('diarization_used', False)}`",
-        f"- Transcript normalization mode: `{transcript_payload.get('normalization', {}).get('mode') or source_info.get('transcript_normalization_mode') or 'off'}`",
-        f"- Normalized segments changed: `{transcript_payload.get('normalization', {}).get('changed_segment_count', 0)}`",
         "",
         "## Summary",
         "",
@@ -60,7 +65,20 @@ def render_timeline(
         "",
     ]
 
-    segments = transcript_payload.get("segments", []) or []
+    raw_segments = (
+        transcript_payload.get("speaker_segments")
+        or transcript_payload.get("segments")
+        or transcript_payload.get("raw_segments")
+        or []
+    )
+    indexed_segments = list(enumerate(raw_segments))
+    indexed_segments.sort(
+        key=lambda row: (
+            float(row[1].get("original_start", row[1].get("start", 0.0)) or 0.0),
+            row[0],
+        )
+    )
+    segments = [segment for _, segment in indexed_segments]
     if not segments:
         lines.extend(["_No transcript segments generated._", ""])
         rendered = "\n".join(lines).rstrip() + "\n"

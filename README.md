@@ -12,7 +12,7 @@ Current public contract:
 
 - baseline support: Windows + Docker Desktop + CPU mode
 - macOS: source-based experimental path
-- GPU mode: optional, NVIDIA-only, best-effort
+- GPU mode: optional, NVIDIA-only, via a dedicated GPU worker overlay for Docker Compose
 - speaker diarization: optional, requires a Hugging Face token plus gated approval for `pyannote/speaker-diarization-community-1`
 - this is a local-first desktop-style tool, not a hosted SaaS product
 
@@ -23,11 +23,12 @@ This app takes audio files on your computer and turns them into a ZIP package th
 Inside the app, the processing is simple:
 
 1. it normalizes the input audio into a stable worker format
-2. it transcribes speech into timestamped text
-3. it applies optional speaker diarization
-4. it applies deterministic transcript normalization rules when configured
-5. it computes audio summaries such as pauses, loudness, speaking rate, pitch, and overlap
-6. it packages the final results into a ZIP file
+2. it runs pass1 ASR to capture the whole recording
+3. it builds deterministic plain-text context from pass1 and any job-level supplemental context
+4. it runs pass2 ASR on the same audio with that merged context, and uses pass2 as the final transcript
+5. it applies optional speaker diarization after pass2 and adds speaker-attributed spans without rewriting transcript text
+6. it computes audio summaries such as pauses, loudness, speaking rate, pitch, and overlap
+7. it packages the final results into a ZIP file
 
 You do not need to know model names or internal details to use it.
 
@@ -88,9 +89,9 @@ Typical contents:
 - `README.html`
 - `TRANSCRIPTION_INFO.md`
 - `timelines/<captured-datetime>.md`
-- `raw-transcripts/<captured-datetime>.md`
-- `normalized-transcripts/<captured-datetime>.md`
-- `normalization-reports/<captured-datetime>.md`
+- `pass1-transcripts/<captured-datetime>.md`
+- `pass2-transcripts/<captured-datetime>.md`
+- `context-docs/<captured-datetime>.txt`
 - `speaker-summaries/<captured-datetime>.md`
 - `audio-feature-summaries/<captured-datetime>.md`
 
@@ -102,19 +103,19 @@ TimelineForAudio-export.zip
   TRANSCRIPTION_INFO.md
   timelines/
     2026-03-26 18-00-00.md
-  raw-transcripts/
+  pass1-transcripts/
     2026-03-26 18-00-00.md
-  normalized-transcripts/
+  pass2-transcripts/
     2026-03-26 18-00-00.md
-  normalization-reports/
-    2026-03-26 18-00-00.md
+  context-docs/
+    2026-03-26 18-00-00.txt
   speaker-summaries/
     2026-03-26 18-00-00.md
   audio-feature-summaries/
     2026-03-26 18-00-00.md
 ```
 
-`README.html` is the export entrypoint. It links to each generated timeline, transcript variant, normalization report, speaker summary, and audio feature summary.
+`README.html` is the export entrypoint. It links to each generated timeline, pass1 transcript, pass2 transcript, merged context document, speaker summary, and audio feature summary.
 
 ## Internal Working Files vs ZIP Output
 
@@ -125,7 +126,8 @@ That internal folder can contain:
 - request, status, result, and manifest JSON files
 - worker logs
 - normalized audio and probe metadata
-- raw and normalized transcript JSON and markdown
+- pass1 and pass2 transcript JSON and markdown
+- context builder artifacts and pass diff JSON
 - speaker and audio feature summaries in JSON and markdown
 - temporary processing files
 
@@ -170,27 +172,30 @@ The start script tries to open an app-style window with Google Chrome, Microsoft
 - internet access on first run for container and model downloads
 - optional Hugging Face token if you want `pyannote` diarization
 - optional gated-model approval for `pyannote`
-- NVIDIA GPU plus Docker GPU access if you want GPU mode on a best-effort basis
+- NVIDIA GPU plus Docker GPU access if you want GPU mode
 
 ## Compute Modes
 
-The public release baseline is CPU mode.
+The public release baseline is `CPU + Standard`.
 
-- `CPU`
-  - works on more machines
-  - slower
-- `GPU`
-  - requires NVIDIA GPU support inside Docker
-  - faster for the main ML workloads
-  - best-effort in the `v0.3.4` public release line
-
-Processing quality:
-
-- `Standard`
+- `CPU + Standard`
+  - baseline lane
   - `faster-whisper medium`
-- `High`
+  - diarization default: off
+- `CPU + High`
+  - expert lane
   - `faster-whisper large-v3`
-  - available only when GPU mode is enabled and enough VRAM is detected
+  - slower, but available
+  - diarization default: off
+- `GPU + Standard`
+  - practical fast lane
+  - `faster-whisper medium`
+  - diarization default: on when Hugging Face token and gated approval are ready
+- `GPU + High`
+  - recommended best-quality lane
+  - `faster-whisper large-v3`
+  - around 10 GB or more of VRAM is the practical target
+  - 8-10 GB should be treated as experimental / expert
 
 In this development environment, GPU execution was verified on `NVIDIA GeForce RTX 4070` with Docker GPU access.
 

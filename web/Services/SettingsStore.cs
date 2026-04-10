@@ -143,11 +143,6 @@ public sealed class SettingsStore(AppPaths paths)
             _ => "standard",
         };
 
-        value.TranscriptionInitialPrompt = value.TranscriptionInitialPrompt?.Trim() ?? "";
-        value.TranscriptNormalizationMode = ConversionSignature.NormalizeTranscriptNormalizationMode(
-            value.TranscriptNormalizationMode);
-        value.TranscriptNormalizationGlossary = value.TranscriptNormalizationGlossary ?? "";
-
         value.UiLanguage = value.UiLanguage?.Trim() switch
         {
             { Length: > 0 } language => language,

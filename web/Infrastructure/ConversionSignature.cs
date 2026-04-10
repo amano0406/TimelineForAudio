@@ -6,24 +6,23 @@ namespace TimelineForAudio.Web.Infrastructure;
 
 public static class ConversionSignature
 {
-    public const string PipelineVersion = "2026-04-05-mvp1";
+    public const string PipelineVersion = "2026-04-11-2pass2-diarize1";
     public const string TranscriptionBackend = "faster-whisper";
     public const string DiarizationModelId = "pyannote/speaker-diarization-community-1";
-    public const string VadBackend = "silero-vad";
+    public const string VadBackend = "faster-whisper-builtin";
     public const string VadModelId = "faster-whisper-default";
+    public const string ContextBuilderVersion = "context-builder-v1";
 
     public static string ResolveTranscriptionModelId(string? processingQuality) =>
-        string.Equals(processingQuality, "high", StringComparison.OrdinalIgnoreCase)
-            ? "large-v3"
-            : "medium";
+        RuntimeProfile.ResolveTranscriptionModelId(processingQuality);
 
     public static string Build(
         string? computeMode,
         string? processingQuality,
         bool diarizationEnabled,
-        string? transcriptionInitialPrompt = null,
-        string? transcriptNormalizationMode = null,
-        string? transcriptNormalizationGlossary = null)
+        string? supplementalContextText = null,
+        bool secondPassEnabled = true,
+        string? contextBuilderVersion = null)
     {
         var payload = new Dictionary<string, object?>
         {
@@ -36,7 +35,6 @@ public static class ConversionSignature
                 ["backend"] = TranscriptionBackend,
                 ["model_id"] = ResolveTranscriptionModelId(processingQuality),
                 ["language"] = "ja",
-                ["initial_prompt_sha256"] = HashHintText(transcriptionInitialPrompt),
             },
             ["diarization"] = new Dictionary<string, object?>
             {
@@ -60,10 +58,13 @@ public static class ConversionSignature
             {
                 ["timeline_schema"] = "audio-markdown-v1",
             },
-            ["normalization"] = new Dictionary<string, object?>
+            ["second_pass"] = new Dictionary<string, object?>
             {
-                ["mode"] = NormalizeTranscriptNormalizationMode(transcriptNormalizationMode),
-                ["glossary_sha256"] = HashHintText(transcriptNormalizationGlossary),
+                ["enabled"] = secondPassEnabled,
+                ["supplemental_context_sha256"] = HashHintText(supplementalContextText),
+                ["context_builder_version"] = string.IsNullOrWhiteSpace(contextBuilderVersion)
+                    ? ContextBuilderVersion
+                    : contextBuilderVersion,
             },
         };
 
@@ -73,13 +74,10 @@ public static class ConversionSignature
     }
 
     public static string NormalizeComputeMode(string? value) =>
-        string.Equals(value, "gpu", StringComparison.OrdinalIgnoreCase) ? "gpu" : "cpu";
+        RuntimeProfile.NormalizeComputeMode(value);
 
     public static string NormalizeProcessingQuality(string? value) =>
-        string.Equals(value, "high", StringComparison.OrdinalIgnoreCase) ? "high" : "standard";
-
-    public static string NormalizeTranscriptNormalizationMode(string? value) =>
-        string.Equals(value, "off", StringComparison.OrdinalIgnoreCase) ? "off" : "deterministic";
+        RuntimeProfile.NormalizeProcessingQuality(value);
 
     private static string? HashHintText(string? value)
     {

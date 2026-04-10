@@ -9,9 +9,9 @@ This sample is based on a real generated timeline, with names, organizations, an
 - Audio ID: `2026-03-09-12-15-56-example`
 - Duration: `70.417s`
 - Model: `medium`
+- Transcript source: `pass2`
+- Supplemental context configured: `true`
 - Diarization used: `true`
-- Transcript normalization mode: `deterministic`
-- Normalized segments changed: `1`
 
 ## Summary
 
@@ -45,6 +45,7 @@ This sample is based on a real generated timeline, with names, organizations, an
 Notes:
 
 - `timelines/*.md` keeps the timestamped timeline view.
-- `raw-transcripts/*.md` preserves the pre-normalization transcript.
-- `normalized-transcripts/*.md` shows any deterministic text or speaker-label cleanup.
+- `pass1-transcripts/*.md` preserves the first ASR pass.
+- `pass2-transcripts/*.md` is the final transcript used by the timeline.
+- `context-docs/*.txt` keeps the merged plain-text context injected into pass2.
 - `audio-feature-summaries/*.md` carries pause, loudness, pitch, overlap, and related summaries.

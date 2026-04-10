@@ -9,7 +9,7 @@ The system prioritizes:
 - simple input selection for the user
 - readable job output for LLM workflows
 - local processing over cloud dependencies
-- preserving raw transcript artifacts alongside normalized output
+- preserving pass1 artifacts alongside the final pass2 transcript
 
 ## App Model
 
@@ -62,12 +62,15 @@ Each processed media item writes:
 - `source.json`
 - `audio/normalized.wav`
 - `audio/cut_map.json`
-- `transcript/raw.json`
-- `transcript/raw.md`
-- `transcript/normalized.json`
-- `transcript/normalized.md`
-- `transcript/normalization_report.json`
-- `transcript/normalization_report.md`
+- `transcript/pass1.json`
+- `transcript/pass1.md`
+- `transcript/context_primary.txt`
+- `transcript/context_secondary.txt` when provided
+- `transcript/context_merged.txt`
+- `transcript/context_report.json`
+- `transcript/pass2.json`
+- `transcript/pass2.md`
+- `transcript/pass_diff.json`
 - `analysis/speaker_summary.json`
 - `analysis/speaker_summary.md`
 - `analysis/audio_features.json`
@@ -81,9 +84,9 @@ Reduced export packaging writes:
 - `FAILURE_REPORT.md` when needed
 - `logs/worker.log` when needed
 - `timelines/*.md`
-- `raw-transcripts/*.md`
-- `normalized-transcripts/*.md`
-- `normalization-reports/*.md`
+- `pass1-transcripts/*.md`
+- `pass2-transcripts/*.md`
+- `context-docs/*.txt`
 - `speaker-summaries/*.md`
 - `audio-feature-summaries/*.md`
 
@@ -109,9 +112,6 @@ Stored in `app-data/settings.json`:
 - audio extensions
 - compute mode
 - processing quality
-- transcription initial prompt
-- transcript normalization mode
-- transcript normalization glossary
 - Hugging Face terms confirmation
 
 Stored separately in `app-data/secrets/huggingface.token`:
@@ -125,15 +125,17 @@ v1 keeps the UI simple:
 - compute mode: `cpu` or `gpu`
 - processing quality: `standard` or `high`
 - optional diarization
-- optional deterministic transcript normalization
+- optional job-level supplemental context text
 
 There is no free-form model picker in v1.
 
 ## CPU / GPU
 
 - CPU path is implemented and is the public baseline
-- GPU path is implemented as an NVIDIA-only best-effort mode
-- high quality requires GPU mode and enough VRAM
+- GPU path is implemented through a dedicated NVIDIA-only Docker worker overlay
+- high quality is available on both CPU and GPU
+- CPU + high is an expert lane
+- GPU + high is the recommended best-quality lane, with about 10 GiB+ VRAM as the practical target
 
 ## Duplicate Handling
 

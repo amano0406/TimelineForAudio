@@ -12,7 +12,7 @@ This document defines the first public GitHub Release line for `TimelineForAudio
   - macOS experimental
   - Docker Desktop required
   - CPU baseline
-  - GPU optional and best-effort
+  - GPU supported through the compose GPU overlay
 
 ## Version Policy
 

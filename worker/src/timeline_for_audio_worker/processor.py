@@ -9,7 +9,9 @@ from typing import Any, Callable
 
 from .audio_features import analyze_audio, write_speaker_summary
 from .catalog import append_catalog_rows, catalog_key, load_catalog
+from .context_builder import CONTEXT_BUILDER_VERSION, build_context_documents
 from .contracts import JobRequest, JobResult, JobStatus, ManifestItem
+from .diarization import apply_speaker_diarization
 from .eta import build_eta_predictor, estimate_remaining_seconds
 from .ffmpeg_utils import extract_audio, probe_audio
 from .fs_utils import (
@@ -24,17 +26,19 @@ from .fs_utils import (
     write_text,
 )
 from .hashing import sha256_file
-from .normalization import normalize_transcript_artifacts
+from .pass_diff import write_pass_diff
 from .settings import load_settings
 from .timeline import render_timeline
 from .transcribe import transcribe_audio
 
 _ITEM_STAGE_BOUNDS: dict[str, tuple[float, float]] = {
-    "extract_audio": (0.0, 0.16),
-    "transcribe": (0.16, 0.72),
-    "normalize_transcript": (0.72, 0.80),
-    "analyze_audio": (0.80, 0.94),
-    "timeline_render": (0.94, 1.0),
+    "extract_audio": (0.0, 0.12),
+    "transcribe_pass1": (0.12, 0.42),
+    "build_context": (0.42, 0.50),
+    "transcribe_pass2": (0.50, 0.78),
+    "diarize_audio": (0.78, 0.88),
+    "analyze_audio": (0.88, 0.96),
+    "timeline_render": (0.96, 1.0),
 }
 
 
@@ -146,12 +150,20 @@ def _stage_expected_seconds(stage_name: str, media_duration_sec: float, compute_
     safe_duration = max(1.0, media_duration_sec)
     if stage_name == "extract_audio":
         return max(1.5, min(25.0, safe_duration * 0.06))
-    if stage_name == "transcribe":
-        factor = 0.25 if compute_mode == "gpu" else 1.20
-        ceiling = 180.0 if compute_mode == "gpu" else 900.0
+    if stage_name == "transcribe_pass1":
+        factor = 0.18 if compute_mode == "gpu" else 0.90
+        ceiling = 150.0 if compute_mode == "gpu" else 720.0
         return max(4.0, min(ceiling, safe_duration * factor))
-    if stage_name == "normalize_transcript":
-        return max(1.0, min(20.0, safe_duration * 0.05))
+    if stage_name == "build_context":
+        return max(1.0, min(12.0, safe_duration * 0.03))
+    if stage_name == "transcribe_pass2":
+        factor = 0.22 if compute_mode == "gpu" else 1.10
+        ceiling = 160.0 if compute_mode == "gpu" else 840.0
+        return max(4.0, min(ceiling, safe_duration * factor))
+    if stage_name == "diarize_audio":
+        factor = 0.10 if compute_mode == "gpu" else 0.45
+        ceiling = 120.0 if compute_mode == "gpu" else 480.0
+        return max(2.0, min(ceiling, safe_duration * factor))
     if stage_name == "analyze_audio":
         return max(2.0, min(120.0, safe_duration * 0.12))
     if stage_name == "timeline_render":
@@ -264,17 +276,17 @@ def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
             "# Transcription Info",
             "",
             f"- Audio transcription: `{request.transcription_backend}` with `{request.transcription_model_id}`, `ja`, requested `{request.compute_mode}`",
-            f"- Initial prompt configured: `{bool(request.transcription_initial_prompt)}`",
+            f"- Second pass enabled: `{request.second_pass_enabled}`",
+            f"- Supplemental context configured: `{bool(request.supplemental_context_text)}`",
+            f"- Context builder version: `{request.context_builder_version}`",
             f"- Diarization enabled: `{request.diarization_enabled}`",
             f"- Diarization model: `{request.diarization_model_id or ''}`",
             f"- VAD backend: `{request.vad_backend}` / `{request.vad_model_id}`",
-            f"- Transcript normalization mode: `{request.transcript_normalization_mode}`",
-            f"- Normalization glossary configured: `{bool(request.transcript_normalization_glossary)}`",
             f"- Pipeline version: `{request.pipeline_version}`",
             f"- Conversion signature: `{request.conversion_signature}`",
             "- Notes:",
-            "  - `raw` outputs are preserved.",
-            "  - `normalized` transcript outputs are emitted after deterministic glossary normalization.",
+            "  - `pass1` is used only to build deterministic context text.",
+            "  - `pass2` transcript becomes the final transcript and timeline source.",
             "  - Speaker summary and audio feature summary are emitted as sidecar markdown files.",
             "  - Optional audio analysis does not fail the main transcription job.",
             "",
@@ -432,8 +444,12 @@ def _process_one_item(
         "bitrate": manifest_item.bitrate,
         "model_id": manifest_item.model_id,
         "pipeline_version": manifest_item.pipeline_version,
-        "transcription_initial_prompt_configured": bool(request.transcription_initial_prompt),
-        "transcript_normalization_mode": request.transcript_normalization_mode,
+        "timeline_transcript_variant": "pass2",
+        "supplemental_context_configured": bool(request.supplemental_context_text),
+        "second_pass_enabled": request.second_pass_enabled,
+        "context_builder_version": request.context_builder_version or CONTEXT_BUILDER_VERSION,
+        "diarization_enabled": request.diarization_enabled,
+        "diarization_model_id": request.diarization_model_id,
     }
     write_json_atomic(media_dir / "source.json", source_info)
 
@@ -446,37 +462,74 @@ def _process_one_item(
     write_json_atomic(audio_dir / "cut_map.json", cut_map)
 
     if on_stage:
-        on_stage("transcribe", "Running faster-whisper transcription.")
-    transcript_payload = transcribe_audio(
+        on_stage("transcribe_pass1", "Running first-pass transcription.")
+    pass1_payload = transcribe_audio(
         source_name=item.display_name,
         audio_path=normalized_audio_path,
         transcript_dir=transcript_dir,
+        artifact_stem="pass1",
+        pass_name="pass1",
         cut_map=cut_map,
         compute_mode=request.compute_mode,
         processing_quality=request.processing_quality,
-        initial_prompt=request.transcription_initial_prompt,
+        initial_prompt=None,
+        diarization_enabled=False,
     )
     if on_stage:
-        on_stage("normalize_transcript", "Applying transcript normalization.")
-    normalized_transcript_payload, normalization_report = normalize_transcript_artifacts(
-        source_name=item.display_name,
+        on_stage("build_context", "Building deterministic context text.")
+    context_report = build_context_documents(
         transcript_dir=transcript_dir,
-        raw_payload=transcript_payload,
-        normalization_mode=request.transcript_normalization_mode,
-        glossary_text=request.transcript_normalization_glossary,
+        transcript_payload=pass1_payload,
+        supplemental_context_text=request.supplemental_context_text,
+    )
+    merged_context_path = transcript_dir / "context_merged.txt"
+    merged_context = (
+        merged_context_path.read_text(encoding="utf-8", errors="replace")
+        if merged_context_path.exists()
+        else ""
+    )
+    if on_stage:
+        on_stage("transcribe_pass2", "Running second-pass transcription.")
+    pass2_payload = transcribe_audio(
+        source_name=item.display_name,
+        audio_path=normalized_audio_path,
+        transcript_dir=transcript_dir,
+        artifact_stem="pass2",
+        pass_name="pass2",
+        cut_map=cut_map,
+        compute_mode=request.compute_mode,
+        processing_quality=request.processing_quality,
+        initial_prompt=merged_context,
+        diarization_enabled=request.diarization_enabled,
+    )
+    if on_stage:
+        on_stage("diarize_audio", "Applying speaker diarization.")
+    pass2_payload = apply_speaker_diarization(
+        source_name=item.display_name,
+        audio_path=normalized_audio_path,
+        transcript_dir=transcript_dir,
+        analysis_dir=analysis_dir,
+        transcript_payload=pass2_payload,
+        compute_mode=request.compute_mode,
+        artifact_stem="pass2",
+    )
+    write_pass_diff(
+        transcript_dir=transcript_dir,
+        pass1_payload=pass1_payload,
+        pass2_payload=pass2_payload,
     )
     if on_stage:
         on_stage("analyze_audio", "Computing audio summaries.")
     speaker_summary = write_speaker_summary(
         source_name=item.display_name,
         output_dir=analysis_dir,
-        transcript_payload=normalized_transcript_payload,
+        transcript_payload=pass2_payload,
     )
     audio_feature_summary = analyze_audio(
         source_name=item.display_name,
         audio_path=normalized_audio_path,
         duration_seconds=manifest_item.duration_seconds,
-        transcript_payload=normalized_transcript_payload,
+        transcript_payload=pass2_payload,
         output_dir=analysis_dir,
     )
     manifest_item.pause_summary = audio_feature_summary.get("pause_summary", {})
@@ -497,11 +550,21 @@ def _process_one_item(
     render_timeline(
         output_path=timeline_dir / "timeline.md",
         source_info=source_info,
-        transcript_payload=normalized_transcript_payload,
+        transcript_payload=pass2_payload,
         speaker_summary=speaker_summary,
         audio_feature_summary=audio_feature_summary,
     )
-    return [f"Normalization: {warning}" for warning in normalization_report.get("warnings", [])]
+    warnings: list[str] = []
+    for payload in (pass1_payload, pass2_payload):
+        prefix = str(payload.get("pass_name") or "pass")
+        for warning in payload.get("transcription_warnings", []) or []:
+            if str(warning).strip():
+                warnings.append(f"{prefix}: {warning}")
+        if payload.get("diarization_requested") and payload.get("diarization_error"):
+            warnings.append(f"{prefix} diarization: {payload['diarization_error']}")
+    if context_report.get("merged_context_truncated"):
+        warnings.append("build_context: merged context was truncated before pass2.")
+    return warnings
 
 
 def process_job(job_dir: Path | None = None) -> bool:

@@ -45,6 +45,15 @@ def _segment_bounds(segment: dict[str, Any]) -> tuple[float, float, str, str]:
     return start, end, speaker, text
 
 
+def _effective_segments(transcript_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    return (
+        transcript_payload.get("speaker_segments")
+        or transcript_payload.get("segments")
+        or transcript_payload.get("raw_segments")
+        or []
+    )
+
+
 def build_overlap_summary(segments: list[dict[str, Any]]) -> dict[str, Any]:
     if not segments:
         return {
@@ -114,7 +123,7 @@ def build_diarization_summaries(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     diarization_used = bool(transcript_payload.get("diarization_used", False))
     speaker_turns = transcript_payload.get("speaker_turns", []) or []
-    segments = transcript_payload.get("segments", []) or []
+    segments = _effective_segments(transcript_payload)
 
     if not diarization_used:
         reason = "Diarization was not used for this transcript."
@@ -220,7 +229,7 @@ def build_diarization_summaries(
 
 def build_speaker_summary(transcript_payload: dict[str, Any]) -> dict[str, Any]:
     speakers: dict[str, dict[str, Any]] = {}
-    for segment in transcript_payload.get("segments", []) or []:
+    for segment in _effective_segments(transcript_payload):
         start = float(segment.get("original_start", segment.get("start", 0.0)) or 0.0)
         end = float(segment.get("original_end", segment.get("end", start)) or start)
         speaker = str(segment.get("speaker") or "SPEAKER_00")
@@ -405,7 +414,7 @@ def analyze_audio(
         ),
     }
 
-    segments = transcript_payload.get("segments", []) or []
+    segments = _effective_segments(transcript_payload)
     overlap_summary = build_overlap_summary(segments)
     voiced_seconds = 0.0
     total_units = 0

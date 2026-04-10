@@ -3,27 +3,23 @@ from __future__ import annotations
 import hashlib
 import json
 
-PIPELINE_VERSION = "2026-04-05-mvp1"
+from .runtime_profile import (
+    TRANSCRIPTION_LANGUAGE,
+    normalize_compute_mode,
+    normalize_processing_quality,
+    resolve_model_name_for_quality,
+)
+
+PIPELINE_VERSION = "2026-04-11-2pass2-diarize1"
 TRANSCRIPTION_BACKEND = "faster-whisper"
 DIARIZATION_MODEL_ID = "pyannote/speaker-diarization-community-1"
-VAD_BACKEND = "silero-vad"
+VAD_BACKEND = "faster-whisper-builtin"
 VAD_MODEL_ID = "faster-whisper-default"
-
-
-def normalize_compute_mode(value: str | None) -> str:
-    return "gpu" if str(value or "").strip().lower() == "gpu" else "cpu"
-
-
-def normalize_processing_quality(value: str | None) -> str:
-    return "high" if str(value or "").strip().lower() == "high" else "standard"
+CONTEXT_BUILDER_VERSION = "context-builder-v1"
 
 
 def resolve_transcription_model_id(processing_quality: str | None) -> str:
-    return "large-v3" if normalize_processing_quality(processing_quality) == "high" else "medium"
-
-
-def normalize_transcript_normalization_mode(value: str | None) -> str:
-    return "off" if str(value or "").strip().lower() == "off" else "deterministic"
+    return resolve_model_name_for_quality(processing_quality)
 
 
 def _normalize_hint_text(value: str | None) -> str | None:
@@ -46,9 +42,9 @@ def build_conversion_signature(
     compute_mode: str | None,
     processing_quality: str | None,
     diarization_enabled: bool,
-    transcription_initial_prompt: str | None = None,
-    transcript_normalization_mode: str | None = None,
-    transcript_normalization_glossary: str | None = None,
+    supplemental_context_text: str | None = None,
+    second_pass_enabled: bool = True,
+    context_builder_version: str | None = None,
 ) -> str:
     payload = {
         "pipeline": "TimelineForAudio",
@@ -58,8 +54,7 @@ def build_conversion_signature(
         "transcription": {
             "backend": TRANSCRIPTION_BACKEND,
             "model_id": resolve_transcription_model_id(processing_quality),
-            "language": "ja",
-            "initial_prompt_sha256": _hash_hint_text(transcription_initial_prompt),
+            "language": TRANSCRIPTION_LANGUAGE,
         },
         "diarization": {
             "enabled": diarization_enabled,
@@ -79,9 +74,10 @@ def build_conversion_signature(
         "render": {
             "timeline_schema": "audio-markdown-v1",
         },
-        "normalization": {
-            "mode": normalize_transcript_normalization_mode(transcript_normalization_mode),
-            "glossary_sha256": _hash_hint_text(transcript_normalization_glossary),
+        "second_pass": {
+            "enabled": bool(second_pass_enabled),
+            "supplemental_context_sha256": _hash_hint_text(supplemental_context_text),
+            "context_builder_version": context_builder_version or CONTEXT_BUILDER_VERSION,
         },
     }
     canonical = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))

@@ -17,6 +17,9 @@ public sealed class NewModel(
     [BindProperty]
     public List<IFormFile> UploadDirectoryFiles { get; set; } = [];
 
+    [BindProperty]
+    public string SupplementalContextText { get; set; } = "";
+
     [TempData]
     public string? StatusMessage { get; set; }
 
@@ -64,6 +67,7 @@ public sealed class NewModel(
             new CreateJobCommand
             {
                 UploadedFiles = uploaded.ToList(),
+                SupplementalContextText = SupplementalContextText,
             },
             cancellationToken);
 

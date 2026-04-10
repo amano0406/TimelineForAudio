@@ -6,9 +6,8 @@
     ".aac",
     ".flac"
   ],
-  "transcriptionInitialPrompt": "",
-  "transcriptNormalizationMode": "deterministic",
-  "transcriptNormalizationGlossary": "",
+  "secondPassEnabled": true,
+  "contextBuilderVersion": "context-builder-v1",
   "inputRoots": [
     {
       "id": "uploads",

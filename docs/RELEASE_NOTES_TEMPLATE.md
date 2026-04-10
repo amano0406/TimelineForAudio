@@ -11,7 +11,7 @@ This is a desktop-style local tool, not a hosted SaaS product.
 
 ## Optional Features
 
-- GPU mode: NVIDIA + Docker GPU access only, best-effort
+- GPU mode: NVIDIA + Docker GPU access required, supported via the GPU compose overlay
 - Speaker diarization: optional, requires both a Hugging Face token and gated approval for `pyannote/speaker-diarization-community-1`
 
 ## Download
@@ -29,7 +29,7 @@ This is a desktop-style local tool, not a hosted SaaS product.
 
 - first run downloads models and takes time
 - macOS is experimental
-- GPU is not the baseline support path
+- GPU is supported, but still requires NVIDIA + Docker GPU access
 - GUI is the primary supported path
 - Docker Desktop is required
 

@@ -32,9 +32,9 @@ class JobRequest:
     conversion_signature: str
     transcription_backend: str
     transcription_model_id: str
-    transcription_initial_prompt: str | None
-    transcript_normalization_mode: str
-    transcript_normalization_glossary: str | None
+    supplemental_context_text: str | None
+    second_pass_enabled: bool
+    context_builder_version: str
     diarization_enabled: bool
     diarization_model_id: str | None
     vad_backend: str
@@ -57,9 +57,9 @@ class JobRequest:
             "conversion_signature": self.conversion_signature,
             "transcription_backend": self.transcription_backend,
             "transcription_model_id": self.transcription_model_id,
-            "transcription_initial_prompt": self.transcription_initial_prompt,
-            "transcript_normalization_mode": self.transcript_normalization_mode,
-            "transcript_normalization_glossary": self.transcript_normalization_glossary,
+            "supplemental_context_text": self.supplemental_context_text,
+            "second_pass_enabled": self.second_pass_enabled,
+            "context_builder_version": self.context_builder_version,
             "diarization_enabled": self.diarization_enabled,
             "diarization_model_id": self.diarization_model_id,
             "vad_backend": self.vad_backend,
@@ -84,18 +84,14 @@ class JobRequest:
             conversion_signature=str(payload.get("conversion_signature") or ""),
             transcription_backend=str(payload.get("transcription_backend") or ""),
             transcription_model_id=str(payload.get("transcription_model_id") or ""),
-            transcription_initial_prompt=(
-                str(payload["transcription_initial_prompt"])
-                if payload.get("transcription_initial_prompt") not in (None, "")
+            supplemental_context_text=(
+                str(payload["supplemental_context_text"])
+                if payload.get("supplemental_context_text") not in (None, "")
                 else None
             ),
-            transcript_normalization_mode=str(
-                payload.get("transcript_normalization_mode") or "deterministic"
-            ),
-            transcript_normalization_glossary=(
-                str(payload["transcript_normalization_glossary"])
-                if payload.get("transcript_normalization_glossary") not in (None, "")
-                else None
+            second_pass_enabled=bool(payload.get("second_pass_enabled", True)),
+            context_builder_version=str(
+                payload.get("context_builder_version") or "context-builder-v1"
             ),
             diarization_enabled=bool(payload.get("diarization_enabled", False)),
             diarization_model_id=(

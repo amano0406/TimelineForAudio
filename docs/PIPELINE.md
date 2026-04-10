@@ -12,7 +12,7 @@ The request contains:
 - token-enabled flag
 - fully expanded input items
 - compute mode and processing quality
-- transcript normalization settings
+- job-level supplemental context text
 
 ## 2. Worker Pickup
 
@@ -40,7 +40,7 @@ The worker normalizes each input into a stable analysis format:
 
 In the current audio-only pipeline, `cut_map.json` is present for contract stability even when no trimming is applied.
 
-## 5. Transcription
+## 5. Transcription Pass 1
 
 The worker calls `faster-whisper` with:
 
@@ -48,13 +48,43 @@ The worker calls `faster-whisper` with:
 - language: `ja`
 - device: `cpu` or `cuda`
 - built-in VAD filtering
-- optional `initial_prompt`
+- no diarization
+- no user prompt injection
 
 If GPU transcription fails, the worker can fall back to CPU and records a warning in the transcript metadata.
 
-## 6. Optional Diarization
+## 6. Context Builder
 
-If `pyannote/speaker-diarization-community-1` is available and the Hugging Face prerequisites are satisfied, diarization is applied to the transcript segments.
+The worker builds deterministic plain-text context documents from:
+
+- pass1 transcript cues
+- extracted frequent terms and identifier-like tokens
+- optional job-level supplemental context text
+
+Artifacts written here:
+
+- `transcript/context_primary.txt`
+- `transcript/context_secondary.txt` when provided
+- `transcript/context_merged.txt`
+- `transcript/context_report.json`
+
+## 7. Transcription Pass 2
+
+The worker runs ASR on the same audio again, using `context_merged.txt` as the pass2 `initial_prompt`.
+
+Artifacts written here:
+
+- `transcript/pass1.json`
+- `transcript/pass1.md`
+- `transcript/pass2.json`
+- `transcript/pass2.md`
+- `transcript/pass_diff.json`
+
+## 8. Diarization Enrichment
+
+If `pyannote/speaker-diarization-community-1` is available and the Hugging Face prerequisites are satisfied, diarization runs after pass2.
+
+The worker preloads the normalized audio with `torchaudio`, passes waveform + sample rate into `pyannote`, keeps the pass2 text fixed, and assigns speakers from diarization turns to pass2 timestamps for downstream timeline and summary generation.
 
 If diarization is unavailable or fails:
 
@@ -62,26 +92,15 @@ If diarization is unavailable or fails:
 - `diarization_used` stays false
 - the error is recorded in transcript metadata
 
-## 7. Transcript Normalization
-
-The worker preserves the raw transcript, then optionally applies deterministic normalization:
-
-- speaker label rewrites such as `speaker:SPEAKER_00 => Alice`
-- text replacements such as `Open AI => OpenAI`
-- context term tracking for the report
-
 Artifacts written here:
 
-- `transcript/raw.json`
-- `transcript/raw.md`
-- `transcript/normalized.json`
-- `transcript/normalized.md`
-- `transcript/normalization_report.json`
-- `transcript/normalization_report.md`
+- `transcript/pass2_words.json`
+- `transcript/pass2_speaker_spans.json`
+- `analysis/diarization_turns.json`
 
-## 8. Audio Analysis
+## 9. Audio Analysis
 
-The worker computes audio-oriented summaries from `audio/normalized.wav` and the normalized transcript:
+The worker computes audio-oriented summaries from `audio/normalized.wav` and the pass2 transcript:
 
 - pause and silence summary
 - loudness summary
@@ -99,12 +118,12 @@ Artifacts written here:
 - `analysis/audio_features.json`
 - `analysis/audio_features.md`
 
-## 9. Timeline Rendering
+## 10. Timeline Rendering
 
 `timeline.md` is rendered from:
 
 - source metadata
-- normalized transcript segments
+- pass2 speaker-attributed spans when available, otherwise pass2 transcript segments
 - speaker summary
 - audio feature summary
 
@@ -117,8 +136,9 @@ The main output shape is:
 - Audio ID: `...`
 - Duration: `...`
 - Model: `...`
+- Transcript source: `pass2`
+- Supplemental context configured: `...`
 - Diarization used: `...`
-- Transcript normalization mode: `...`
 
 ## Summary
 
@@ -141,7 +161,7 @@ The main output shape is:
 - Estimated units/min: `...`
 ```
 
-## 10. Export Packaging
+## 11. Export Packaging
 
 After the job finishes, the app can build a reduced review package containing:
 
@@ -153,7 +173,7 @@ After the job finishes, the app can build a reduced review package containing:
 
 `README.html` is the human entrypoint for exported results.
 
-## 11. Failure Model
+## 12. Failure Model
 
 - item-level failures do not abort the entire job when other items can still complete
 - the worker logs stack traces to `logs/worker.log`
