@@ -165,12 +165,21 @@
                 </div>
 
                 <div class="space-y-2">
-                    <label class="text-sm font-medium text-slate-900" for="token-input">@L("settings.token")</label>
+                    <div class="flex items-center justify-between gap-3">
+                        <label class="text-sm font-medium text-slate-900" for="token-input">@L("settings.token")</label>
+                        @if (Model.HasSavedTokenConfigured)
+                        {
+                            <span class="text-xs font-medium text-slate-500">@L("settings.saved")</span>
+                        }
+                    </div>
                     <input id="token-input"
                            name="Token"
                            type="password"
+                           value="@Model.Token"
                            placeholder="hf_..."
                            class="form-input"
+                           data-masked-value="@Model.TokenMaskValue"
+                           data-masked="@(Model.HasSavedTokenConfigured && string.Equals(Model.Token, Model.TokenMaskValue, StringComparison.Ordinal) ? "true" : "false")"
                            spellcheck="false"
                            autocomplete="off" />
                     <p class="text-xs text-slate-500">@L("settings.token_hint")</p>
@@ -318,3 +327,47 @@
         </section>
     </div>
 </section>
+
+@section Scripts
+{
+    <script>
+        (() => {
+            const input = document.getElementById('token-input');
+            if (!input) {
+                return;
+            }
+
+            const maskedValue = input.dataset.maskedValue || '';
+
+            function hasMaskedValue() {
+                return input.dataset.masked === 'true' && input.value === maskedValue;
+            }
+
+            function selectMaskedValue() {
+                if (!hasMaskedValue()) {
+                    return;
+                }
+
+                window.requestAnimationFrame(() => {
+                    input.setSelectionRange(0, input.value.length);
+                });
+            }
+
+            input.addEventListener('focus', selectMaskedValue);
+            input.addEventListener('mousedown', (event) => {
+                if (!hasMaskedValue()) {
+                    return;
+                }
+
+                event.preventDefault();
+                input.focus();
+                selectMaskedValue();
+            });
+            input.addEventListener('input', () => {
+                if (input.dataset.masked === 'true' && input.value !== maskedValue) {
+                    input.dataset.masked = 'false';
+                }
+            });
+        })();
+    </script>
+}

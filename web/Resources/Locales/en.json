@@ -88,7 +88,7 @@
   "settings.notice.description": "Save your token, then open the approval page for the speaker split model.",
   "settings.open_token": "Open Token Settings",
   "settings.open_approval": "Open Approval Page",
-  "settings.token_hint": "Leave this blank to keep the saved token. Enter a new token only when you want to replace it.",
+  "settings.token_hint": "If a token is already saved, this field shows a masked value. Leave it as-is to keep the saved token, or enter a new token to replace it.",
   "settings.compute_mode.title": "Processing Mode",
   "settings.compute_mode.description": "Choose CPU or GPU. GPU is faster, but it only works when Docker can use your NVIDIA GPU.",
   "settings.compute_mode.cpu": "CPU",

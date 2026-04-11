@@ -60,7 +60,7 @@
   "settings.notice.description": "token を保存した後、必要なモデルだけ承認してください。",
   "settings.open_token": "Token 設定を開く",
   "settings.open_approval": "承認ページを開く",
-  "settings.token_hint": "保存済み token を維持する場合は空欄のままで構いません。更新したい場合だけ新しい token を入力してください。",
+  "settings.token_hint": "保存済み token がある場合、この欄にはマスクした値が表示されます。そのままなら既存 token を維持し、更新したい場合だけ新しい token を入力してください。",
   "settings.compute_mode.title": "処理モード",
   "settings.compute_mode.description": "CPU か GPU を選びます。GPU の方が速いですが、NVIDIA GPU が Docker から使える必要があります。",
   "settings.compute_mode.cpu": "CPU",

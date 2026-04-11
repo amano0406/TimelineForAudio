@@ -15,6 +15,8 @@ public sealed class SettingsModel(
     LanguageService languageService,
     JsonLocalizationService localizer) : PageModel
 {
+    private const string MaskedTokenValue = "hf_saved_token_masked";
+
     public HuggingFaceAccessSnapshot Snapshot { get; private set; } = new();
 
     public SetupState SetupState { get; private set; } = new();
@@ -36,6 +38,10 @@ public sealed class SettingsModel(
 
     [BindProperty]
     public string UiLanguage { get; set; } = "en";
+
+    public bool HasSavedTokenConfigured { get; private set; }
+
+    public string TokenMaskValue => MaskedTokenValue;
 
     public string? StatusMessage { get; private set; }
 
@@ -65,6 +71,7 @@ public sealed class SettingsModel(
     public async Task<IActionResult> OnPostSaveAsync(CancellationToken cancellationToken)
     {
         WorkerCapability = await workerCapabilityService.GetAsync(cancellationToken);
+        var hasSavedTokenConfigured = await settingsStore.HasTokenAsync(cancellationToken);
         if (string.Equals(ComputeMode, "gpu", StringComparison.OrdinalIgnoreCase) && !WorkerCapability.GpuAvailable)
         {
             ModelState.AddModelError(nameof(ComputeMode), L("settings.compute_mode.gpu_unavailable"));
@@ -83,10 +90,14 @@ public sealed class SettingsModel(
         settings.UiLanguage = languageService.Normalize(UiLanguage) ?? "en";
         settings.LanguageSelected = true;
         settings.HuggingfaceTermsConfirmed = false;
+        var submittedToken = Token?.Trim();
+        var replaceToken =
+            !string.IsNullOrWhiteSpace(submittedToken) &&
+            !(hasSavedTokenConfigured && string.Equals(submittedToken, MaskedTokenValue, StringComparison.Ordinal));
         await settingsStore.SaveAsync(
             settings,
-            string.IsNullOrWhiteSpace(Token) ? null : Token,
-            replaceToken: !string.IsNullOrWhiteSpace(Token),
+            replaceToken ? submittedToken : null,
+            replaceToken: replaceToken,
             cancellationToken: cancellationToken);
 
         Snapshot = await accessService.GetSnapshotAsync(cancellationToken);
@@ -116,7 +127,8 @@ public sealed class SettingsModel(
         ModelStatuses = Snapshot.Models;
         ModelCache = await modelCacheService.GetSnapshotAsync(cancellationToken);
         WorkerCapability = await workerCapabilityService.GetAsync(cancellationToken);
-        Token = "";
+        HasSavedTokenConfigured = Snapshot.HasToken;
+        Token = HasSavedTokenConfigured ? MaskedTokenValue : "";
         var settings = await settingsStore.LoadAsync(cancellationToken);
         ComputeMode = settings.ComputeMode;
         if (!WorkerCapability.GpuAvailable && string.Equals(ComputeMode, "gpu", StringComparison.OrdinalIgnoreCase))
