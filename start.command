@@ -47,7 +47,7 @@ open_app_window() {
 
 WEB_PORT="$(read_env_value TIMELINE_FOR_AUDIO_WEB_PORT)"
 if [ -z "${WEB_PORT}" ]; then
-  WEB_PORT="38090"
+  WEB_PORT="19100"
 fi
 
 APP_URL="http://localhost:${WEB_PORT}"

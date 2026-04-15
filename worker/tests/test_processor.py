@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
+import json
 import unittest
 from tempfile import TemporaryDirectory
-from pathlib import Path
 from unittest.mock import patch
 
 from timeline_for_audio_worker import processor
@@ -10,6 +11,163 @@ from timeline_for_audio_worker.contracts import InputItem, JobRequest, ManifestI
 
 
 class ProcessorQueueTests(unittest.TestCase):
+    def test_process_job_returns_false_when_job_lock_exists(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            job_dir = root / "job-1"
+            job_dir.mkdir()
+            source_path = root / "sample.wav"
+            source_path.write_bytes(b"audio")
+
+            request = JobRequest(
+                schema_version=1,
+                job_id="job-1",
+                created_at="2026-04-11T12:00:00+09:00",
+                output_root_id="runs",
+                output_root_path=str(root),
+                profile="quality-first",
+                compute_mode="cpu",
+                processing_quality="standard",
+                pipeline_version="2026-04-10-2pass1",
+                conversion_signature="sig-123",
+                transcription_backend="faster-whisper",
+                transcription_model_id="medium",
+                supplemental_context_text=None,
+                second_pass_enabled=True,
+                context_builder_version="context-builder-v1",
+                diarization_enabled=False,
+                diarization_model_id=None,
+                vad_backend="faster-whisper",
+                vad_model_id="faster-whisper-default",
+                reprocess_duplicates=False,
+                token_enabled=False,
+                input_items=[
+                    InputItem(
+                        input_id="item-1",
+                        source_kind="upload",
+                        source_id="uploads",
+                        original_path=str(source_path),
+                        display_name="sample.wav",
+                        size_bytes=source_path.stat().st_size,
+                        uploaded_path=str(source_path),
+                    )
+                ],
+            )
+            (job_dir / "request.json").write_text(
+                json.dumps(request.to_dict(), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            (job_dir / "status.json").write_text(
+                json.dumps(
+                    {
+                        "job_id": "job-1",
+                        "state": "running",
+                        "updated_at": "2099-01-01T00:00:00+00:00",
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            (job_dir / ".job.lock").write_text("{}", encoding="utf-8")
+
+            with patch.object(processor, "_write_support_docs") as write_support_docs:
+                self.assertFalse(processor.process_job(job_dir))
+
+            write_support_docs.assert_not_called()
+
+    def test_process_job_reclaims_stale_job_lock(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            job_dir = root / "job-1"
+            job_dir.mkdir()
+            good_path = root / "good.wav"
+            good_path.write_bytes(b"good")
+
+            request = JobRequest(
+                schema_version=1,
+                job_id="job-1",
+                created_at="2026-04-11T12:00:00+09:00",
+                output_root_id="runs",
+                output_root_path=str(root),
+                profile="quality-first",
+                compute_mode="cpu",
+                processing_quality="standard",
+                pipeline_version="2026-04-10-2pass1",
+                conversion_signature="sig-123",
+                transcription_backend="faster-whisper",
+                transcription_model_id="medium",
+                supplemental_context_text=None,
+                second_pass_enabled=True,
+                context_builder_version="context-builder-v1",
+                diarization_enabled=False,
+                diarization_model_id=None,
+                vad_backend="faster-whisper",
+                vad_model_id="faster-whisper-default",
+                reprocess_duplicates=False,
+                token_enabled=False,
+                input_items=[
+                    InputItem(
+                        input_id="item-1",
+                        source_kind="upload",
+                        source_id="uploads",
+                        original_path=str(good_path),
+                        display_name="good.wav",
+                        size_bytes=good_path.stat().st_size,
+                        uploaded_path=str(good_path),
+                    )
+                ],
+            )
+            (job_dir / "request.json").write_text(
+                json.dumps(request.to_dict(), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            (job_dir / "status.json").write_text(
+                json.dumps(
+                    {
+                        "job_id": "job-1",
+                        "state": "running",
+                        "updated_at": "2026-04-10T00:00:00+00:00",
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            (job_dir / ".job.lock").write_text("{}", encoding="utf-8")
+
+            def fake_probe_audio(path: Path) -> dict[str, object]:
+                return {
+                    "size_bytes": good_path.stat().st_size,
+                    "duration_seconds": 5.0,
+                    "container_name": "wav",
+                    "extension": "wav",
+                    "audio_codec": "pcm_s16le",
+                    "audio_channels": 1,
+                    "audio_sample_rate": 16000,
+                    "bitrate": 256000,
+                    "captured_at": None,
+                }
+
+            with (
+                patch.object(processor, "_write_support_docs"),
+                patch.object(processor, "load_catalog", return_value={}),
+                patch.object(processor, "probe_audio", side_effect=fake_probe_audio),
+                patch.object(processor, "sha256_file", return_value="good-hash"),
+                patch.object(
+                    processor,
+                    "build_eta_predictor",
+                    return_value=type("Predictor", (), {"sample_count": 0})(),
+                ),
+                patch.object(processor, "_estimate_remaining_with_history", return_value=None),
+                patch.object(processor, "_process_one_item", return_value=[]),
+                patch.object(processor, "_llm_export", return_value=(0, None)),
+                patch.object(processor, "append_catalog_rows"),
+            ):
+                self.assertTrue(processor.process_job(job_dir))
+
+            self.assertFalse((job_dir / ".job.lock").exists())
+
     def test_resolve_duplicate_timeline_path_returns_none_for_stale_catalog_entry(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -43,6 +201,595 @@ class ProcessorQueueTests(unittest.TestCase):
         ):
             self.assertFalse(processor.process_job())
             collect_pending.assert_not_called()
+
+    def test_process_job_continues_after_preflight_probe_failure(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            job_dir = root / "job-1"
+            job_dir.mkdir()
+            bad_path = root / "broken.m4a"
+            bad_path.write_bytes(b"broken")
+            good_path = root / "good.wav"
+            good_path.write_bytes(b"good")
+
+            request = JobRequest(
+                schema_version=1,
+                job_id="job-1",
+                created_at="2026-04-11T12:00:00+09:00",
+                output_root_id="runs",
+                output_root_path=str(root),
+                profile="quality-first",
+                compute_mode="cpu",
+                processing_quality="standard",
+                pipeline_version="2026-04-10-2pass1",
+                conversion_signature="sig-123",
+                transcription_backend="faster-whisper",
+                transcription_model_id="medium",
+                supplemental_context_text=None,
+                second_pass_enabled=True,
+                context_builder_version="context-builder-v1",
+                diarization_enabled=False,
+                diarization_model_id=None,
+                vad_backend="faster-whisper",
+                vad_model_id="faster-whisper-default",
+                reprocess_duplicates=False,
+                token_enabled=False,
+                input_items=[
+                    InputItem(
+                        input_id="item-1",
+                        source_kind="upload",
+                        source_id="uploads",
+                        original_path=str(bad_path),
+                        display_name="broken.m4a",
+                        size_bytes=bad_path.stat().st_size,
+                        uploaded_path=str(bad_path),
+                    ),
+                    InputItem(
+                        input_id="item-2",
+                        source_kind="upload",
+                        source_id="uploads",
+                        original_path=str(good_path),
+                        display_name="good.wav",
+                        size_bytes=good_path.stat().st_size,
+                        uploaded_path=str(good_path),
+                    ),
+                ],
+            )
+            (job_dir / "request.json").write_text(
+                json.dumps(request.to_dict(), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            (job_dir / "status.json").write_text("{}", encoding="utf-8")
+
+            process_calls: list[str] = []
+
+            def fake_probe_audio(path: Path) -> dict[str, object]:
+                if path == bad_path:
+                    raise RuntimeError("invalid container")
+                return {
+                    "size_bytes": good_path.stat().st_size,
+                    "duration_seconds": 5.0,
+                    "container_name": "wav",
+                    "extension": "wav",
+                    "audio_codec": "pcm_s16le",
+                    "audio_channels": 1,
+                    "audio_sample_rate": 16000,
+                    "bitrate": 256000,
+                    "captured_at": None,
+                }
+
+            def fake_process_one_item(**kwargs):
+                process_calls.append(kwargs["item"].display_name)
+                return []
+
+            with (
+                patch.object(processor, "_write_support_docs"),
+                patch.object(processor, "load_catalog", return_value={}),
+                patch.object(processor, "probe_audio", side_effect=fake_probe_audio),
+                patch.object(
+                    processor,
+                    "sha256_file",
+                    side_effect=["bad-hash", "good-hash"],
+                ),
+                patch.object(
+                    processor,
+                    "build_eta_predictor",
+                    return_value=type("Predictor", (), {"sample_count": 0})(),
+                ),
+                patch.object(processor, "_estimate_remaining_with_history", return_value=None),
+                patch.object(processor, "_process_one_item", side_effect=fake_process_one_item),
+                patch.object(processor, "_llm_export", return_value=(0, None)),
+                patch.object(processor, "append_catalog_rows"),
+            ):
+                self.assertTrue(processor.process_job(job_dir))
+
+            status_payload = json.loads((job_dir / "status.json").read_text(encoding="utf-8"))
+            result_payload = json.loads((job_dir / "result.json").read_text(encoding="utf-8"))
+            manifest_payload = json.loads((job_dir / "manifest.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(["good.wav"], process_calls)
+            self.assertEqual("completed", status_payload["state"])
+            self.assertEqual(1, status_payload["items_done"])
+            self.assertEqual(1, status_payload["items_skipped"])
+            self.assertEqual(0, status_payload["items_failed"])
+            self.assertEqual("Job completed.", status_payload["message"])
+            self.assertEqual(1, result_payload["processed_count"])
+            self.assertEqual(1, result_payload["skipped_count"])
+            self.assertEqual(0, result_payload["error_count"])
+            self.assertEqual("skipped_invalid", manifest_payload["items"][0]["status"])
+            self.assertEqual("completed", manifest_payload["items"][1]["status"])
+            self.assertIn("preflight: skipped 1 invalid audio file(s).", status_payload["warnings"])
+
+    def test_process_job_skips_audio_that_is_too_short(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            job_dir = root / "job-1"
+            job_dir.mkdir()
+            short_path = root / "short.m4a"
+            short_path.write_bytes(b"short")
+            good_path = root / "good.wav"
+            good_path.write_bytes(b"good")
+
+            request = JobRequest(
+                schema_version=1,
+                job_id="job-1",
+                created_at="2026-04-11T12:00:00+09:00",
+                output_root_id="runs",
+                output_root_path=str(root),
+                profile="quality-first",
+                compute_mode="cpu",
+                processing_quality="standard",
+                pipeline_version="2026-04-10-2pass1",
+                conversion_signature="sig-123",
+                transcription_backend="faster-whisper",
+                transcription_model_id="medium",
+                supplemental_context_text=None,
+                second_pass_enabled=True,
+                context_builder_version="context-builder-v1",
+                diarization_enabled=False,
+                diarization_model_id=None,
+                vad_backend="faster-whisper",
+                vad_model_id="faster-whisper-default",
+                reprocess_duplicates=False,
+                token_enabled=False,
+                input_items=[
+                    InputItem(
+                        input_id="item-1",
+                        source_kind="upload",
+                        source_id="uploads",
+                        original_path=str(short_path),
+                        display_name="short.m4a",
+                        size_bytes=short_path.stat().st_size,
+                        uploaded_path=str(short_path),
+                    ),
+                    InputItem(
+                        input_id="item-2",
+                        source_kind="upload",
+                        source_id="uploads",
+                        original_path=str(good_path),
+                        display_name="good.wav",
+                        size_bytes=good_path.stat().st_size,
+                        uploaded_path=str(good_path),
+                    ),
+                ],
+            )
+            (job_dir / "request.json").write_text(
+                json.dumps(request.to_dict(), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            (job_dir / "status.json").write_text("{}", encoding="utf-8")
+
+            process_calls: list[str] = []
+
+            def fake_probe_audio(path: Path) -> dict[str, object]:
+                if path == short_path:
+                    return {
+                        "size_bytes": short_path.stat().st_size,
+                        "duration_seconds": 1.5,
+                        "container_name": "mov,mp4,m4a,3gp,3g2,mj2",
+                        "extension": "m4a",
+                        "audio_codec": "aac",
+                        "audio_channels": 1,
+                        "audio_sample_rate": 16000,
+                        "bitrate": 64000,
+                        "captured_at": None,
+                    }
+                return {
+                    "size_bytes": good_path.stat().st_size,
+                    "duration_seconds": 5.0,
+                    "container_name": "wav",
+                    "extension": "wav",
+                    "audio_codec": "pcm_s16le",
+                    "audio_channels": 1,
+                    "audio_sample_rate": 16000,
+                    "bitrate": 256000,
+                    "captured_at": None,
+                }
+
+            def fake_process_one_item(**kwargs):
+                process_calls.append(kwargs["item"].display_name)
+                return []
+
+            with (
+                patch.object(processor, "_write_support_docs"),
+                patch.object(processor, "load_catalog", return_value={}),
+                patch.object(processor, "probe_audio", side_effect=fake_probe_audio),
+                patch.object(
+                    processor,
+                    "sha256_file",
+                    side_effect=["short-hash", "good-hash"],
+                ),
+                patch.object(
+                    processor,
+                    "build_eta_predictor",
+                    return_value=type("Predictor", (), {"sample_count": 0})(),
+                ),
+                patch.object(processor, "_estimate_remaining_with_history", return_value=None),
+                patch.object(processor, "_process_one_item", side_effect=fake_process_one_item),
+                patch.object(processor, "_llm_export", return_value=(0, None)),
+                patch.object(processor, "append_catalog_rows"),
+            ):
+                self.assertTrue(processor.process_job(job_dir))
+
+            status_payload = json.loads((job_dir / "status.json").read_text(encoding="utf-8"))
+            result_payload = json.loads((job_dir / "result.json").read_text(encoding="utf-8"))
+            manifest_payload = json.loads((job_dir / "manifest.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(["good.wav"], process_calls)
+            self.assertEqual("completed", status_payload["state"])
+            self.assertEqual(1, status_payload["items_done"])
+            self.assertEqual(1, status_payload["items_skipped"])
+            self.assertEqual(0, status_payload["items_failed"])
+            self.assertEqual(1, result_payload["processed_count"])
+            self.assertEqual(1, result_payload["skipped_count"])
+            self.assertEqual(0, result_payload["error_count"])
+            self.assertEqual("skipped_too_short", manifest_payload["items"][0]["status"])
+            self.assertEqual("completed", manifest_payload["items"][1]["status"])
+            self.assertIn(
+                "preflight: skipped 1 audio file(s) shorter than 2.0s.",
+                status_payload["warnings"],
+            )
+
+    def test_process_job_resets_prior_status_on_rerun(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            job_dir = root / "job-1"
+            job_dir.mkdir()
+            good_path = root / "good.wav"
+            good_path.write_bytes(b"good")
+
+            request = JobRequest(
+                schema_version=1,
+                job_id="job-1",
+                created_at="2026-04-11T12:00:00+09:00",
+                output_root_id="runs",
+                output_root_path=str(root),
+                profile="quality-first",
+                compute_mode="cpu",
+                processing_quality="standard",
+                pipeline_version="2026-04-10-2pass1",
+                conversion_signature="sig-123",
+                transcription_backend="faster-whisper",
+                transcription_model_id="medium",
+                supplemental_context_text=None,
+                second_pass_enabled=True,
+                context_builder_version="context-builder-v1",
+                diarization_enabled=False,
+                diarization_model_id=None,
+                vad_backend="faster-whisper",
+                vad_model_id="faster-whisper-default",
+                reprocess_duplicates=False,
+                token_enabled=False,
+                input_items=[
+                    InputItem(
+                        input_id="item-1",
+                        source_kind="upload",
+                        source_id="uploads",
+                        original_path=str(good_path),
+                        display_name="good.wav",
+                        size_bytes=good_path.stat().st_size,
+                        uploaded_path=str(good_path),
+                    )
+                ],
+            )
+            (job_dir / "request.json").write_text(
+                json.dumps(request.to_dict(), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            (job_dir / "status.json").write_text(
+                json.dumps(
+                    {
+                        "job_id": "job-1",
+                        "state": "failed",
+                        "current_stage": "failed",
+                        "message": "old failure",
+                        "warnings": ["stale warning"],
+                        "items_total": 1,
+                        "items_done": 0,
+                        "items_skipped": 9,
+                        "items_failed": 7,
+                        "processed_duration_sec": 123.0,
+                        "total_duration_sec": 321.0,
+                        "progress_percent": 100.0,
+                        "started_at": "2026-04-10T00:00:00+09:00",
+                        "completed_at": "2026-04-10T00:01:00+09:00",
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+
+            def fake_probe_audio(path: Path) -> dict[str, object]:
+                return {
+                    "size_bytes": good_path.stat().st_size,
+                    "duration_seconds": 5.0,
+                    "container_name": "wav",
+                    "extension": "wav",
+                    "audio_codec": "pcm_s16le",
+                    "audio_channels": 1,
+                    "audio_sample_rate": 16000,
+                    "bitrate": 256000,
+                    "captured_at": None,
+                }
+
+            with (
+                patch.object(processor, "_write_support_docs"),
+                patch.object(processor, "load_catalog", return_value={}),
+                patch.object(processor, "probe_audio", side_effect=fake_probe_audio),
+                patch.object(processor, "sha256_file", return_value="good-hash"),
+                patch.object(
+                    processor,
+                    "build_eta_predictor",
+                    return_value=type("Predictor", (), {"sample_count": 0})(),
+                ),
+                patch.object(processor, "_estimate_remaining_with_history", return_value=None),
+                patch.object(processor, "_process_one_item", return_value=[]),
+                patch.object(processor, "_llm_export", return_value=(0, None)),
+                patch.object(processor, "append_catalog_rows"),
+            ):
+                self.assertTrue(processor.process_job(job_dir))
+
+            status_payload = json.loads((job_dir / "status.json").read_text(encoding="utf-8"))
+
+            self.assertEqual("completed", status_payload["state"])
+            self.assertEqual(1, status_payload["items_total"])
+            self.assertEqual(1, status_payload["items_done"])
+            self.assertEqual(0, status_payload["items_skipped"])
+            self.assertEqual(0, status_payload["items_failed"])
+            self.assertEqual([], status_payload["warnings"])
+            self.assertIsNotNone(status_payload["started_at"])
+            self.assertIsNotNone(status_payload["completed_at"])
+
+    def test_process_job_daemon_skips_pending_job_with_unavailable_sources(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            missing_job_dir = root / "job-missing"
+            good_job_dir = root / "job-good"
+            missing_job_dir.mkdir()
+            good_job_dir.mkdir()
+            good_path = root / "good.wav"
+            good_path.write_bytes(b"good")
+            missing_path = root / "missing.wav"
+
+            def write_request(job_dir: Path, job_id: str, source_path: Path) -> None:
+                request = JobRequest(
+                    schema_version=1,
+                    job_id=job_id,
+                    created_at="2026-04-11T12:00:00+09:00",
+                    output_root_id="runs",
+                    output_root_path=str(root),
+                    profile="quality-first",
+                    compute_mode="cpu",
+                    processing_quality="standard",
+                    pipeline_version="2026-04-10-2pass1",
+                    conversion_signature=f"sig-{job_id}",
+                    transcription_backend="faster-whisper",
+                    transcription_model_id="medium",
+                    supplemental_context_text=None,
+                    second_pass_enabled=True,
+                    context_builder_version="context-builder-v1",
+                    diarization_enabled=False,
+                    diarization_model_id=None,
+                    vad_backend="faster-whisper",
+                    vad_model_id="faster-whisper-default",
+                    reprocess_duplicates=False,
+                    token_enabled=False,
+                    input_items=[
+                        InputItem(
+                            input_id="item-1",
+                            source_kind="local_directory",
+                            source_id=str(source_path.parent),
+                            original_path=str(source_path),
+                            display_name=source_path.name,
+                            size_bytes=source_path.stat().st_size if source_path.exists() else 0,
+                            uploaded_path=None,
+                        )
+                    ],
+                )
+                (job_dir / "request.json").write_text(
+                    json.dumps(request.to_dict(), ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+                (job_dir / "status.json").write_text(
+                    json.dumps({"state": "pending"}, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+
+            write_request(missing_job_dir, "job-missing", missing_path)
+            write_request(good_job_dir, "job-good", good_path)
+
+            def fake_probe_audio(path: Path) -> dict[str, object]:
+                return {
+                    "size_bytes": good_path.stat().st_size,
+                    "duration_seconds": 5.0,
+                    "container_name": "wav",
+                    "extension": "wav",
+                    "audio_codec": "pcm_s16le",
+                    "audio_channels": 1,
+                    "audio_sample_rate": 16000,
+                    "bitrate": 256000,
+                    "captured_at": None,
+                }
+
+            with (
+                patch.object(processor, "_collect_running_jobs", return_value=[]),
+                patch.object(
+                    processor,
+                    "_collect_pending_jobs",
+                    return_value=[missing_job_dir, good_job_dir],
+                ),
+                patch.object(processor, "_write_support_docs"),
+                patch.object(processor, "load_catalog", return_value={}),
+                patch.object(processor, "probe_audio", side_effect=fake_probe_audio),
+                patch.object(processor, "sha256_file", return_value="good-hash"),
+                patch.object(
+                    processor,
+                    "build_eta_predictor",
+                    return_value=type("Predictor", (), {"sample_count": 0})(),
+                ),
+                patch.object(processor, "_estimate_remaining_with_history", return_value=None),
+                patch.object(processor, "_process_one_item", return_value=[]),
+                patch.object(processor, "_llm_export", return_value=(0, None)),
+                patch.object(processor, "append_catalog_rows"),
+            ):
+                self.assertTrue(processor.process_job())
+
+            missing_status = json.loads((missing_job_dir / "status.json").read_text(encoding="utf-8"))
+            good_status = json.loads((good_job_dir / "status.json").read_text(encoding="utf-8"))
+            self.assertEqual("pending", missing_status["state"])
+            self.assertEqual("completed", good_status["state"])
+
+    def test_collect_pending_jobs_skips_delete_requested_runs(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            job_dir = root / "job-1"
+            job_dir.mkdir()
+            (job_dir / "request.json").write_text("{}", encoding="utf-8")
+            (job_dir / "status.json").write_text(
+                json.dumps({"state": "pending"}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            (job_dir / ".delete-requested").write_text("requested\n", encoding="utf-8")
+
+            with patch.object(
+                processor,
+                "load_settings",
+                return_value={
+                    "outputRoots": [
+                        {"id": "runs", "path": str(root), "enabled": True},
+                    ]
+                },
+            ):
+                self.assertEqual([], processor._collect_pending_jobs())
+
+    def test_process_job_deletes_requested_running_job_and_upload_session(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            uploads_root_dir = root / "uploads"
+            session_dir = uploads_root_dir / "session-001"
+            session_dir.mkdir(parents=True)
+            uploaded_path = session_dir / "sample.wav"
+            uploaded_path.write_bytes(b"audio")
+            job_dir = root / "job-1"
+            job_dir.mkdir()
+
+            request = JobRequest(
+                schema_version=1,
+                job_id="job-1",
+                created_at="2026-04-15T12:00:00+09:00",
+                output_root_id="runs",
+                output_root_path=str(root),
+                profile="quality-first",
+                compute_mode="cpu",
+                processing_quality="standard",
+                pipeline_version="2026-04-10-2pass1",
+                conversion_signature="sig-123",
+                transcription_backend="faster-whisper",
+                transcription_model_id="medium",
+                supplemental_context_text=None,
+                second_pass_enabled=True,
+                context_builder_version="context-builder-v1",
+                diarization_enabled=False,
+                diarization_model_id=None,
+                vad_backend="faster-whisper",
+                vad_model_id="faster-whisper-default",
+                reprocess_duplicates=False,
+                token_enabled=False,
+                input_items=[
+                    InputItem(
+                        input_id="item-1",
+                        source_kind="upload",
+                        source_id="uploads",
+                        original_path=str(uploaded_path),
+                        display_name="sample.wav",
+                        size_bytes=uploaded_path.stat().st_size,
+                        uploaded_path=str(uploaded_path),
+                    )
+                ],
+            )
+            (job_dir / "request.json").write_text(
+                json.dumps(request.to_dict(), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            (job_dir / "status.json").write_text("{}", encoding="utf-8")
+            catalog_dir = root / ".timeline-for-audio"
+            catalog_dir.mkdir()
+            catalog_path = catalog_dir / "catalog.jsonl"
+            catalog_path.write_text(
+                json.dumps(
+                    {
+                        "job_id": "job-1",
+                        "run_dir": str(job_dir),
+                        "source_hash": "good-hash",
+                        "conversion_signature": "sig-123",
+                        "timeline_path": str(job_dir / "media" / "item-1" / "timeline" / "timeline.md"),
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            def fake_probe_audio(path: Path) -> dict[str, object]:
+                return {
+                    "size_bytes": uploaded_path.stat().st_size,
+                    "duration_seconds": 5.0,
+                    "container_name": "wav",
+                    "extension": "wav",
+                    "audio_codec": "pcm_s16le",
+                    "audio_channels": 1,
+                    "audio_sample_rate": 16000,
+                    "bitrate": 256000,
+                    "captured_at": None,
+                }
+
+            def fake_process_one_item(**kwargs):
+                (job_dir / ".delete-requested").write_text("requested\n", encoding="utf-8")
+                kwargs["ensure_not_delete_requested"]("transcribe_pass2")
+                return []
+
+            with (
+                patch.object(processor, "uploads_root", return_value=uploads_root_dir),
+                patch.object(processor, "_write_support_docs"),
+                patch.object(processor, "load_catalog", return_value={}),
+                patch.object(processor, "probe_audio", side_effect=fake_probe_audio),
+                patch.object(processor, "sha256_file", return_value="good-hash"),
+                patch.object(
+                    processor,
+                    "build_eta_predictor",
+                    return_value=type("Predictor", (), {"sample_count": 0})(),
+                ),
+                patch.object(processor, "_estimate_remaining_with_history", return_value=None),
+                patch.object(processor, "_process_one_item", side_effect=fake_process_one_item),
+                patch.object(processor, "_llm_export", return_value=(0, None)),
+                patch.object(processor, "append_catalog_rows"),
+            ):
+                self.assertTrue(processor.process_job(job_dir))
+
+            self.assertFalse(job_dir.exists())
+            self.assertFalse(session_dir.exists())
+            self.assertFalse(catalog_path.exists())
 
     def test_process_one_item_runs_two_pass_transcription_and_renders_from_pass2(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -218,3 +965,5 @@ class ProcessorQueueTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+

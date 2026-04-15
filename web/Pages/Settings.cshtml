@@ -174,10 +174,10 @@
                     </div>
                     <input id="token-input"
                            name="Token"
-                           type="password"
+                           type="text"
                            value="@Model.Token"
                            placeholder="hf_..."
-                           class="form-input"
+                           class="form-input token-input"
                            data-masked-value="@Model.TokenMaskValue"
                            data-masked="@(Model.HasSavedTokenConfigured && string.Equals(Model.Token, Model.TokenMaskValue, StringComparison.Ordinal) ? "true" : "false")"
                            spellcheck="false"

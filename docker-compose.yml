@@ -14,7 +14,7 @@ services:
       TIMELINE_FOR_AUDIO_HF_CACHE_ROOT: /cache/huggingface
       TIMELINE_FOR_AUDIO_TORCH_CACHE_ROOT: /cache/torch
     ports:
-      - "${TIMELINE_FOR_AUDIO_WEB_PORT}:8080"
+      - "${TIMELINE_FOR_AUDIO_WEB_PORT:-19100}:8080"
     volumes:
       - app-data:/shared/app-data
       - outputs:/shared/outputs

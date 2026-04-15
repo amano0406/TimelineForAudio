@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -183,6 +184,102 @@ class DiarizationMergeTests(unittest.TestCase):
         self.assertIsInstance(fake_calls[0], dict)
         self.assertEqual(16000, fake_calls[0]["sample_rate"])
         self.assertIn("waveform", fake_calls[0])
+
+    def test_apply_speaker_diarization_temporarily_forces_legacy_torch_checkpoint_load(self) -> None:
+        seen_env_values: list[str | None] = []
+
+        class FakeTurn:
+            def __init__(self, start: float, end: float) -> None:
+                self.start = start
+                self.end = end
+
+        class FakeAnnotation:
+            def itertracks(self, yield_label: bool = True):
+                yield FakeTurn(0.0, 1.0), None, "SPEAKER_01"
+
+        class FakeDiarizer:
+            def __call__(self, audio_input: object) -> FakeAnnotation:
+                return FakeAnnotation()
+
+        fake_pyannote_audio = ModuleType("pyannote.audio")
+
+        class FakePipeline:
+            @staticmethod
+            def from_pretrained(model_id: str, token: str | None = None) -> FakeDiarizer:
+                seen_env_values.append(os.environ.get("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"))
+                return FakeDiarizer()
+
+        fake_pyannote_audio.Pipeline = FakePipeline
+
+        fake_torchaudio = ModuleType("torchaudio")
+
+        def fake_load(path: str):
+            return object(), 16000
+
+        fake_torchaudio.load = fake_load
+
+        transcript_payload = {
+            "pass_name": "pass2",
+            "model": "large-v3",
+            "processing_quality": "high",
+            "language": "ja",
+            "device": "cpu",
+            "requested_compute_mode": "cpu",
+            "effective_compute_mode": "cpu",
+            "gpu_available": False,
+            "compute_type": "int8",
+            "alignment_used": False,
+            "context_prompt_configured": False,
+            "context_prompt_length": 0,
+            "diarization_used": False,
+            "transcription_warnings": [],
+            "diarization_requested": True,
+            "segments": [
+                {
+                    "index": 1,
+                    "speaker": "SPEAKER_00",
+                    "text": "alpha",
+                    "original_start": 0.0,
+                    "original_end": 1.0,
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            audio_path = root / "sample.wav"
+            audio_path.write_bytes(b"RIFF")
+            transcript_dir = root / "transcript"
+            analysis_dir = root / "analysis"
+
+            with patch.dict(
+                "sys.modules",
+                {"pyannote.audio": fake_pyannote_audio, "torchaudio": fake_torchaudio},
+            ):
+                with patch(
+                    "timeline_for_audio_worker.diarization.load_settings",
+                    return_value={"huggingfaceTermsConfirmed": True},
+                ):
+                    with patch(
+                        "timeline_for_audio_worker.diarization.load_huggingface_token",
+                        return_value="hf_test_token",
+                    ):
+                        with patch.dict(os.environ, {}, clear=False):
+                            os.environ.pop("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD", None)
+                            apply_speaker_diarization(
+                                source_name="sample.wav",
+                                audio_path=audio_path,
+                                transcript_dir=transcript_dir,
+                                analysis_dir=analysis_dir,
+                                transcript_payload=transcript_payload,
+                                compute_mode="cpu",
+                            )
+                            self.assertNotIn(
+                                "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD",
+                                os.environ,
+                            )
+
+        self.assertEqual(["1"], seen_env_values)
 
 
 if __name__ == "__main__":

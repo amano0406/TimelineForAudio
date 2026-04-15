@@ -29,7 +29,7 @@ if not exist ".env" (
   echo Created .env from .env.example.
 )
 
-set "WEB_PORT=38090"
+set "WEB_PORT=19100"
 set "HAS_WEB_PORT="
 set "LEGACY_WEB_PORT="
 

@@ -15,7 +15,8 @@ public sealed class SettingsModel(
     LanguageService languageService,
     JsonLocalizationService localizer) : PageModel
 {
-    private const string MaskedTokenValue = "hf_saved_token_masked";
+    private const string LegacyMaskedTokenValue = "hf_saved_token_masked";
+    private const string DisplayMaskedTokenValue = "••••••••••••••••";
 
     public HuggingFaceAccessSnapshot Snapshot { get; private set; } = new();
 
@@ -41,7 +42,7 @@ public sealed class SettingsModel(
 
     public bool HasSavedTokenConfigured { get; private set; }
 
-    public string TokenMaskValue => MaskedTokenValue;
+    public string TokenMaskValue => DisplayMaskedTokenValue;
 
     public string? StatusMessage { get; private set; }
 
@@ -93,7 +94,9 @@ public sealed class SettingsModel(
         var submittedToken = Token?.Trim();
         var replaceToken =
             !string.IsNullOrWhiteSpace(submittedToken) &&
-            !(hasSavedTokenConfigured && string.Equals(submittedToken, MaskedTokenValue, StringComparison.Ordinal));
+            !(hasSavedTokenConfigured && (
+                string.Equals(submittedToken, LegacyMaskedTokenValue, StringComparison.Ordinal) ||
+                string.Equals(submittedToken, DisplayMaskedTokenValue, StringComparison.Ordinal)));
         await settingsStore.SaveAsync(
             settings,
             replaceToken ? submittedToken : null,
@@ -128,7 +131,7 @@ public sealed class SettingsModel(
         ModelCache = await modelCacheService.GetSnapshotAsync(cancellationToken);
         WorkerCapability = await workerCapabilityService.GetAsync(cancellationToken);
         HasSavedTokenConfigured = Snapshot.HasToken;
-        Token = HasSavedTokenConfigured ? MaskedTokenValue : "";
+        Token = HasSavedTokenConfigured ? DisplayMaskedTokenValue : "";
         var settings = await settingsStore.LoadAsync(cancellationToken);
         ComputeMode = settings.ComputeMode;
         if (!WorkerCapability.GpuAvailable && string.Equals(ComputeMode, "gpu", StringComparison.OrdinalIgnoreCase))

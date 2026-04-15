@@ -64,7 +64,7 @@ public sealed class DashboardSmokeTests : PageTest
         await Page.GotoAsync($"{_fixture.BaseUrl}/settings?lang=ja");
 
         await Expect(Page.Locator("html")).ToHaveAttributeAsync("lang", "ja");
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "保存済みモデル" })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "保存済みモチE��" })).ToBeVisibleAsync();
         await Expect(Page.GetByText("Saved Models", new() { Exact = true })).ToHaveCountAsync(0);
     }
 
@@ -128,6 +128,28 @@ public sealed class DashboardSmokeTests : PageTest
         {
             await _fixture.DeleteRunAsync(runningJobId);
             await _fixture.DeleteRunAsync(pendingJobId);
+        }
+    }
+
+    [TestMethod]
+    public async Task RunningRun_CanBeDeleted_FromJobsList()
+    {
+        var runningJobId = await _fixture.CreateLockedRunningRunAsync();
+        try
+        {
+            await Page.GotoAsync($"{_fixture.BaseUrl}/jobs");
+
+            var row = Page.Locator("tr").Filter(new() { HasText = runningJobId });
+            await Expect(row).ToBeVisibleAsync();
+            await row.GetByRole(AriaRole.Button, new() { Name = "Delete" }).ClickAsync();
+            await Expect(Page.GetByRole(AriaRole.Dialog)).ToBeVisibleAsync();
+            await Page.Locator("#confirm-modal-submit").ClickAsync();
+            await Expect(Page.GetByText(runningJobId, new() { Exact = true })).ToHaveCountAsync(0);
+            Assert.IsTrue(File.Exists(Path.Combine(_fixture.TempRoot, "outputs", "runs", runningJobId, ".delete-requested")));
+        }
+        finally
+        {
+            await _fixture.DeleteRunAsync(runningJobId);
         }
     }
 
@@ -382,3 +404,4 @@ public sealed class DashboardSmokeTests : PageTest
         }
     }
 }
+

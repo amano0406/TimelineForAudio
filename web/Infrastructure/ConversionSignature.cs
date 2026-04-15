@@ -6,7 +6,7 @@ namespace TimelineForAudio.Web.Infrastructure;
 
 public static class ConversionSignature
 {
-    public const string PipelineVersion = "2026-04-11-2pass2-diarize1";
+    public const string PipelineVersion = "2026-04-11-2pass2-diarize2";
     public const string TranscriptionBackend = "faster-whisper";
     public const string DiarizationModelId = "pyannote/speaker-diarization-community-1";
     public const string VadBackend = "faster-whisper-builtin";

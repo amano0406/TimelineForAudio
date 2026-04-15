@@ -10,6 +10,9 @@ namespace TimelineForAudio.Web.Services;
 
 public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanService scanService)
 {
+    private const string DeleteRequestedMarkerFileName = ".delete-requested";
+    private const string JobLockFileName = ".job.lock";
+
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
         WriteIndented = true,
@@ -240,23 +243,13 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
 
     public async Task DeleteRunAsync(string jobId, CancellationToken cancellationToken = default)
     {
-        var runDirectory = await FindRunDirectoryAsync(jobId, cancellationToken);
+        var runDirectory = await FindRunDirectoryAsync(jobId, cancellationToken, includeDeleteRequested: true);
         if (runDirectory is null)
         {
             throw new InvalidOperationException("The selected job could not be found.");
         }
 
-        var status = await ReadJsonAsync<JobStatusDocument>(Path.Combine(runDirectory, "status.json"), cancellationToken);
-        if (status is not null &&
-            (string.Equals(status.State, "pending", StringComparison.OrdinalIgnoreCase) ||
-             string.Equals(status.State, "running", StringComparison.OrdinalIgnoreCase)))
-        {
-            throw new InvalidOperationException("Active jobs cannot be deleted.");
-        }
-
-        var request = await ReadJsonAsync<JobRequestDocument>(Path.Combine(runDirectory, "request.json"), cancellationToken);
-        DeleteUploadDirectories(request);
-        Directory.Delete(runDirectory, recursive: true);
+        await DeleteOrRequestRunDeletionAsync(runDirectory, cancellationToken);
     }
 
     public async Task<int> DeleteCompletedRunsAsync(CancellationToken cancellationToken = default)
@@ -270,20 +263,10 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
                 continue;
             }
 
-            foreach (var runDirectory in EnumerateJobDirectories(root.Path))
+            foreach (var runDirectory in EnumerateJobDirectories(root.Path, includeDeleteRequested: true))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var status = await ReadJsonAsync<JobStatusDocument>(Path.Combine(runDirectory, "status.json"), cancellationToken);
-                if (status is null ||
-                    string.Equals(status.State, "pending", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(status.State, "running", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                var request = await ReadJsonAsync<JobRequestDocument>(Path.Combine(runDirectory, "request.json"), cancellationToken);
-                DeleteUploadDirectories(request);
-                Directory.Delete(runDirectory, recursive: true);
+                await DeleteOrRequestRunDeletionAsync(runDirectory, cancellationToken);
                 deleted++;
             }
         }
@@ -650,13 +633,16 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             .FirstOrDefault(root => root.Enabled && string.Equals(root.Id, outputRootId, StringComparison.OrdinalIgnoreCase))
         ?? settings.OutputRoots.FirstOrDefault(static root => root.Enabled);
 
-    private async Task<string?> FindRunDirectoryAsync(string jobId, CancellationToken cancellationToken)
+    private async Task<string?> FindRunDirectoryAsync(
+        string jobId,
+        CancellationToken cancellationToken,
+        bool includeDeleteRequested = false)
     {
         var settings = await settingsStore.LoadAsync(cancellationToken);
         foreach (var root in settings.OutputRoots.Where(static root => root.Enabled))
         {
             var candidate = Path.Combine(root.Path, jobId);
-            if (Directory.Exists(candidate))
+            if (Directory.Exists(candidate) && (includeDeleteRequested || !IsDeleteRequested(candidate)))
             {
                 return candidate;
             }
@@ -665,7 +651,9 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         return null;
     }
 
-    private static IEnumerable<string> EnumerateJobDirectories(string rootPath)
+    private static IEnumerable<string> EnumerateJobDirectories(
+        string rootPath,
+        bool includeDeleteRequested = false)
     {
         if (!Directory.Exists(rootPath))
         {
@@ -674,7 +662,8 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
 
         return Directory.EnumerateDirectories(rootPath, "job-*", SearchOption.TopDirectoryOnly)
             .Concat(Directory.EnumerateDirectories(rootPath, "run-*", SearchOption.TopDirectoryOnly))
-            .Distinct(StringComparer.OrdinalIgnoreCase);
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(directory => includeDeleteRequested || !IsDeleteRequested(directory));
     }
 
     private async Task<T?> ReadJsonAsync<T>(string path, CancellationToken cancellationToken)
@@ -1037,7 +1026,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
                 continue;
             }
 
-            foreach (var runDirectory in EnumerateJobDirectories(root.Path))
+            foreach (var runDirectory in EnumerateJobDirectories(root.Path, includeDeleteRequested: true))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var request = await ReadJsonAsync<JobRequestDocument>(Path.Combine(runDirectory, "request.json"), cancellationToken);
@@ -1134,6 +1123,116 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             + Path.DirectorySeparatorChar;
         return candidate.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase);
     }
+
+    private async Task DeleteOrRequestRunDeletionAsync(string runDirectory, CancellationToken cancellationToken)
+    {
+        if (!Directory.Exists(runDirectory))
+        {
+            return;
+        }
+
+        var status = await ReadJsonAsync<JobStatusDocument>(Path.Combine(runDirectory, "status.json"), cancellationToken);
+        var request = await ReadJsonAsync<JobRequestDocument>(Path.Combine(runDirectory, "request.json"), cancellationToken);
+        var isLocked = File.Exists(Path.Combine(runDirectory, JobLockFileName));
+        var isActive = IsActiveRunState(status?.State) || isLocked;
+
+        if (isActive && isLocked)
+        {
+            RemoveCatalogRowsForRun(request, status, runDirectory);
+            await RequestRunDeletionAsync(runDirectory, cancellationToken);
+            return;
+        }
+
+        RemoveCatalogRowsForRun(request, status, runDirectory);
+        DeleteUploadDirectories(request);
+        Directory.Delete(runDirectory, recursive: true);
+    }
+
+    private static Task RequestRunDeletionAsync(string runDirectory, CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(runDirectory);
+        return File.WriteAllTextAsync(
+            Path.Combine(runDirectory, DeleteRequestedMarkerFileName),
+            $"requested_at={DateTimeOffset.UtcNow:O}{Environment.NewLine}",
+            cancellationToken);
+    }
+
+    private static bool IsDeleteRequested(string runDirectory) =>
+        File.Exists(Path.Combine(runDirectory, DeleteRequestedMarkerFileName));
+
+    private static void RemoveCatalogRowsForRun(JobRequestDocument? request, JobStatusDocument? status, string runDirectory)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.OutputRootPath))
+        {
+            return;
+        }
+
+        var path = Path.Combine(request.OutputRootPath, ".timeline-for-audio", "catalog.jsonl");
+        if (!File.Exists(path))
+        {
+            return;
+        }
+
+        var targetJobId = status?.JobId ?? request.JobId ?? Path.GetFileName(runDirectory);
+        var normalizedRunDirectory = NormalizePath(runDirectory);
+        var keptLines = new List<string>();
+        var removedAny = false;
+
+        foreach (var line in File.ReadLines(path))
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(line);
+                var payload = document.RootElement;
+                var rowJobId = GetOptionalString(payload, "job_id");
+                var rowRunDirectory = GetOptionalString(payload, "run_dir");
+                var sameJob = !string.IsNullOrWhiteSpace(targetJobId)
+                    && string.Equals(rowJobId, targetJobId, StringComparison.OrdinalIgnoreCase);
+                var sameRunDirectory = !string.IsNullOrWhiteSpace(rowRunDirectory)
+                    && string.Equals(NormalizePath(rowRunDirectory), normalizedRunDirectory, StringComparison.OrdinalIgnoreCase);
+                if (sameJob || sameRunDirectory)
+                {
+                    removedAny = true;
+                    continue;
+                }
+            }
+            catch
+            {
+                keptLines.Add(line);
+                continue;
+            }
+
+            keptLines.Add(line);
+        }
+
+        if (!removedAny)
+        {
+            return;
+        }
+
+        if (keptLines.Count == 0)
+        {
+            File.Delete(path);
+            var parent = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(parent) && Directory.Exists(parent) &&
+                !Directory.EnumerateFileSystemEntries(parent).Any())
+            {
+                Directory.Delete(parent);
+            }
+            return;
+        }
+
+        File.WriteAllLines(path, keptLines, Encoding.UTF8);
+    }
+
+    private static string NormalizePath(string path) =>
+        Path.GetFullPath(path)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
     private static bool IsActiveRunState(string? state) =>
         string.Equals(state, "pending", StringComparison.OrdinalIgnoreCase) ||
@@ -1619,3 +1718,6 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         public string? OriginalPath { get; set; }
     }
 }
+
+
+

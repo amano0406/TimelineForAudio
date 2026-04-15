@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import warnings
+from contextlib import contextmanager
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -11,6 +14,7 @@ from .settings import load_huggingface_token, load_settings
 _DIARIZATION_MODEL_ID = "pyannote/speaker-diarization-community-1"
 _ASCII_ALNUM_RE = re.compile(r"[A-Za-z0-9]")
 _LEADING_PUNCTUATION_RE = re.compile(r"^[,.;:!?)]")
+_TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD = "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"
 
 
 def _compact_text(value: Any) -> str:
@@ -237,6 +241,25 @@ def _write_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+@contextmanager
+def _legacy_torch_checkpoint_load() -> Any:
+    previous = os.environ.get(_TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD)
+    os.environ[_TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD] = "1"
+    try:
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="Environment variable TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD detected.*",
+                category=UserWarning,
+            )
+            yield
+    finally:
+        if previous is None:
+            os.environ.pop(_TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD, None)
+        else:
+            os.environ[_TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD] = previous
+
+
 def _load_diarization_audio_input(audio_path: Path) -> dict[str, Any]:
     try:
         import torchaudio
@@ -283,7 +306,8 @@ def apply_speaker_diarization(
             diarization_error = f"pyannote.audio is not available: {exc}"
         else:
             try:
-                diarizer = Pipeline.from_pretrained(_DIARIZATION_MODEL_ID, token=token)
+                with _legacy_torch_checkpoint_load():
+                    diarizer = Pipeline.from_pretrained(_DIARIZATION_MODEL_ID, token=token)
                 target_compute_mode = str(
                     compute_mode
                     or transcript_payload.get("effective_compute_mode")

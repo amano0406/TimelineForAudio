@@ -159,6 +159,13 @@ internal sealed class TestAppFixture : IAsyncDisposable
         return jobId;
     }
 
+    public async Task<string> CreateLockedRunningRunAsync()
+    {
+        var jobId = await CreateRunningRunAsync();
+        await File.WriteAllTextAsync(Path.Combine(TempRoot, "outputs", "runs", jobId, ".job.lock"), "{}\n");
+        return jobId;
+    }
+
     public async Task<string> CreatePendingRunAsync()
     {
         var jobId = $"job-e2e-pending-{Guid.NewGuid():N}"[..28];
@@ -1240,3 +1247,4 @@ internal sealed class TestAppFixture : IAsyncDisposable
         }
     }
 }
+

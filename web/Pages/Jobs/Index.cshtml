@@ -19,6 +19,14 @@
         {
             return L("details.reused");
         }
+        if (string.Equals(value, "skipped_invalid", StringComparison.OrdinalIgnoreCase))
+        {
+            return L("details.skipped_invalid");
+        }
+        if (string.Equals(value, "skipped_too_short", StringComparison.OrdinalIgnoreCase))
+        {
+            return L("details.skipped_too_short");
+        }
 
         var key = $"stage.{(value ?? string.Empty).ToLowerInvariant()}";
         var label = L(key);
@@ -35,7 +43,7 @@
         $"{CompletedCount(done, skipped, failed)} / {total}";
 
     string ProgressBreakdown(int done, int skipped, int failed) =>
-        $"{L("details.processed")} {done} | {L("details.reused")} {skipped} | {L("details.errors")} {failed}";
+        $"{L("details.processed")} {done} | {L("details.skipped")} {skipped} | {L("details.errors")} {failed}";
 
     double Percent(double raw, int completed, int total)
     {

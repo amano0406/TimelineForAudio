@@ -10,7 +10,7 @@ from .runtime_profile import (
     resolve_model_name_for_quality,
 )
 
-PIPELINE_VERSION = "2026-04-11-2pass2-diarize1"
+PIPELINE_VERSION = "2026-04-11-2pass2-diarize2"
 TRANSCRIPTION_BACKEND = "faster-whisper"
 DIARIZATION_MODEL_ID = "pyannote/speaker-diarization-community-1"
 VAD_BACKEND = "faster-whisper-builtin"

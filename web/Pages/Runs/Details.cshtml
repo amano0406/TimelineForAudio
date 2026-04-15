@@ -23,6 +23,14 @@
         {
             return L("details.reused");
         }
+        if (string.Equals(value, "skipped_invalid", StringComparison.OrdinalIgnoreCase))
+        {
+            return L("details.skipped_invalid");
+        }
+        if (string.Equals(value, "skipped_too_short", StringComparison.OrdinalIgnoreCase))
+        {
+            return L("details.skipped_too_short");
+        }
 
         var key = $"stage.{(value ?? string.Empty).ToLowerInvariant()}";
         var label = L(key);
@@ -58,7 +66,7 @@
         $"{CompletedCount(source)} / {source?.VideosTotal ?? 0}";
 
     string ProgressBreakdown(JobStatusDocument? source) =>
-        $"{L("details.processed")} {source?.VideosDone ?? 0} | {L("details.reused")} {source?.VideosSkipped ?? 0} | {L("details.errors")} {source?.VideosFailed ?? 0}";
+        $"{L("details.processed")} {source?.VideosDone ?? 0} | {L("details.skipped")} {source?.VideosSkipped ?? 0} | {L("details.errors")} {source?.VideosFailed ?? 0}";
 
     double Percent(double? raw, int completed, int total)
     {
@@ -85,6 +93,10 @@
     var canDownloadArchive = !isActive && run.TimelineItems.Count > 0;
     var hasReusedOnlyWithoutTimeline = run.TimelineItems.Count == 0 && (status?.VideosSkipped ?? 0) > 0;
     var canRerun = !isActive && (run.Request?.InputItems.Count ?? 0) > 0;
+    var skippedItems = run.Manifest?.Items
+        .Where(item => string.Equals(item.Status, "skipped_invalid", StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals(item.Status, "skipped_too_short", StringComparison.OrdinalIgnoreCase))
+        .ToList() ?? [];
 }
 
 <section class="app-page space-y-6" data-active="@(isActive ? "true" : "false")" id="job-details">
@@ -218,7 +230,7 @@
                         <dd>@result?.ProcessedCount</dd>
                     </div>
                     <div>
-                        <dt class="text-slate-500">@L("details.reused")</dt>
+                        <dt class="text-slate-500">@L("details.skipped")</dt>
                         <dd>@result?.SkippedCount</dd>
                     </div>
                     <div>
@@ -230,6 +242,44 @@
                         <dd class="break-all">@result?.TimelineIndexPath</dd>
                     </div>
                 </dl>
+            </div>
+
+            <div class="panel">
+                <div class="mb-4 flex items-center justify-between">
+                    <h2 class="section-title">@L("details.skipped_inputs")</h2>
+                    <span class="badge-chip">@skippedItems.Count</span>
+                </div>
+                <div class="table-shell">
+                    <table class="app-table">
+                        <thead>
+                            <tr>
+                                <th>@L("common.source")</th>
+                                <th>@L("common.status")</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (skippedItems.Count == 0)
+                            {
+                                <tr>
+                                    <td colspan="2" class="px-4 py-8 text-center text-sm text-slate-500">@L("details.skipped_inputs_empty")</td>
+                                </tr>
+                            }
+                            else
+                            {
+                                @foreach (var item in skippedItems)
+                                {
+                                    <tr>
+                                        <td class="text-slate-700">
+                                            <div class="font-medium text-slate-900">@item.FileName</div>
+                                            <div class="mt-1 text-xs text-slate-500">@item.OriginalPath</div>
+                                        </td>
+                                        <td>@StageLabel(item.Status)</td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 

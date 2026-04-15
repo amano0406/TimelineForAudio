@@ -7,7 +7,13 @@ from typing import Iterable
 
 from .contracts import ManifestItem
 
-_TERMINAL_ITEM_STATES = {"completed", "failed", "skipped_duplicate"}
+_TERMINAL_ITEM_STATES = {
+    "completed",
+    "failed",
+    "skipped_duplicate",
+    "skipped_invalid",
+    "skipped_too_short",
+}
 _MAX_MATCH_SCORE = 9.0
 _STAGE_ORDER = [
     "extract_audio",
