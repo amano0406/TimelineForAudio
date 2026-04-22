@@ -11,7 +11,13 @@ from pathlib import Path
 from time import monotonic
 from typing import Any, Callable
 
-from .audio_features import analyze_audio, write_speaker_summary
+from .audio_features import analyze_audio, build_speaker_count_metadata, write_speaker_summary
+from .artifacts import (
+    register_artifact,
+    render_ipa,
+    render_readable_text,
+    write_media_artifacts_index,
+)
 from .catalog import append_catalog_rows, catalog_key, catalog_path, load_catalog
 from .context_builder import CONTEXT_BUILDER_VERSION, build_context_documents
 from .contracts import JobRequest, JobResult, JobStatus, ManifestItem
@@ -30,19 +36,20 @@ from .fs_utils import (
     write_text,
 )
 from .hashing import sha256_file
-from .pass_diff import write_pass_diff
+from .ipa_backend import generate_ipa_turns
+from .pass_diff import write_transcript_delta
+from .reconstruction import reconstruct_readable_text
 from .settings import load_settings, uploads_root
-from .timeline import render_timeline
 from .transcribe import transcribe_audio
 
 _ITEM_STAGE_BOUNDS: dict[str, tuple[float, float]] = {
     "extract_audio": (0.0, 0.12),
-    "transcribe_pass1": (0.12, 0.42),
-    "build_context": (0.42, 0.50),
-    "transcribe_pass2": (0.50, 0.78),
+    "transcribe_cleanup_source": (0.12, 0.42),
+    "prepare_cleanup_context": (0.42, 0.50),
+    "transcribe_turns": (0.50, 0.78),
     "diarize_audio": (0.78, 0.88),
     "analyze_audio": (0.88, 0.96),
-    "timeline_render": (0.96, 1.0),
+    "generate_artifacts": (0.96, 1.0),
 }
 
 _JOB_LOCK_STALE_AFTER = timedelta(seconds=30)
@@ -167,7 +174,7 @@ def _delete_job_dir(job_dir: Path, request: JobRequest | None = None) -> None:
     shutil.rmtree(job_dir, ignore_errors=True)
 
 
-def _resolve_duplicate_timeline_path(duplicate: dict[str, Any] | None) -> Path | None:
+def _resolve_duplicate_artifact_path(duplicate: dict[str, Any] | None) -> Path | None:
     if not duplicate:
         return None
 
@@ -180,9 +187,14 @@ def _resolve_duplicate_timeline_path(duplicate: dict[str, Any] | None) -> Path |
     run_dir = duplicate.get("run_dir")
     media_id = duplicate.get("audio_id") or duplicate.get("media_id")
     if run_dir and media_id:
-        candidate = Path(str(run_dir)) / "media" / str(media_id) / "timeline" / "timeline.md"
-        if candidate.exists():
-            return candidate
+        media_dir = Path(str(run_dir)) / "media" / str(media_id)
+        for relative_path in (
+            ("readable-text", "Readable Text.md"),
+            ("ipa", "IPA.md"),
+        ):
+            candidate = media_dir.joinpath(*relative_path)
+            if candidate.exists():
+                return candidate
 
     return None
 
@@ -337,13 +349,13 @@ def _stage_expected_seconds(stage_name: str, media_duration_sec: float, compute_
     safe_duration = max(1.0, media_duration_sec)
     if stage_name == "extract_audio":
         return max(1.5, min(25.0, safe_duration * 0.06))
-    if stage_name == "transcribe_pass1":
+    if stage_name == "transcribe_cleanup_source":
         factor = 0.18 if compute_mode == "gpu" else 0.90
         ceiling = 150.0 if compute_mode == "gpu" else 720.0
         return max(4.0, min(ceiling, safe_duration * factor))
-    if stage_name == "build_context":
+    if stage_name == "prepare_cleanup_context":
         return max(1.0, min(12.0, safe_duration * 0.03))
-    if stage_name == "transcribe_pass2":
+    if stage_name == "transcribe_turns":
         factor = 0.22 if compute_mode == "gpu" else 1.10
         ceiling = 160.0 if compute_mode == "gpu" else 840.0
         return max(4.0, min(ceiling, safe_duration * factor))
@@ -353,7 +365,7 @@ def _stage_expected_seconds(stage_name: str, media_duration_sec: float, compute_
         return max(2.0, min(ceiling, safe_duration * factor))
     if stage_name == "analyze_audio":
         return max(2.0, min(120.0, safe_duration * 0.12))
-    if stage_name == "timeline_render":
+    if stage_name == "generate_artifacts":
         return max(1.0, min(15.0, safe_duration * 0.03))
     if stage_name == "llm_export":
         return 5.0
@@ -450,7 +462,7 @@ def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
             f"- Created At: `{request.created_at}`",
             f"- Profile: `{request.profile}`",
             f"- Compute Mode: `{request.compute_mode}`",
-            f"- Processing Quality: `{request.processing_quality}`",
+            f"- Language Hint: `{request.language_hint or ''}`",
             f"- Input Count: `{len(request.input_items)}`",
             f"- Reprocess Duplicates: `{request.reprocess_duplicates}`",
             "",
@@ -458,23 +470,27 @@ def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
             "",
         ]
     )
-    transcription_info = "\n".join(
+    conversion_info = "\n".join(
         [
-            "# Transcription Info",
+            "# Conversion Info",
             "",
-            f"- Audio transcription: `{request.transcription_backend}` with `{request.transcription_model_id}`, `ja`, requested `{request.compute_mode}`",
-            f"- Second pass enabled: `{request.second_pass_enabled}`",
+            f"- Audio to IPA base: `{request.transcription_backend}` with `{request.transcription_model_id}`, compute `{request.compute_mode}`",
+            f"- Readable text reconstruction: `{request.reconstruction_backend or ''}` / `{request.reconstruction_model_id or ''}`",
+            f"- Reconstruction prompt version: `{request.reconstruction_prompt_version or ''}`",
+            f"- Language hint: `{request.language_hint or ''}`",
             f"- Supplemental context configured: `{bool(request.supplemental_context_text)}`",
-            f"- Context builder version: `{request.context_builder_version}`",
+            f"- IPA cleanup rules version: `{request.context_builder_version}`",
             f"- Diarization enabled: `{request.diarization_enabled}`",
             f"- Diarization model: `{request.diarization_model_id or ''}`",
             f"- VAD backend: `{request.vad_backend}` / `{request.vad_model_id}`",
             f"- Pipeline version: `{request.pipeline_version}`",
-            f"- Conversion signature: `{request.conversion_signature}`",
+            f"- Generation signature: `{request.generation_signature}`",
             "- Notes:",
-            "  - `pass1` is used only to build deterministic context text.",
-            "  - `pass2` transcript becomes the final transcript and timeline source.",
-            "  - Speaker summary and audio feature summary are emitted as sidecar markdown files.",
+            "  - `Readable Text` is reconstructed from `IPA` by the configured local backend when supported.",
+            "  - Explicitly unsupported language hints currently fall back to deterministic aligned text during the migration.",
+            "  - `IPA.md`, `Readable Text.md`, and `CONVERSION_INFO.md` are the primary user-facing outputs.",
+            "  - The current app display language is used as the reconstruction language hint for new jobs.",
+            "  - Audio files are not included in the export packages.",
             "  - Optional audio analysis does not fail the main transcription job.",
             "",
         ]
@@ -491,7 +507,7 @@ def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
         ]
     )
     write_text(job_dir / "RUN_INFO.md", run_info)
-    write_text(job_dir / "TRANSCRIPTION_INFO.md", transcription_info)
+    write_text(job_dir / "CONVERSION_INFO.md", conversion_info)
     write_text(job_dir / "NOTICE.md", notice)
 
 
@@ -522,6 +538,19 @@ def _collect_running_jobs() -> list[Path]:
     return _collect_jobs_by_state("running")
 
 
+def _claim_recoverable_running_job() -> tuple[Path | None, bool]:
+    running_jobs = _collect_running_jobs()
+    for candidate in running_jobs:
+        if not _job_lock_is_stale(candidate):
+            continue
+        if not _job_sources_accessible(candidate):
+            continue
+        if not _acquire_job_lock(candidate):
+            continue
+        return candidate, True
+    return None, bool(running_jobs)
+
+
 def _collect_jobs_by_state(*states: str) -> list[Path]:
     target_states = {state.lower() for state in states}
     settings = load_settings()
@@ -545,65 +574,6 @@ def _collect_jobs_by_state(*states: str) -> list[Path]:
             if status.state.lower() in target_states:
                 rows.append(candidate)
     return rows
-
-
-def _llm_export(job_dir: Path, processed_items: list[ManifestItem]) -> tuple[int, Path | None]:
-    llm_dir = ensure_dir(job_dir / "llm")
-    rows: list[dict[str, Any]] = []
-    batch_contents: list[str] = []
-    current_batch: list[str] = []
-    current_size = 0
-    max_batch_chars = 120_000
-
-    for item in processed_items:
-        if item.status != "completed" or not item.media_id:
-            continue
-        timeline_path = job_dir / "media" / item.media_id / "timeline" / "timeline.md"
-        if not timeline_path.exists():
-            continue
-        row = {
-            "job_id": job_dir.name,
-            "audio_id": item.media_id,
-            "original_path": item.original_path,
-            "timeline_path": str(timeline_path),
-            "duration_seconds": item.duration_seconds,
-            "source_hash": item.sha256,
-            "conversion_signature": item.conversion_signature,
-        }
-        rows.append(row)
-        timeline_text = timeline_path.read_text(encoding="utf-8", errors="replace").strip()
-        block = "\n".join(
-            [
-                f"# Audio: {item.media_id}",
-                f"- Source: `{item.original_path}`",
-                "",
-                timeline_text,
-                "",
-            ]
-        )
-        if current_batch and current_size + len(block) > max_batch_chars:
-            batch_contents.append("\n".join(current_batch).strip() + "\n")
-            current_batch = []
-            current_size = 0
-        current_batch.append(block)
-        current_size += len(block)
-
-    if current_batch:
-        batch_contents.append("\n".join(current_batch).strip() + "\n")
-
-    index_path: Path | None = None
-    if rows:
-        index_path = llm_dir / "timeline_index.jsonl"
-        index_path.write_text(
-            "\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n",
-            encoding="utf-8",
-        )
-    for idx, content in enumerate(batch_contents, start=1):
-        write_text(llm_dir / f"batch-{idx:03d}.md", content)
-
-    return len(batch_contents), index_path
-
-
 def _process_one_item(
     *,
     job_dir: Path,
@@ -618,7 +588,8 @@ def _process_one_item(
     audio_dir = ensure_dir(media_dir / "audio")
     transcript_dir = ensure_dir(media_dir / "transcript")
     analysis_dir = ensure_dir(media_dir / "analysis")
-    timeline_dir = ensure_dir(media_dir / "timeline")
+    ipa_dir = ensure_dir(media_dir / "ipa")
+    readable_text_dir = ensure_dir(media_dir / "readable-text")
 
     source_info = {
         "job_id": request.job_id,
@@ -633,6 +604,8 @@ def _process_one_item(
         "duration_seconds": manifest_item.duration_seconds,
         "source_hash": manifest_item.sha256,
         "conversion_signature": manifest_item.conversion_signature,
+        "generation_signature": manifest_item.generation_signature,
+        "recorded_at": manifest_item.captured_at,
         "captured_at": manifest_item.captured_at,
         "container_name": manifest_item.container_name,
         "extension": manifest_item.extension,
@@ -642,10 +615,12 @@ def _process_one_item(
         "bitrate": manifest_item.bitrate,
         "model_id": manifest_item.model_id,
         "pipeline_version": manifest_item.pipeline_version,
-        "timeline_transcript_variant": "pass2",
+        "language_hint": request.language_hint,
         "supplemental_context_configured": bool(request.supplemental_context_text),
-        "second_pass_enabled": request.second_pass_enabled,
-        "context_builder_version": request.context_builder_version or CONTEXT_BUILDER_VERSION,
+        "ipa_cleanup_rules_version": request.context_builder_version or CONTEXT_BUILDER_VERSION,
+        "reconstruction_backend": request.reconstruction_backend,
+        "reconstruction_model_id": request.reconstruction_model_id,
+        "reconstruction_prompt_version": request.reconstruction_prompt_version,
         "diarization_enabled": request.diarization_enabled,
         "diarization_model_id": request.diarization_model_id,
     }
@@ -656,7 +631,7 @@ def _process_one_item(
     if ensure_not_delete_requested:
         ensure_not_delete_requested("extract_audio")
     if on_stage:
-        on_stage("extract_audio", "Normalizing audio.")
+        on_stage("extract_audio", "Preparing audio input.")
     extract_audio(source_path, normalized_audio_path)
     if ensure_not_delete_requested:
         ensure_not_delete_requested("extract_audio")
@@ -664,33 +639,33 @@ def _process_one_item(
     write_json_atomic(audio_dir / "cut_map.json", cut_map)
 
     if ensure_not_delete_requested:
-        ensure_not_delete_requested("transcribe_pass1")
+        ensure_not_delete_requested("transcribe_cleanup_source")
     if on_stage:
-        on_stage("transcribe_pass1", "Running first-pass transcription.")
-    pass1_payload = transcribe_audio(
+        on_stage("transcribe_cleanup_source", "Preparing IPA cleanup source.")
+    cleanup_source_payload = transcribe_audio(
         source_name=item.display_name,
         audio_path=normalized_audio_path,
         transcript_dir=transcript_dir,
-        artifact_stem="pass1",
-        pass_name="pass1",
+        artifact_stem="cleanup-source",
+        transcript_label="cleanup_source",
         cut_map=cut_map,
         compute_mode=request.compute_mode,
-        processing_quality=request.processing_quality,
         initial_prompt=None,
         diarization_enabled=False,
+        word_timestamps=False,
     )
     if ensure_not_delete_requested:
-        ensure_not_delete_requested("transcribe_pass1")
+        ensure_not_delete_requested("transcribe_cleanup_source")
 
     if on_stage:
-        on_stage("build_context", "Building deterministic context text.")
+        on_stage("prepare_cleanup_context", "Preparing supplemental cleanup context.")
     context_report = build_context_documents(
         transcript_dir=transcript_dir,
-        transcript_payload=pass1_payload,
+        transcript_payload=cleanup_source_payload,
         supplemental_context_text=request.supplemental_context_text,
     )
     if ensure_not_delete_requested:
-        ensure_not_delete_requested("build_context")
+        ensure_not_delete_requested("prepare_cleanup_context")
     merged_context_path = transcript_dir / "context_merged.txt"
     merged_context = (
         merged_context_path.read_text(encoding="utf-8", errors="replace")
@@ -699,53 +674,57 @@ def _process_one_item(
     )
 
     if on_stage:
-        on_stage("transcribe_pass2", "Running second-pass transcription.")
-    pass2_payload = transcribe_audio(
+        on_stage("transcribe_turns", "Generating turn-aligned text.")
+    turns_source_payload = transcribe_audio(
         source_name=item.display_name,
         audio_path=normalized_audio_path,
         transcript_dir=transcript_dir,
-        artifact_stem="pass2",
-        pass_name="pass2",
+        artifact_stem="turns-source",
+        transcript_label="turns_source",
         cut_map=cut_map,
         compute_mode=request.compute_mode,
-        processing_quality=request.processing_quality,
         initial_prompt=merged_context,
         diarization_enabled=request.diarization_enabled,
+        word_timestamps=True,
     )
     if ensure_not_delete_requested:
-        ensure_not_delete_requested("transcribe_pass2")
+        ensure_not_delete_requested("transcribe_turns")
 
     if on_stage:
-        on_stage("diarize_audio", "Applying speaker diarization.")
-    pass2_payload = apply_speaker_diarization(
+        on_stage("diarize_audio", "Aligning speaker turns.")
+    turns_source_payload = apply_speaker_diarization(
         source_name=item.display_name,
         audio_path=normalized_audio_path,
         transcript_dir=transcript_dir,
         analysis_dir=analysis_dir,
-        transcript_payload=pass2_payload,
+        transcript_payload=turns_source_payload,
         compute_mode=request.compute_mode,
-        artifact_stem="pass2",
+        artifact_stem="turns-source",
     )
     if ensure_not_delete_requested:
         ensure_not_delete_requested("diarize_audio")
 
-    write_pass_diff(
+    write_transcript_delta(
         transcript_dir=transcript_dir,
-        pass1_payload=pass1_payload,
-        pass2_payload=pass2_payload,
+        cleanup_source_payload=cleanup_source_payload,
+        turns_source_payload=turns_source_payload,
     )
     if on_stage:
-        on_stage("analyze_audio", "Computing audio summaries.")
+        on_stage("analyze_audio", "Collecting timing and audio summaries.")
     speaker_summary = write_speaker_summary(
         source_name=item.display_name,
         output_dir=analysis_dir,
-        transcript_payload=pass2_payload,
+        transcript_payload=turns_source_payload,
     )
+    speaker_count_metadata = build_speaker_count_metadata(speaker_summary, turns_source_payload)
+    manifest_item.speaker_count = speaker_count_metadata["speaker_count"]
+    manifest_item.speaker_count_status = speaker_count_metadata["speaker_count_status"]
+    manifest_item.speaker_count_note = speaker_count_metadata["speaker_count_note"]
     audio_feature_summary = analyze_audio(
         source_name=item.display_name,
         audio_path=normalized_audio_path,
         duration_seconds=manifest_item.duration_seconds,
-        transcript_payload=pass2_payload,
+        transcript_payload=turns_source_payload,
         output_dir=analysis_dir,
     )
     if ensure_not_delete_requested:
@@ -764,26 +743,111 @@ def _process_one_item(
         "optional_voice_feature_summary", {}
     )
     if on_stage:
-        on_stage("timeline_render", "Rendering timeline markdown.")
-    render_timeline(
-        output_path=timeline_dir / "timeline.md",
+        on_stage("generate_artifacts", "Writing IPA and readable text artifacts.")
+    ipa_result = generate_ipa_turns(transcript_payload=turns_source_payload)
+    ipa_path = ipa_dir / "IPA.md"
+    render_ipa(
+        output_path=ipa_path,
         source_info=source_info,
-        transcript_payload=pass2_payload,
-        speaker_summary=speaker_summary,
-        audio_feature_summary=audio_feature_summary,
+        backend_name=ipa_result.backend_name,
+        status=ipa_result.status,
+        warnings=ipa_result.warnings,
+        speaker_count=manifest_item.speaker_count,
+        speaker_count_status=manifest_item.speaker_count_status,
+        speaker_count_note=manifest_item.speaker_count_note,
+        turns=[
+            {
+                "start": turn.start,
+                "end": turn.end,
+                "speaker": turn.speaker,
+                "ipa": turn.ipa,
+            }
+            for turn in ipa_result.turns
+        ],
+    )
+    readable_text_result = reconstruct_readable_text(
+        transcript_payload=turns_source_payload,
+        ipa_result=ipa_result,
+        language_hint=request.language_hint,
+        supplemental_context_text=request.supplemental_context_text,
+        compute_mode=request.compute_mode,
+    )
+    write_json_atomic(
+        readable_text_dir / "reconstruction.json",
+        {
+            "backend": readable_text_result.backend_name,
+            "status": readable_text_result.status,
+            "model_id": readable_text_result.model_id,
+            "prompt_version": readable_text_result.prompt_version,
+            "requested_compute_mode": readable_text_result.requested_compute_mode,
+            "effective_device": readable_text_result.effective_device,
+            "decoding": readable_text_result.decoding,
+            "warning_count": len(readable_text_result.warnings),
+            "warnings": readable_text_result.warnings,
+            "turn_count": len(readable_text_result.turns),
+        },
+    )
+    readable_text_path = readable_text_dir / "Readable Text.md"
+    render_readable_text(
+        output_path=readable_text_path,
+        source_info=source_info,
+        turns=[
+            {
+                "start": turn.start,
+                "end": turn.end,
+                "speaker": turn.speaker,
+                "text": turn.text,
+            }
+            for turn in readable_text_result.turns
+        ],
+        warnings=readable_text_result.warnings,
+        speaker_count=manifest_item.speaker_count,
+        speaker_count_status=manifest_item.speaker_count_status,
+        speaker_count_note=manifest_item.speaker_count_note,
+    )
+    artifacts: list[dict[str, Any]] = []
+    for artifact in [
+        register_artifact(
+            media_dir=media_dir,
+            kind="ipa",
+            title="IPA",
+            display_name="IPA",
+            role="secondary" if readable_text_result.turns and ipa_result.turns else "primary" if ipa_result.turns else "pending",
+            path=ipa_path,
+        ),
+        register_artifact(
+            media_dir=media_dir,
+            kind="readable_text",
+            title="Readable Text",
+            display_name="可読テキスト",
+            role="primary" if readable_text_result.turns else "pending",
+            path=readable_text_path,
+        ),
+    ]:
+        if artifact is not None:
+            artifacts.append(artifact)
+    write_media_artifacts_index(
+        media_dir=media_dir,
+        media_id=str(manifest_item.media_id),
+        primary_artifact_kind="readable_text" if readable_text_result.turns else "ipa",
+        artifacts=artifacts,
     )
     if ensure_not_delete_requested:
-        ensure_not_delete_requested("timeline_render")
+        ensure_not_delete_requested("generate_artifacts")
     warnings: list[str] = []
-    for payload in (pass1_payload, pass2_payload):
-        prefix = str(payload.get("pass_name") or "pass")
+    for payload in (cleanup_source_payload, turns_source_payload):
+        prefix = str(payload.get("transcript_label") or payload.get("artifact_stem") or "transcript")
         for warning in payload.get("transcription_warnings", []) or []:
             if str(warning).strip():
                 warnings.append(f"{prefix}: {warning}")
         if payload.get("diarization_requested") and payload.get("diarization_error"):
             warnings.append(f"{prefix} diarization: {payload['diarization_error']}")
     if context_report.get("merged_context_truncated"):
-        warnings.append("build_context: merged context was truncated before pass2.")
+        warnings.append("prepare_cleanup_context: merged context was truncated before turn alignment.")
+    if ipa_result.status != "unavailable":
+        warnings.extend(ipa_result.warnings)
+    if readable_text_result.status != "unavailable":
+        warnings.extend(readable_text_result.warnings)
     return warnings
 
 
@@ -791,22 +855,27 @@ def process_job(job_dir: Path | None = None) -> bool:
     lock_acquired = False
     delete_requested = False
     if job_dir is None:
-        if _collect_running_jobs():
-            return False
-        pending = _collect_pending_jobs()
-        if not pending:
-            return False
-        job_dir = None
-        for candidate in pending:
-            if not _job_sources_accessible(candidate):
-                continue
-            if not _acquire_job_lock(candidate):
-                continue
-            job_dir = candidate
+        running_job_dir, has_running_jobs = _claim_recoverable_running_job()
+        if running_job_dir is not None:
+            job_dir = running_job_dir
             lock_acquired = True
-            break
-        if job_dir is None:
-            return False
+        else:
+            if has_running_jobs:
+                return False
+            pending = _collect_pending_jobs()
+            if not pending:
+                return False
+            job_dir = None
+            for candidate in pending:
+                if not _job_sources_accessible(candidate):
+                    continue
+                if not _acquire_job_lock(candidate):
+                    continue
+                job_dir = candidate
+                lock_acquired = True
+                break
+            if job_dir is None:
+                return False
 
     job_dir = job_dir.resolve()
     if not _request_path(job_dir).exists():
@@ -944,12 +1013,12 @@ def process_job(job_dir: Path | None = None) -> bool:
             duplicate = catalog.get(catalog_key(file_hash, request.conversion_signature))
             duplicate_status = "new"
             duplicate_of = None
-            duplicate_timeline_path = _resolve_duplicate_timeline_path(duplicate)
-            if duplicate_timeline_path is not None:
+            duplicate_artifact_path = _resolve_duplicate_artifact_path(duplicate)
+            if duplicate_artifact_path is not None:
                 duplicate_of = str(
                     duplicate.get("audio_id")
                     or duplicate.get("media_id")
-                    or duplicate_timeline_path
+                    or duplicate_artifact_path
                     or duplicate.get("run_dir")
                     or ""
                 )
@@ -1007,12 +1076,11 @@ def process_job(job_dir: Path | None = None) -> bool:
             output_root=Path(request.output_root_path),
             current_job_id=request.job_id,
             compute_mode=request.compute_mode,
-            processing_quality=request.processing_quality,
         )
         append_log(
             log_path,
             f"[{now_iso()}] ETA history loaded: {eta_predictor.sample_count} sample(s) "
-            f"for compute_mode={request.compute_mode}, quality={request.processing_quality}.",
+            f"for compute_mode={request.compute_mode}.",
         )
 
         completed_items: list[ManifestItem] = []
@@ -1257,13 +1325,6 @@ def process_job(job_dir: Path | None = None) -> bool:
                         "conversion_signature": manifest_item.conversion_signature,
                         "original_path": manifest_item.original_path,
                         "duration_seconds": manifest_item.duration_seconds,
-                        "timeline_path": str(
-                            job_dir
-                            / "media"
-                            / str(manifest_item.media_id)
-                            / "timeline"
-                            / "timeline.md"
-                        ),
                         "created_at": now_iso(),
                     }
                 )
@@ -1310,28 +1371,22 @@ def process_job(job_dir: Path | None = None) -> bool:
             _write_manifest(job_dir, request.job_id, manifest_items)
             _write_status(job_dir, status)
 
-        _raise_if_delete_requested(job_dir, "llm_export")
         if appended_catalog_rows:
             append_catalog_rows(Path(request.output_root_path), appended_catalog_rows)
 
-        status.current_stage = "llm_export"
-        status.message = "Building timeline batches."
+        _raise_if_delete_requested(job_dir, "finalize")
         status.current_media = None
         status.current_media_elapsed_sec = 0.0
         status.current_stage_elapsed_sec = 0.0
-        status.estimated_remaining_sec = _stage_expected_seconds("llm_export", 1.0, compute_mode)
-        llm_export_started = monotonic()
-        status.progress_percent = 95.0
-        _write_status(job_dir, status)
-        batch_count, timeline_index_path = _llm_export(job_dir, completed_items)
+        status.estimated_remaining_sec = 0.0
 
         has_failures = status.videos_failed > 0
         result.state = "failed" if has_failures else "completed"
         result.processed_count = status.videos_done
         result.skipped_count = status.videos_skipped
         result.error_count = status.videos_failed
-        result.batch_count = batch_count
-        result.timeline_index_path = str(timeline_index_path) if timeline_index_path else None
+        result.batch_count = 0
+        result.timeline_index_path = None
         result.warnings = warnings
         _write_result(job_dir, result)
 
@@ -1343,14 +1398,6 @@ def process_job(job_dir: Path | None = None) -> bool:
         status.current_media_elapsed_sec = 0.0
         status.current_stage_elapsed_sec = 0.0
         status.estimated_remaining_sec = 0.0
-        status.progress_percent = _overall_progress_percent(
-            processed_duration_sec=status.processed_duration_sec,
-            total_duration_sec=status.total_duration_sec,
-            current_stage="llm_export",
-            current_stage_elapsed_sec=monotonic() - llm_export_started,
-            current_media_duration_sec=0.0,
-            compute_mode=compute_mode,
-        )
         status.progress_percent = 100.0
         status.completed_at = now_iso()
         _write_status(job_dir, status)
@@ -1403,7 +1450,3 @@ def process_job(job_dir: Path | None = None) -> bool:
             _release_job_lock(job_dir)
         if delete_requested:
             _delete_job_dir(job_dir, request)
-
-
-
-

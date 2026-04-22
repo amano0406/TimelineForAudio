@@ -80,6 +80,12 @@ public sealed class SettingsStore(AppPaths paths)
         return !string.IsNullOrWhiteSpace(value);
     }
 
+    public Task<bool> HasPersistedSettingsAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(File.Exists(paths.SettingsPath));
+    }
+
     public async Task<string?> ReadTokenAsync(CancellationToken cancellationToken = default)
     {
         if (!File.Exists(paths.TokenPath))
@@ -135,12 +141,6 @@ public sealed class SettingsStore(AppPaths paths)
         {
             "gpu" => "gpu",
             _ => "cpu",
-        };
-
-        value.ProcessingQuality = value.ProcessingQuality?.Trim().ToLowerInvariant() switch
-        {
-            "high" => "high",
-            _ => "standard",
         };
 
         value.UiLanguage = value.UiLanguage?.Trim() switch

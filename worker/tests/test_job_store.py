@@ -78,7 +78,6 @@ class JobStoreTests(unittest.TestCase):
                     "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
                     "huggingfaceTermsConfirmed": True,
                     "computeMode": "gpu",
-                    "processingQuality": "high",
                 }
                 save_settings(settings)
                 save_huggingface_token("hf_test_value")
@@ -95,8 +94,8 @@ class JobStoreTests(unittest.TestCase):
                 self.assertEqual(job_id, request["job_id"])
                 self.assertTrue(request["token_enabled"])
                 self.assertEqual("gpu", request["compute_mode"])
-                self.assertEqual("high", request["processing_quality"])
-                self.assertTrue(request["second_pass_enabled"])
+                self.assertEqual(request["conversion_signature"], request["generation_signature"])
+                self.assertEqual("en", request["language_hint"])
                 self.assertEqual("context-builder-v1", request["context_builder_version"])
 
     def test_list_runs_returns_created_job(self) -> None:
@@ -184,7 +183,11 @@ class JobStoreTests(unittest.TestCase):
             )
             media_dir = run_dir / "media" / "sample-12345678"
             (media_dir / "timeline").mkdir(parents=True)
+            (media_dir / "readable-text").mkdir(parents=True)
             (media_dir / "timeline" / "timeline.md").write_text("# Timeline\n", encoding="utf-8")
+            (media_dir / "readable-text" / "Readable Text.md").write_text(
+                "# Readable Text\n", encoding="utf-8"
+            )
             (media_dir / "source.json").write_text(
                 json.dumps(
                     {
@@ -196,9 +199,7 @@ class JobStoreTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (run_dir / "TRANSCRIPTION_INFO.md").write_text(
-                "# Transcription Info\n", encoding="utf-8"
-            )
+            (run_dir / "CONVERSION_INFO.md").write_text("# Conversion Info\n", encoding="utf-8")
             (media_dir / "transcript").mkdir(parents=True)
             (media_dir / "analysis").mkdir(parents=True)
             (media_dir / "transcript" / "pass1.md").write_text("# Pass1 Transcript\n", encoding="utf-8")
@@ -217,21 +218,68 @@ class JobStoreTests(unittest.TestCase):
 
             self.assertTrue(archive_path.exists())
             self.assertEqual(".zip", archive_path.suffix)
+            self.assertTrue(archive_path.name.endswith("-readable-text.zip"))
             with zipfile.ZipFile(archive_path) as archive:
                 names = set(archive.namelist())
                 self.assertIn("README.html", names)
                 self.assertNotIn("index.html", names)
                 self.assertNotIn("README.md", names)
-                self.assertIn("TRANSCRIPTION_INFO.md", names)
-                self.assertIn("timelines/2026-03-24 12-58-32.md", names)
-                self.assertIn("pass1-transcripts/2026-03-24 12-58-32.md", names)
-                self.assertIn("pass2-transcripts/2026-03-24 12-58-32.md", names)
-                self.assertIn("context-docs/2026-03-24 12-58-32.txt", names)
+                self.assertIn("CONVERSION_INFO.md", names)
+                self.assertNotIn("TRANSCRIPTION_INFO.md", names)
+                self.assertIn("readable-text/2026-03-24 12-58-32.md", names)
+                self.assertNotIn("timelines/2026-03-24 12-58-32.md", names)
+                self.assertNotIn("pass1-transcripts/2026-03-24 12-58-32.md", names)
+                self.assertNotIn("pass2-transcripts/2026-03-24 12-58-32.md", names)
+                self.assertNotIn("context-docs/2026-03-24 12-58-32.txt", names)
                 readme_html = archive.read("README.html").decode("utf-8")
-                self.assertIn("timelines/2026-03-24 12-58-32.md", readme_html)
-                self.assertIn("pass1-transcripts/2026-03-24 12-58-32.md", readme_html)
-                self.assertIn("pass2-transcripts/2026-03-24 12-58-32.md", readme_html)
+                self.assertIn("CONVERSION_INFO.md", readme_html)
+                self.assertIn("readable-text/2026-03-24 12-58-32.md", readme_html)
+                self.assertNotIn("timelines/2026-03-24 12-58-32.md", readme_html)
                 self.assertNotIn("README.md", readme_html)
+
+    def test_build_run_archive_can_create_ipa_zip(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            runs_root = root / "runs"
+            settings = {
+                "audioExtensions": [".wav"],
+                "inputRoots": [],
+                "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
+                "huggingfaceTermsConfirmed": False,
+            }
+
+            source_file = root / "sample.wav"
+            source_file.write_bytes(b"sample")
+            items = collect_input_items(settings=settings, files=[source_file])
+            job_id, run_dir = create_job(settings=settings, input_items=items)
+            (run_dir / "result.json").write_text(
+                json.dumps({"job_id": job_id, "state": "completed"}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            media_dir = run_dir / "media" / "sample-12345678"
+            (media_dir / "ipa").mkdir(parents=True)
+            (media_dir / "ipa" / "IPA.md").write_text("# IPA\n", encoding="utf-8")
+            (media_dir / "source.json").write_text(
+                json.dumps(
+                    {
+                        "display_name": "20260324_125832.wav",
+                        "original_path": str(source_file),
+                        "captured_at": "2026-03-24T12:58:32+09:00",
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            (run_dir / "CONVERSION_INFO.md").write_text("# Conversion Info\n", encoding="utf-8")
+
+            archive_path = build_run_archive(job_id, settings=settings, artifact_kind="ipa")
+
+            self.assertTrue(archive_path.exists())
+            self.assertTrue(archive_path.name.endswith("-ipa.zip"))
+            with zipfile.ZipFile(archive_path) as archive:
+                names = set(archive.namelist())
+                self.assertIn("ipa/2026-03-24 12-58-32.md", names)
+                self.assertNotIn("readable-text/2026-03-24 12-58-32.md", names)
 
 
 if __name__ == "__main__":

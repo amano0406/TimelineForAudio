@@ -2,14 +2,15 @@
 
 ## Goal
 
-`TimelineForAudio` converts local audio files into timeline-oriented text and supporting summaries that can be handed to ChatGPT or another LLM.
+`TimelineForAudio` converts local audio files into IPA-first outputs that can be reviewed locally or handed to ChatGPT or another LLM.
 
 The system prioritizes:
 
 - simple input selection for the user
+- IPA as the canonical intermediate
 - readable job output for LLM workflows
 - local processing over cloud dependencies
-- preserving pass1 artifacts alongside the final pass2 transcript
+- per-turn timestamps and speaker alignment
 
 ## App Model
 
@@ -21,11 +22,11 @@ The system prioritizes:
 
 1. open the GUI
 2. choose one or more uploaded files or a mounted directory
-3. review duplicate detection if it appears
+3. optionally add supplemental context for readable-text reconstruction
 4. start a job
 5. open the job detail page
-6. inspect `timeline.md`, transcript variants, and summaries
-7. download the ZIP package
+6. inspect `IPA` and `Readable Text`
+7. download either the IPA ZIP or the Readable Text ZIP
 
 ## Input Model
 
@@ -53,7 +54,7 @@ Every job writes:
 - `result.json`
 - `manifest.json`
 - `RUN_INFO.md`
-- `TRANSCRIPTION_INFO.md`
+- `CONVERSION_INFO.md`
 - `NOTICE.md`
 - `README.html` in the reduced export package
 
@@ -62,33 +63,29 @@ Each processed media item writes:
 - `source.json`
 - `audio/normalized.wav`
 - `audio/cut_map.json`
-- `transcript/pass1.json`
-- `transcript/pass1.md`
+- `transcript/cleanup_source.json`
+- `transcript/cleanup_source.md`
 - `transcript/context_primary.txt`
 - `transcript/context_secondary.txt` when provided
 - `transcript/context_merged.txt`
 - `transcript/context_report.json`
-- `transcript/pass2.json`
-- `transcript/pass2.md`
-- `transcript/pass_diff.json`
-- `analysis/speaker_summary.json`
-- `analysis/speaker_summary.md`
-- `analysis/audio_features.json`
-- `analysis/audio_features.md`
-- `timeline/timeline.md`
+- `transcript/turns_source.json`
+- `transcript/turns_source.md`
+- `transcript/transcript_delta.json`
+- `analysis/diarization_turns.json`
+- `ipa/ipa_turns.json`
+- `ipa/IPA.md`
+- `readable-text/readable_text_turns.json`
+- `readable-text/Readable Text.md`
 
 Reduced export packaging writes:
 
 - `README.html`
-- `TRANSCRIPTION_INFO.md`
+- `CONVERSION_INFO.md`
 - `FAILURE_REPORT.md` when needed
 - `logs/worker.log` when needed
-- `timelines/*.md`
-- `pass1-transcripts/*.md`
-- `pass2-transcripts/*.md`
-- `context-docs/*.txt`
-- `speaker-summaries/*.md`
-- `audio-feature-summaries/*.md`
+- `ipa/*.md` for IPA export
+- `readable-text/*.md` for Readable Text export
 
 ## Progress Model
 
@@ -98,10 +95,10 @@ The GUI shows:
 - `current_stage`
 - `current_item`
 - `processed_duration_sec / total_duration_sec`
-- `estimated_remaining_sec`
-- elapsed time and stage elapsed time
+- elapsed time
+- progress percent
 
-ETA is derived from processed audio duration versus elapsed wall time.
+ETA is optional and secondary. The primary progress contract is coarse progress plus per-file state.
 
 ## Settings
 
@@ -111,7 +108,7 @@ Stored in `app-data/settings.json`:
 - output roots
 - audio extensions
 - compute mode
-- processing quality
+- UI language
 - Hugging Face terms confirmation
 
 Stored separately in `app-data/secrets/huggingface.token`:
@@ -123,9 +120,9 @@ Stored separately in `app-data/secrets/huggingface.token`:
 v1 keeps the UI simple:
 
 - compute mode: `cpu` or `gpu`
-- processing quality: `standard` or `high`
 - optional diarization
 - optional job-level supplemental context text
+- no user-visible quality lane selector
 
 There is no free-form model picker in v1.
 
@@ -133,20 +130,18 @@ There is no free-form model picker in v1.
 
 - CPU path is implemented and is the public baseline
 - GPU path is implemented through a dedicated NVIDIA-only Docker worker overlay
-- high quality is available on both CPU and GPU
-- CPU + high is an expert lane
-- GPU + high is the recommended best-quality lane, with about 10 GiB+ VRAM as the practical target
+- internal model selection is not exposed as a user-facing quality concept
 
 ## Duplicate Handling
 
-- duplicate key: `source hash + conversion signature`
-- default policy: reuse prior result when the conversion signature matches
-- optional override: reprocess duplicates with the same settings
-- rerun can also use current settings to intentionally change the conversion signature
+- duplicate key: `source hash + generation signature`
+- default policy: reuse prior result when the generation signature matches
+- reuse is automatic at the file level
+- the user is not asked to choose reuse versus rerun during ordinary job creation
 
 ## Diarization
 
 - use `pyannote` only if token and terms confirmation are present
 - otherwise continue without diarization
 - diarization failures should not fail the whole job
-- speaker confidence and diarization quality are heuristic summaries, not identity guarantees
+- speaker labels are turn-level alignment metadata, not identity guarantees

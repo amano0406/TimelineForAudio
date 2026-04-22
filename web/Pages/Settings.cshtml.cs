@@ -35,34 +35,25 @@ public sealed class SettingsModel(
     public string ComputeMode { get; set; } = "cpu";
 
     [BindProperty]
-    public string ProcessingQuality { get; set; } = "standard";
-
-    [BindProperty]
     public string UiLanguage { get; set; } = "en";
 
     public bool HasSavedTokenConfigured { get; private set; }
 
+    public bool HasPersistedSettings { get; private set; }
+
+    public bool SavedGpuPreferenceUnavailable { get; private set; }
+
     public string TokenMaskValue => DisplayMaskedTokenValue;
+
+    public string TokenPreview { get; private set; } = string.Empty;
+
+    public bool ShowTokenEditor { get; private set; }
 
     public string? StatusMessage { get; private set; }
 
     public string TokenSettingsUrl => "https://huggingface.co/settings/tokens";
 
     public string PyannoteModelUrl => "https://huggingface.co/pyannote/speaker-diarization-community-1";
-
-    public bool IsGpuHighQualityRecommended =>
-        WorkerCapability.GpuAvailable &&
-        (WorkerCapability.MaxGpuMemoryGiB <= 0 || WorkerCapability.MaxGpuMemoryGiB >= RuntimeProfile.HighQualityRecommendedGpuMemoryGiB);
-
-    public bool IsGpuHighQualityExperimental =>
-        WorkerCapability.GpuAvailable &&
-        WorkerCapability.MaxGpuMemoryGiB >= RuntimeProfile.HighQualityWarningGpuMemoryGiB &&
-        WorkerCapability.MaxGpuMemoryGiB < RuntimeProfile.HighQualityRecommendedGpuMemoryGiB;
-
-    public bool IsGpuHighQualityLowMemory =>
-        WorkerCapability.GpuAvailable &&
-        WorkerCapability.MaxGpuMemoryGiB > 0 &&
-        WorkerCapability.MaxGpuMemoryGiB < RuntimeProfile.HighQualityWarningGpuMemoryGiB;
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
@@ -73,6 +64,7 @@ public sealed class SettingsModel(
     {
         WorkerCapability = await workerCapabilityService.GetAsync(cancellationToken);
         var hasSavedTokenConfigured = await settingsStore.HasTokenAsync(cancellationToken);
+        var submittedToken = Token?.Trim();
         if (string.Equals(ComputeMode, "gpu", StringComparison.OrdinalIgnoreCase) && !WorkerCapability.GpuAvailable)
         {
             ModelState.AddModelError(nameof(ComputeMode), L("settings.compute_mode.gpu_unavailable"));
@@ -81,17 +73,20 @@ public sealed class SettingsModel(
         if (!ModelState.IsValid)
         {
             await LoadPageAsync(cancellationToken);
+            if (!string.IsNullOrWhiteSpace(submittedToken))
+            {
+                Token = submittedToken;
+                ShowTokenEditor = true;
+            }
             StatusMessage = L("settings.save_blocked");
             return Page();
         }
 
         var settings = await settingsStore.LoadAsync(cancellationToken);
         settings.ComputeMode = ComputeMode;
-        settings.ProcessingQuality = ProcessingQuality;
         settings.UiLanguage = languageService.Normalize(UiLanguage) ?? "en";
         settings.LanguageSelected = true;
         settings.HuggingfaceTermsConfirmed = false;
-        var submittedToken = Token?.Trim();
         var replaceToken =
             !string.IsNullOrWhiteSpace(submittedToken) &&
             !(hasSavedTokenConfigured && (
@@ -109,9 +104,15 @@ public sealed class SettingsModel(
             string.Equals(model.AccessState, "authorized", StringComparison.OrdinalIgnoreCase));
         await settingsStore.SaveAsync(settings, cancellationToken: cancellationToken);
 
-        await LoadPageAsync(cancellationToken);
-        TempData["StatusMessage"] = L("settings.save_success");
-        return RedirectToPage("/Jobs/New");
+        TempData["StatusMessage"] = Snapshot.AccessState switch
+        {
+            "authorized" => L("settings.save_success"),
+            "approval_required" => L("settings.save_pending"),
+            "invalid_token" => L("settings.save_invalid_token"),
+            "unknown" => L("settings.save_check"),
+            _ => L("settings.save_success"),
+        };
+        return RedirectToPage(new { lang = settings.UiLanguage });
     }
 
     public async Task<IActionResult> OnPostClearModelCacheAsync(CancellationToken cancellationToken)
@@ -120,7 +121,30 @@ public sealed class SettingsModel(
         TempData["StatusMessage"] = cleared > 0
             ? L("settings.cache.cleared")
             : L("settings.cache.empty");
-        return RedirectToPage();
+        return RedirectToPage(new { lang = languageService.Resolve(Request) });
+    }
+
+    public async Task<IActionResult> OnPostResetAppAsync(CancellationToken cancellationToken)
+    {
+        var normalizedLanguage = languageService.Resolve(Request);
+        WorkerCapability = await workerCapabilityService.GetAsync(cancellationToken);
+        var defaultComputeMode = WorkerCapability.GpuAvailable ? "gpu" : "cpu";
+
+        await modelCacheService.ClearAsync(cancellationToken);
+        await settingsStore.SaveAsync(
+            new AppSettingsDocument
+            {
+                UiLanguage = normalizedLanguage,
+                LanguageSelected = true,
+                ComputeMode = defaultComputeMode,
+                HuggingfaceTermsConfirmed = false,
+            },
+            token: null,
+            replaceToken: true,
+            cancellationToken: cancellationToken);
+
+        TempData["StatusMessage"] = L("settings.maintenance.reset_done");
+        return RedirectToPage(new { lang = normalizedLanguage });
     }
 
     private async Task LoadPageAsync(CancellationToken cancellationToken)
@@ -131,16 +155,44 @@ public sealed class SettingsModel(
         ModelCache = await modelCacheService.GetSnapshotAsync(cancellationToken);
         WorkerCapability = await workerCapabilityService.GetAsync(cancellationToken);
         HasSavedTokenConfigured = Snapshot.HasToken;
-        Token = HasSavedTokenConfigured ? DisplayMaskedTokenValue : "";
+        var savedToken = HasSavedTokenConfigured
+            ? await settingsStore.ReadTokenAsync(cancellationToken)
+            : null;
+        Token = string.Empty;
+        TokenPreview = CreateTokenPreview(savedToken);
+        ShowTokenEditor = !HasSavedTokenConfigured;
         var settings = await settingsStore.LoadAsync(cancellationToken);
-        ComputeMode = settings.ComputeMode;
+        HasPersistedSettings = await settingsStore.HasPersistedSettingsAsync(cancellationToken);
+        SavedGpuPreferenceUnavailable = HasPersistedSettings &&
+            string.Equals(settings.ComputeMode, "gpu", StringComparison.OrdinalIgnoreCase) &&
+            !WorkerCapability.GpuAvailable;
+
+        ComputeMode = HasPersistedSettings
+            ? settings.ComputeMode
+            : (WorkerCapability.GpuAvailable ? "gpu" : "cpu");
+
         if (!WorkerCapability.GpuAvailable && string.Equals(ComputeMode, "gpu", StringComparison.OrdinalIgnoreCase))
         {
             ComputeMode = "cpu";
         }
-        ProcessingQuality = settings.ProcessingQuality;
         UiLanguage = languageService.Normalize(settings.UiLanguage) ?? "en";
         StatusMessage ??= TempData["StatusMessage"] as string;
+    }
+
+    private static string CreateTokenPreview(string? token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return string.Empty;
+        }
+
+        var trimmed = token.Trim();
+        if (trimmed.Length <= 8)
+        {
+            return $"{trimmed[..Math.Min(2, trimmed.Length)]}••••••••{trimmed[^Math.Min(2, trimmed.Length)..]}";
+        }
+
+        return $"{trimmed[..4]}••••••••{trimmed[^4..]}";
     }
 
     private string L(string key) => localizer.Get(languageService.Resolve(Request), key);

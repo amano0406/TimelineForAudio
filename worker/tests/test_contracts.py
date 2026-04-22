@@ -15,13 +15,11 @@ class ContractsTests(unittest.TestCase):
             output_root_path="/shared/outputs/default",
             profile="quality-first",
             compute_mode="gpu",
-            processing_quality="high",
             pipeline_version="2026-04-05-mvp1",
             conversion_signature="sig-123",
             transcription_backend="faster-whisper",
-            transcription_model_id="large-v3",
+            transcription_model_id="medium",
             supplemental_context_text="Known names: TimelineForAudio, WhisperX",
-            second_pass_enabled=True,
             context_builder_version="context-builder-v1",
             diarization_enabled=True,
             diarization_model_id="pyannote/speaker-diarization-community-1",
@@ -29,6 +27,7 @@ class ContractsTests(unittest.TestCase):
             vad_model_id="faster-whisper-default",
             reprocess_duplicates=False,
             token_enabled=True,
+            language_hint="ja",
             input_items=[
                 InputItem(
                     input_id="scan-0001",
@@ -47,13 +46,20 @@ class ContractsTests(unittest.TestCase):
         self.assertEqual("run-123", restored.job_id)
         self.assertEqual("quality-first", restored.profile)
         self.assertEqual("gpu", restored.compute_mode)
-        self.assertEqual("high", restored.processing_quality)
+        self.assertEqual("sig-123", payload["generation_signature"])
         self.assertEqual("sig-123", restored.conversion_signature)
+        self.assertEqual("sig-123", restored.generation_signature)
+        self.assertEqual("ja", restored.language_hint)
+        self.assertEqual("local-transformers-japanese-p2g-v1", restored.reconstruction_backend)
+        self.assertEqual(
+            "Respair/Japanese_Phoneme_to_Grapheme_LLM",
+            restored.reconstruction_model_id,
+        )
+        self.assertEqual("ipa-turn-reconstruction-ja-v2", restored.reconstruction_prompt_version)
         self.assertEqual(
             "Known names: TimelineForAudio, WhisperX",
             restored.supplemental_context_text,
         )
-        self.assertTrue(restored.second_pass_enabled)
         self.assertEqual("context-builder-v1", restored.context_builder_version)
         self.assertTrue(restored.diarization_enabled)
         self.assertEqual(1, len(restored.input_items))
@@ -71,7 +77,7 @@ class ContractsTests(unittest.TestCase):
                 "compute_mode": "cpu",
                 "processing_quality": "standard",
                 "pipeline_version": "2026-04-10-2pass1",
-                "conversion_signature": "sig-456",
+                "generation_signature": "sig-456",
                 "transcription_backend": "faster-whisper",
                 "transcription_model_id": "medium",
                 "supplemental_context_text": "prior terms",
@@ -82,6 +88,7 @@ class ContractsTests(unittest.TestCase):
                 "vad_model_id": "faster-whisper-default",
                 "reprocess_duplicates": True,
                 "token_enabled": False,
+                "language_hint": "ja,en",
                 "input_items": [],
                 "transcription_initial_prompt": "legacy prompt",
                 "transcript_normalization_mode": "deterministic",
@@ -89,8 +96,10 @@ class ContractsTests(unittest.TestCase):
             }
         )
 
+        self.assertEqual("sig-456", restored.generation_signature)
+        self.assertEqual("ja,en", restored.language_hint)
+        self.assertEqual("ipa-aligned-text-fallback-v1", restored.reconstruction_backend)
         self.assertEqual("prior terms", restored.supplemental_context_text)
-        self.assertTrue(restored.second_pass_enabled)
         self.assertEqual("context-builder-v1", restored.context_builder_version)
 
 

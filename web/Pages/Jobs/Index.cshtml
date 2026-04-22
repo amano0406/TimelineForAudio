@@ -33,6 +33,18 @@
         return label == key ? value ?? "-" : label;
     }
 
+    string? SecondaryStageLabel(string? state, string? stage)
+    {
+        if (string.IsNullOrWhiteSpace(stage) ||
+            string.Equals(stage, state, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var label = StageLabel(stage);
+        return label == "-" ? null : label;
+    }
+
     string FormatSize(long valueBytes) => DisplayFormatters.FormatFileSize(valueBytes, L);
     string FormatDuration(double? valueSeconds) => DisplayFormatters.FormatDurationFriendly(valueSeconds, L);
     string FormatDurationOrDash(double? valueSeconds) => valueSeconds.HasValue ? FormatDuration(valueSeconds) : "-";
@@ -41,9 +53,6 @@
 
     string ProgressCounter(int done, int skipped, int failed, int total) =>
         $"{CompletedCount(done, skipped, failed)} / {total}";
-
-    string ProgressBreakdown(int done, int skipped, int failed) =>
-        $"{L("details.processed")} {done} | {L("details.skipped")} {skipped} | {L("details.errors")} {failed}";
 
     double Percent(double raw, int completed, int total)
     {
@@ -71,7 +80,6 @@
 <section class="app-page space-y-6" id="jobs-page" data-has-active="@(Model.ActiveRun is not null ? "true" : "false")">
     <header class="panel page-header">
         <div>
-            <p class="eyebrow">@L("jobs.list.eyebrow")</p>
             <h1 class="page-title">@L("jobs.list.page_title")</h1>
             <p class="page-description">@L("jobs.list.description")</p>
         </div>
@@ -90,28 +98,30 @@
             Model.ActiveRun.ProgressPercent,
             CompletedCount(Model.ActiveRun.VideosDone, Model.ActiveRun.VideosSkipped, Model.ActiveRun.VideosFailed),
             Model.ActiveRun.VideosTotal);
+        var activeStageLabel = SecondaryStageLabel(Model.ActiveRun.State, Model.ActiveRun.CurrentStage);
         <section class="panel">
             <div class="mb-4 flex items-center justify-between gap-3">
                 <div>
-                    <p class="eyebrow">@L("jobs.active.title")</p>
                     <h2 class="section-title">@L("jobs.active.heading")</h2>
                 </div>
             </div>
 
-            <div class="grid gap-4 xl:grid-cols-6">
+            <div class="grid gap-4 xl:grid-cols-5">
                 <div class="metric-card xl:col-span-2">
                     <div class="metric-label">@L("common.job")</div>
                     <div class="metric-value">@Model.ActiveRun.JobId</div>
                     <div class="metric-subtle">
                         <span class="@StateBadgeClass(Model.ActiveRun.State)">@StateLabel(Model.ActiveRun.State)</span>
-                        <span class="ml-2">@StageLabel(Model.ActiveRun.CurrentStage)</span>
+                        @if (!string.IsNullOrWhiteSpace(activeStageLabel))
+                        {
+                            <span class="ml-2">@activeStageLabel</span>
+                        }
                     </div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">@L("common.progress")</div>
                     <div class="metric-value">@PercentLabel(activePercent)</div>
                     <div class="metric-subtle">@ProgressCounter(Model.ActiveRun.VideosDone, Model.ActiveRun.VideosSkipped, Model.ActiveRun.VideosFailed, Model.ActiveRun.VideosTotal)</div>
-                    <div class="metric-subtle">@ProgressBreakdown(Model.ActiveRun.VideosDone, Model.ActiveRun.VideosSkipped, Model.ActiveRun.VideosFailed)</div>
                     <div class="progress-track mt-3">
                         <div class="progress-fill" style="width:@(activePercent.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
                     </div>
@@ -128,10 +138,6 @@
                     <div class="metric-label">@L("common.elapsed")</div>
                     <div class="metric-value">@FormatDurationOrDash(Model.ActiveRun.ElapsedWallSec)</div>
                 </div>
-                <div class="metric-card">
-                    <div class="metric-label">@L("details.remaining_time")</div>
-                    <div class="metric-value">@FormatDuration(Model.ActiveRun.EstimatedRemainingSec)</div>
-                </div>
             </div>
             <div class="mt-4">
                 <a class="btn-secondary" href="@JobUrls.Details(Model.ActiveRun.JobId)">@L("jobs.active.open_details")</a>
@@ -142,7 +148,6 @@
     <section class="panel">
         <div class="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-                <p class="eyebrow">@L("jobs.list.history_eyebrow")</p>
                 <h2 class="section-title">@L("jobs.list.history_title")</h2>
             </div>
             <form method="post" asp-page-handler="DeleteAll" id="delete-all-form">
@@ -189,24 +194,21 @@
                                 run.ProgressPercent,
                                 CompletedCount(run.VideosDone, run.VideosSkipped, run.VideosFailed),
                                 run.VideosTotal);
+                            var stageLabel = SecondaryStageLabel(run.State, run.CurrentStage);
                             <tr>
                                 <td>
                                     <a class="table-link" href="@JobUrls.Details(run.JobId)">@run.JobId</a>
                                 </td>
                                 <td>
                                     <span class="@StateBadgeClass(run.State)">@StateLabel(run.State)</span>
-                                    <div class="mt-2 text-xs text-slate-500">@StageLabel(run.CurrentStage)</div>
-                                    @if ((string.Equals(run.State, "pending", StringComparison.OrdinalIgnoreCase) ||
-                                          string.Equals(run.State, "running", StringComparison.OrdinalIgnoreCase)) &&
-                                         run.EstimatedRemainingSec.HasValue)
+                                    @if (!string.IsNullOrWhiteSpace(stageLabel))
                                     {
-                                        <div class="mt-1 text-xs text-slate-500">@L("common.remaining"): @FormatDuration(run.EstimatedRemainingSec)</div>
+                                        <div class="mt-2 text-xs text-slate-500">@stageLabel</div>
                                     }
                                 </td>
                                 <td>
                                     <div class="font-medium text-slate-900">@PercentLabel(percent)</div>
                                     <div class="mt-1 text-xs text-slate-500">@ProgressCounter(run.VideosDone, run.VideosSkipped, run.VideosFailed, run.VideosTotal)</div>
-                                    <div class="mt-1 text-xs text-slate-500">@ProgressBreakdown(run.VideosDone, run.VideosSkipped, run.VideosFailed)</div>
                                     <div class="progress-track mt-2">
                                         <div class="progress-fill" style="width:@(percent.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
                                     </div>
@@ -220,7 +222,13 @@
                                         <a class="btn-table" href="@JobUrls.Details(run.JobId)">@L("common.details")</a>
                                         @if (run.HasDownloadableArchive && !string.Equals(run.State, "pending", StringComparison.OrdinalIgnoreCase) && !string.Equals(run.State, "running", StringComparison.OrdinalIgnoreCase))
                                         {
-                                            <a class="btn-table-success" href="@JobUrls.Download(run.JobId)">@L("common.zip")</a>
+                                            <button type="button"
+                                                    class="btn-table-success"
+                                                    data-download-job-id="@run.JobId"
+                                                    data-download-readable="@(run.HasReadableTextArchive ? JobUrls.Download(run.JobId, "readable-text") : "")"
+                                                    data-download-ipa="@(run.HasIpaArchive ? JobUrls.Download(run.JobId, "ipa") : "")">
+                                                @L("details.download_zip")
+                                            </button>
                                         }
                                         <form method="post" asp-page-handler="Delete" class="inline">
                                             <input type="hidden" name="jobId" value="@run.JobId" />
@@ -271,7 +279,6 @@
     <div class="modal-backdrop" data-modal-close="true"></div>
     <div class="modal-card">
         <div class="space-y-3">
-            <p class="eyebrow">@L("common.confirm")</p>
             <h2 class="section-title" id="confirm-modal-title"></h2>
             <p class="page-description !mt-0" id="confirm-modal-message"></p>
             <div id="confirm-modal-input-wrap" class="hidden space-y-2">
@@ -291,6 +298,27 @@
     </div>
 </div>
 
+<div id="download-modal"
+     class="modal-shell hidden"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="download-modal-title">
+    <div class="modal-backdrop" data-download-close="true"></div>
+    <div class="modal-card">
+        <div class="space-y-3">
+            <h2 class="section-title" id="download-modal-title">@L("jobs.list.download_title")</h2>
+            <p class="page-description !mt-0" id="download-modal-message"></p>
+        </div>
+        <div class="mt-6 flex flex-wrap gap-3">
+            <a id="download-modal-readable" class="btn-primary hidden" href="#">@L("artifact.readable_text")</a>
+            <a id="download-modal-ipa" class="btn-secondary hidden" href="#">@L("artifact.ipa")</a>
+        </div>
+        <div class="mt-6 flex items-center justify-end gap-3">
+            <button type="button" class="btn-secondary" id="download-modal-close">@L("common.cancel")</button>
+        </div>
+    </div>
+</div>
+
 @section Scripts
 {
     <script>
@@ -306,6 +334,11 @@
             const confirmModalError = document.getElementById("confirm-modal-error");
             const confirmModalCancel = document.getElementById("confirm-modal-cancel");
             const confirmModalSubmit = document.getElementById("confirm-modal-submit");
+            const downloadModal = document.getElementById("download-modal");
+            const downloadModalMessage = document.getElementById("download-modal-message");
+            const downloadModalReadable = document.getElementById("download-modal-readable");
+            const downloadModalIpa = document.getElementById("download-modal-ipa");
+            const downloadModalClose = document.getElementById("download-modal-close");
 
             const hasActive = page?.dataset.hasActive === "true";
             let activeForm = null;
@@ -424,6 +457,66 @@
                     }
                 });
             }
+
+            const downloadMessagePrefix = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.list.download_message_prefix")));
+
+            const closeDownloadModal = () => {
+                downloadModal?.classList.add("hidden");
+                if (downloadModalMessage) {
+                    downloadModalMessage.textContent = "";
+                }
+                if (downloadModalReadable) {
+                    downloadModalReadable.classList.add("hidden");
+                    downloadModalReadable.removeAttribute("href");
+                }
+                if (downloadModalIpa) {
+                    downloadModalIpa.classList.add("hidden");
+                    downloadModalIpa.removeAttribute("href");
+                }
+            };
+
+            document.querySelectorAll("button[data-download-job-id]").forEach((button) => {
+                button.addEventListener("click", () => {
+                    const jobId = button.dataset.downloadJobId || "";
+                    if (downloadModalMessage) {
+                        downloadModalMessage.textContent = `${downloadMessagePrefix} ${jobId}`;
+                    }
+
+                    const readableUrl = button.dataset.downloadReadable || "";
+                    const ipaUrl = button.dataset.downloadIpa || "";
+                    if (downloadModalReadable) {
+                        if (readableUrl) {
+                            downloadModalReadable.setAttribute("href", readableUrl);
+                            downloadModalReadable.classList.remove("hidden");
+                        } else {
+                            downloadModalReadable.classList.add("hidden");
+                            downloadModalReadable.removeAttribute("href");
+                        }
+                    }
+                    if (downloadModalIpa) {
+                        if (ipaUrl) {
+                            downloadModalIpa.setAttribute("href", ipaUrl);
+                            downloadModalIpa.classList.remove("hidden");
+                        } else {
+                            downloadModalIpa.classList.add("hidden");
+                            downloadModalIpa.removeAttribute("href");
+                        }
+                    }
+
+                    downloadModal?.classList.remove("hidden");
+                });
+            });
+
+            downloadModalClose?.addEventListener("click", closeDownloadModal);
+            downloadModal?.querySelectorAll("[data-download-close='true']").forEach((element) => {
+                element.addEventListener("click", closeDownloadModal);
+            });
+
+            document.addEventListener("keydown", (event) => {
+                if (event.key === "Escape" && downloadModal && !downloadModal.classList.contains("hidden")) {
+                    closeDownloadModal();
+                }
+            });
         })();
     </script>
 }

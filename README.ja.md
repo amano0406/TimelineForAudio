@@ -6,7 +6,7 @@
 
 ## Public Release Status
 
-現在の public release 系列は `TimelineForAudio v0.3.4 Tech Preview` です。
+現在の public release 系列は `TimelineForAudio v0.4.0 Tech Preview` です。
 
 現時点の public contract:
 
@@ -27,8 +27,10 @@
 3. pass1 と job 単位の補助コンテキストから deterministic な plain text context を作ります
 4. その merged context を使って同じ音声に pass2 の ASR をかけ、pass2 を最終 transcript として使います
 5. 必要に応じて pass2 の後段で話者分離を適用し、transcript 本文は書き換えずに speaker-attributed spans を付けます
-6. pause、loudness、speaking rate、pitch、overlap などの音声要約を計算します
-7. 最終結果を ZIP にまとめます
+6. `IPA.md` については、SudachiPy core dictionary の reading を使って、日本語 turn を cloud なしで deterministic に IPA 化します
+7. `Readable Text.md` については、IPA と speaker / timestamp をそろえて復元します。`GPU + 日本語ヒント` では local `transformers` model を使い、それ以外は移行期間中の deterministic fallback を使います
+8. pause、loudness、speaking rate、pitch、overlap などの音声要約を計算します
+9. 最終結果を ZIP にまとめます
 
 使う側がモデル名や細かい内部処理を理解する必要はありません。
 
@@ -142,7 +144,7 @@ Windows:
 .\start.bat
 ```
 
-`v0.3.4` の public release では、これが primary supported path です。
+`v0.4.0` の public release では、これが primary supported path です。
 
 macOS:
 
@@ -150,7 +152,7 @@ macOS:
 ./start.command
 ```
 
-こちらは `v0.3.4` では experimental な source-based path です。現在の public release line の baseline support には含めません。
+こちらは `v0.4.0` では experimental な source-based path です。現在の public release line の baseline support には含めません。
 
 起動後の流れ:
 
@@ -162,6 +164,8 @@ macOS:
 6. 新しいジョブを作る
 7. 処理完了まで待つ
 8. ZIP をダウンロードする
+
+worker に `transformers` を含めている理由は、IPA-first pipeline の `Readable Text` 復元をローカルで実行するためです。
 
 起動スクリプトは、Google Chrome / Microsoft Edge / Brave / Chromium のいずれかで専用ウィンドウ風に開こうとします。使えない場合は通常のブラウザで開きます。
 

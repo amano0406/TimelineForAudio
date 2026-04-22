@@ -6,6 +6,7 @@
     var lang = LanguageService.Resolve(Context.Request);
     var setupState = Context.Items["SetupState"] as SetupState;
     var settingsReady = setupState?.IsReady ?? false;
+    var hasJobs = setupState?.HasJobs ?? false;
     var appInstanceId = AppInstanceService.InstanceId;
     string L(string key) => Localizer.Get(lang, key);
     var currentPath = Context.Request.Path.Value ?? "/";
@@ -59,7 +60,18 @@
                     @if (settingsReady)
                     {
                         <a href="/jobs/new" class="@NavClass("/jobs/new")">@L("layout.new_job")</a>
-                        <a href="/jobs" class="@NavClass("/jobs", includeRuns: true)">@L("layout.jobs")</a>
+                        @if (hasJobs)
+                        {
+                            <a href="/jobs" class="@NavClass("/jobs", includeRuns: true)">@L("layout.jobs")</a>
+                        }
+                        else
+                        {
+                            <span class="nav-link nav-link-disabled"
+                                  aria-disabled="true"
+                                  title="@L("jobs.list.empty")">
+                                @L("layout.jobs")
+                            </span>
+                        }
                     }
                     <a href="/settings" class="@NavClass("/settings")">@L("layout.settings")</a>
                 </nav>

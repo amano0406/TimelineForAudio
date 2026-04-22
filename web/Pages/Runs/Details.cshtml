@@ -1,5 +1,6 @@
 @page "/jobs/{id}"
 @model TimelineForAudio.Web.Pages.Runs.DetailsModel
+@using System.IO
 @using TimelineForAudio.Web.Infrastructure
 @using TimelineForAudio.Web.Models
 @inject TimelineForAudio.Web.Services.LanguageService LanguageService
@@ -7,7 +8,6 @@
 @{
     var run = Model.Run!;
     var status = run.Status;
-    var result = run.Result;
     var lang = LanguageService.Resolve(ViewContext.HttpContext.Request);
     string L(string key) => Localizer.Get(lang, key);
     string StateLabel(string? value)
@@ -21,7 +21,7 @@
     {
         if (string.Equals(value, "skipped_duplicate", StringComparison.OrdinalIgnoreCase))
         {
-            return L("details.reused");
+            return L("details.cache_reused");
         }
         if (string.Equals(value, "skipped_invalid", StringComparison.OrdinalIgnoreCase))
         {
@@ -37,16 +37,23 @@
         return label == key ? value ?? "-" : label;
     }
 
-    string ComputeModeLabel(string? value)
+    string? SecondaryStageLabel(string? state, string? stage)
     {
-        var normalized = string.Equals(value, "gpu", StringComparison.OrdinalIgnoreCase) ? "gpu" : "cpu";
-        return L($"settings.compute_mode.{normalized}");
+        if (string.IsNullOrWhiteSpace(stage) ||
+            string.Equals(stage, state, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var label = StageLabel(stage);
+        return label == "-" ? null : label;
     }
 
-    string ProcessingQualityLabel(string? value)
+    string SpeakerStatusLabel(string? value)
     {
-        var normalized = string.Equals(value, "high", StringComparison.OrdinalIgnoreCase) ? "high" : "standard";
-        return L($"settings.processing_quality.{normalized}");
+        var key = $"speaker_status.{(value ?? string.Empty).ToLowerInvariant()}";
+        var label = L(key);
+        return label == key ? value ?? "-" : label;
     }
 
     string StateBadgeClass(string? value) => (value ?? string.Empty).ToLowerInvariant() switch
@@ -62,12 +69,6 @@
     int CompletedCount(JobStatusDocument? source) =>
         (source?.VideosDone ?? 0) + (source?.VideosSkipped ?? 0) + (source?.VideosFailed ?? 0);
 
-    string ProgressCounter(JobStatusDocument? source) =>
-        $"{CompletedCount(source)} / {source?.VideosTotal ?? 0}";
-
-    string ProgressBreakdown(JobStatusDocument? source) =>
-        $"{L("details.processed")} {source?.VideosDone ?? 0} | {L("details.skipped")} {source?.VideosSkipped ?? 0} | {L("details.errors")} {source?.VideosFailed ?? 0}";
-
     double Percent(double? raw, int completed, int total)
     {
         if (raw.HasValue && raw.Value > 0)
@@ -79,20 +80,39 @@
     }
 
     string PercentLabel(double value) => $"{Math.Round(value, 1):0.0}%";
-
     string FormatDurationFriendly(double? seconds) => DisplayFormatters.FormatDurationFriendly(seconds, L);
     string FormatDurationOrDash(double? seconds) => seconds.HasValue ? FormatDurationFriendly(seconds) : "-";
-    var currentFileElapsed = string.IsNullOrWhiteSpace(status?.CurrentMedia)
-        ? "-"
-        : FormatDurationFriendly(status?.CurrentMediaElapsedSec);
+    string ItemStatusLabel(string? value)
+    {
+        var normalized = (value ?? string.Empty).ToLowerInvariant();
+        return normalized switch
+        {
+            "pending" or "running" or "completed" or "failed" or "canceled" => StateLabel(normalized),
+            "skipped_duplicate" => L("details.cache_reused"),
+            "skipped_invalid" => L("details.skipped_invalid"),
+            "skipped_too_short" => L("details.skipped_too_short"),
+            _ => StageLabel(normalized),
+        };
+    }
+
+    string DisplayFileName(MediaArtifactItem item) =>
+        !string.IsNullOrWhiteSpace(item.FileName)
+            ? item.FileName
+            : System.IO.Path.GetFileName(item.SourcePath ?? item.MediaId);
+    string ArtifactUrl(MediaArtifactItem item, string artifactKind) =>
+        $"{JobUrls.Media(run.JobId, item.MediaId)}?artifact={Uri.EscapeDataString(artifactKind)}";
 
     ViewData["Title"] = L("details.page_title");
     var progressPercent = Percent(status?.ProgressPercent, CompletedCount(status), status?.VideosTotal ?? 0);
     var isActive = string.Equals(status?.State, "pending", StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(status?.State, "running", StringComparison.OrdinalIgnoreCase);
-    var canDownloadArchive = !isActive && run.TimelineItems.Count > 0;
-    var hasReusedOnlyWithoutTimeline = run.TimelineItems.Count == 0 && (status?.VideosSkipped ?? 0) > 0;
-    var canRerun = !isActive && (run.Request?.InputItems.Count ?? 0) > 0;
+    var canDownloadReadableTextArchive = !isActive && run.ArtifactItems.Any(item => !string.IsNullOrWhiteSpace(item.ReadableTextPath));
+    var canDownloadIpaArchive = !isActive && run.ArtifactItems.Any(item => !string.IsNullOrWhiteSpace(item.IpaPath));
+    var hasDownloadableArchive = canDownloadReadableTextArchive || canDownloadIpaArchive;
+    var currentFileElapsed = string.IsNullOrWhiteSpace(status?.CurrentMedia)
+        ? "-"
+        : FormatDurationFriendly(status?.CurrentMediaElapsedSec);
+    var headerStageLabel = SecondaryStageLabel(status?.State, status?.CurrentStage);
     var skippedItems = run.Manifest?.Items
         .Where(item => string.Equals(item.Status, "skipped_invalid", StringComparison.OrdinalIgnoreCase) ||
                        string.Equals(item.Status, "skipped_too_short", StringComparison.OrdinalIgnoreCase))
@@ -110,214 +130,99 @@
     <div class="panel page-header">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div class="space-y-2">
-                <p class="eyebrow">@L("common.job")</p>
                 <h1 class="page-title">@run.JobId</h1>
-                <p class="page-description">@run.RunDirectory</p>
+                <div class="flex flex-wrap items-center gap-3 text-sm text-slate-600">
+                    <span class="@StateBadgeClass(status?.State)">@StateLabel(status?.State)</span>
+                    @if (!string.IsNullOrWhiteSpace(headerStageLabel))
+                    {
+                        <span>@headerStageLabel</span>
+                    }
+                </div>
             </div>
-            <div class="flex flex-wrap gap-2">
-                @if (canDownloadArchive)
-                {
-                    <a class="btn-secondary" href="@JobUrls.Download(run.JobId)">@L("details.download_zip")</a>
-                }
-            </div>
+            @if (hasDownloadableArchive)
+            {
+                <button type="button"
+                        class="btn-secondary"
+                        id="details-download-button"
+                        data-download-job-id="@run.JobId"
+                        data-download-readable="@(canDownloadReadableTextArchive ? JobUrls.Download(run.JobId, "readable-text") : "")"
+                        data-download-ipa="@(canDownloadIpaArchive ? JobUrls.Download(run.JobId, "ipa") : "")">
+                    @L("details.download_zip")
+                </button>
+            }
         </div>
     </div>
 
-    <section class="grid gap-4 lg:grid-cols-5">
+    <section class="grid gap-4 lg:grid-cols-4">
         <div class="metric-card">
             <div class="metric-label">@L("common.state")</div>
             <div class="metric-value">
                 <span class="@StateBadgeClass(status?.State)">@StateLabel(status?.State)</span>
             </div>
-            <div class="metric-subtle">@StageLabel(status?.CurrentStage)</div>
+            @if (!string.IsNullOrWhiteSpace(headerStageLabel))
+            {
+                <div class="metric-subtle">@headerStageLabel</div>
+            }
         </div>
         <div class="metric-card">
             <div class="metric-label">@L("common.progress")</div>
             <div class="metric-value">@PercentLabel(progressPercent)</div>
-            <div class="metric-subtle">@ProgressCounter(status)</div>
-            <div class="metric-subtle">@ProgressBreakdown(status)</div>
+            <div class="metric-subtle">@($"{CompletedCount(status)} / {status?.VideosTotal ?? 0}")</div>
             <div class="progress-track mt-3">
                 <div class="progress-fill" style="width:@(progressPercent.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
             </div>
         </div>
         <div class="metric-card">
-            <div class="metric-label">@L("details.failed")</div>
-            <div class="metric-value">@status?.VideosFailed</div>
+            <div class="metric-label">@L("details.current_file")</div>
+            <div class="metric-value">@(string.IsNullOrWhiteSpace(status?.CurrentMedia) ? "-" : status?.CurrentMedia)</div>
+            <div class="metric-subtle">@currentFileElapsed</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">@L("details.elapsed_time")</div>
             <div class="metric-value">@FormatDurationOrDash(run.ElapsedWallSec)</div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-label">@L("details.remaining_time")</div>
-            <div class="metric-value">@FormatDurationFriendly(status?.EstimatedRemainingSec)</div>
+            <div class="metric-subtle">@FormatDurationFriendly(status?.TotalDurationSec)</div>
         </div>
     </section>
 
-    <section class="grid gap-8 xl:grid-cols-[0.95fr_1.05fr]">
-        <div class="space-y-8">
-            <div class="panel">
-                <h2 class="section-title">@L("details.rerun")</h2>
-                <p class="page-description mt-2">@L("details.rerun_description")</p>
-                <dl class="mt-4 grid gap-4 text-sm text-slate-700 md:grid-cols-2">
-                    <div>
-                        <dt class="text-slate-500">@L("details.original_settings")</dt>
-                        <dd class="mt-2 space-y-1">
-                            <div>@L("details.compute_mode"): @ComputeModeLabel(run.Request?.ComputeMode)</div>
-                            <div>@L("details.processing_quality"): @ProcessingQualityLabel(run.Request?.ProcessingQuality)</div>
-                        </dd>
-                    </div>
-                    <div>
-                        <dt class="text-slate-500">@L("details.current_settings")</dt>
-                        <dd class="mt-2 space-y-1">
-                            <div>@L("details.compute_mode"): @ComputeModeLabel(run.CurrentSettings?.ComputeMode)</div>
-                            <div>@L("details.processing_quality"): @ProcessingQualityLabel(run.CurrentSettings?.ProcessingQuality)</div>
-                        </dd>
-                    </div>
-                </dl>
-                @if (canRerun)
-                {
-                    <div class="mt-6 flex flex-wrap gap-3">
-                        <form method="post" asp-page-handler="Rerun" class="inline">
-                            <input type="hidden" name="id" value="@run.JobId" />
-                            <input type="hidden" name="mode" value="original" />
-                            <button type="submit" class="btn-secondary">@L("details.rerun_original")</button>
-                        </form>
-                        <form method="post" asp-page-handler="Rerun" class="inline">
-                            <input type="hidden" name="id" value="@run.JobId" />
-                            <input type="hidden" name="mode" value="current" />
-                            <button type="submit" class="btn-primary">@L("details.rerun_current")</button>
-                        </form>
-                    </div>
-                    <div class="mt-4 space-y-1 text-xs text-slate-500">
-                        <p>@L("details.rerun_original_note")</p>
-                        <p>@L("details.rerun_current_note")</p>
-                    </div>
-                }
-            </div>
-
-            <div class="panel">
-                <h2 class="section-title">@L("details.current_processing")</h2>
-                <dl class="mt-4 grid gap-4 text-sm text-slate-700 md:grid-cols-2">
-                    <div>
-                        <dt class="text-slate-500">@L("details.current_file")</dt>
-                        <dd>@status?.CurrentMedia</dd>
-                    </div>
-                    <div>
-                        <dt class="text-slate-500">@L("details.current_file_elapsed")</dt>
-                        <dd>@currentFileElapsed</dd>
-                    </div>
-                    <div>
-                        <dt class="text-slate-500">@L("details.message")</dt>
-                        <dd>@status?.Message</dd>
-                    </div>
-                    <div>
-                        <dt class="text-slate-500">@L("details.processed_duration")</dt>
-                        <dd>@FormatDurationFriendly(status?.ProcessedDurationSec)</dd>
-                    </div>
-                    <div>
-                        <dt class="text-slate-500">@L("details.total_duration")</dt>
-                        <dd>@FormatDurationFriendly(status?.TotalDurationSec)</dd>
-                    </div>
-                </dl>
-            </div>
-
-            <div class="panel">
-                <h2 class="section-title">@L("details.result")</h2>
-                <dl class="mt-4 grid gap-4 text-sm text-slate-700">
-                    <div>
-                        <dt class="text-slate-500">@L("details.processed")</dt>
-                        <dd>@result?.ProcessedCount</dd>
-                    </div>
-                    <div>
-                        <dt class="text-slate-500">@L("details.skipped")</dt>
-                        <dd>@result?.SkippedCount</dd>
-                    </div>
-                    <div>
-                        <dt class="text-slate-500">@L("details.errors")</dt>
-                        <dd>@result?.ErrorCount</dd>
-                    </div>
-                    <div>
-                        <dt class="text-slate-500">@L("details.timeline_index")</dt>
-                        <dd class="break-all">@result?.TimelineIndexPath</dd>
-                    </div>
-                </dl>
-            </div>
-
-            <div class="panel">
-                <div class="mb-4 flex items-center justify-between">
-                    <h2 class="section-title">@L("details.skipped_inputs")</h2>
-                    <span class="badge-chip">@skippedItems.Count</span>
-                </div>
-                <div class="table-shell">
-                    <table class="app-table">
-                        <thead>
-                            <tr>
-                                <th>@L("common.source")</th>
-                                <th>@L("common.status")</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @if (skippedItems.Count == 0)
-                            {
-                                <tr>
-                                    <td colspan="2" class="px-4 py-8 text-center text-sm text-slate-500">@L("details.skipped_inputs_empty")</td>
-                                </tr>
-                            }
-                            else
-                            {
-                                @foreach (var item in skippedItems)
-                                {
-                                    <tr>
-                                        <td class="text-slate-700">
-                                            <div class="font-medium text-slate-900">@item.FileName</div>
-                                            <div class="mt-1 text-xs text-slate-500">@item.OriginalPath</div>
-                                        </td>
-                                        <td>@StageLabel(item.Status)</td>
-                                    </tr>
-                                }
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
+    <section class="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <div class="panel">
-            <div class="mb-4 flex items-center justify-between">
-                <h2 class="section-title">@L("details.generated_timeline")</h2>
-                @if (!string.IsNullOrWhiteSpace(result?.TimelineIndexPath))
-                {
-                    <span class="badge-chip">@L("common.batch"): @result?.BatchCount</span>
-                }
+            <div class="mb-4 flex items-center justify-between gap-3">
+                <div>
+                    <h2 class="section-title">@L("details.generated_timeline")</h2>
+                </div>
+                <span class="badge-chip">@run.ArtifactItems.Count</span>
             </div>
             <div class="table-shell">
                 <table class="app-table">
                     <thead>
                         <tr>
-                            <th>@L("common.media_id")</th>
+                            <th>@L("common.source")</th>
                             <th>@L("common.status")</th>
-                            <th>@L("details.source")</th>
+                            <th>@L("details.speakers")</th>
+                            <th>@L("common.actions")</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @if (run.TimelineItems.Count == 0)
+                        @if (run.ArtifactItems.Count == 0)
                         {
                             <tr>
-                                <td colspan="3" class="px-4 py-8 text-center text-sm text-slate-500">@(hasReusedOnlyWithoutTimeline ? L("details.generated_timeline_reused_missing") : L("details.generated_timeline_empty"))</td>
+                                <td colspan="4" class="px-4 py-8 text-center text-sm text-slate-500">@L("details.generated_timeline_empty")</td>
                             </tr>
                         }
                         else
                         {
-                            @foreach (var item in run.TimelineItems)
+                            @foreach (var item in run.ArtifactItems)
                             {
                                 <tr>
-                                    <td class="font-medium text-slate-900">
-                                        <a class="text-sky-700 hover:text-sky-500" href="@JobUrls.Media(run.JobId, item.MediaId)">@item.MediaId</a>
+                                    <td class="text-slate-700">
+                                        <div class="font-medium text-slate-900">@DisplayFileName(item)</div>
                                     </td>
-                                    <td>@StageLabel(item.Status)</td>
-                                    <td class="text-slate-600">
-                                        <div>@item.SourcePath</div>
+                                    <td class="text-slate-700">
+                                        <div class="font-medium text-slate-900">@ItemStatusLabel(item.Status)</div>
+                                        @if (item.IsCacheReused)
+                                        {
+                                            <div class="mt-1 text-xs text-slate-500">@L("details.cache_reused")</div>
+                                        }
                                         @if (item.IsReferencedDuplicate && !string.IsNullOrWhiteSpace(item.ReferencedJobId))
                                         {
                                             <div class="mt-1 text-xs text-slate-500">
@@ -326,6 +231,25 @@
                                             </div>
                                         }
                                     </td>
+                                    <td class="text-slate-600">
+                                        <div class="font-medium text-slate-900">@(item.SpeakerCount?.ToString() ?? "-")</div>
+                                        @if (!string.IsNullOrWhiteSpace(item.SpeakerCountStatus))
+                                        {
+                                            <div class="mt-1 text-xs text-slate-500">@SpeakerStatusLabel(item.SpeakerCountStatus)</div>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div class="flex flex-wrap gap-2">
+                                            @if (!string.IsNullOrWhiteSpace(item.ReadableTextPath))
+                                            {
+                                                <a class="btn-table" href="@ArtifactUrl(item, "readable-text")">@L("artifact.readable_text")</a>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(item.IpaPath))
+                                            {
+                                                <a class="btn-table" href="@ArtifactUrl(item, "ipa")">@L("artifact.ipa")</a>
+                                            }
+                                        </div>
+                                    </td>
                                 </tr>
                             }
                         }
@@ -333,26 +257,115 @@
                 </table>
             </div>
         </div>
-    </section>
 
-    <section class="panel timeline-shell">
-        <h2 class="section-title">@L("details.worker_log")</h2>
-        @if (string.IsNullOrWhiteSpace(run.LogTail))
-        {
-            <div class="selection-empty mt-4">@L("details.worker_log_empty")</div>
-        }
-        else
-        {
-            <pre class="mt-4 max-h-[32rem] text-xs">@run.LogTail</pre>
-        }
+        <div class="space-y-6">
+            @if (isActive)
+            {
+                <div class="panel">
+                    <h2 class="section-title">@L("details.current_processing")</h2>
+                    <dl class="mt-4 grid gap-4 text-sm text-slate-700">
+                        <div>
+                            <dt class="text-slate-500">@L("details.current_file")</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(status?.CurrentMedia) ? "-" : status?.CurrentMedia)</dd>
+                        </div>
+                        <div>
+                            <dt class="text-slate-500">@L("details.current_file_elapsed")</dt>
+                            <dd>@currentFileElapsed</dd>
+                        </div>
+                        <div>
+                            <dt class="text-slate-500">@L("details.message")</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(status?.Message) ? "-" : status?.Message)</dd>
+                        </div>
+                        <div>
+                            <dt class="text-slate-500">@L("details.processed_duration")</dt>
+                            <dd>@FormatDurationFriendly(status?.ProcessedDurationSec)</dd>
+                        </div>
+                        <div>
+                            <dt class="text-slate-500">@L("details.total_duration")</dt>
+                            <dd>@FormatDurationFriendly(status?.TotalDurationSec)</dd>
+                        </div>
+                    </dl>
+                </div>
+            }
+
+            <div class="panel timeline-shell">
+                <h2 class="section-title">@L("details.conversion_info")</h2>
+                @if (string.IsNullOrWhiteSpace(run.ConversionInfoText))
+                {
+                    <div class="selection-empty mt-4">@L("details.conversion_info_empty")</div>
+                }
+                else
+                {
+                    <pre class="mt-4 text-sm leading-7 text-slate-100">@run.ConversionInfoText</pre>
+                }
+            </div>
+
+            @if (skippedItems.Count > 0)
+            {
+                <div class="panel">
+                    <div class="mb-4 flex items-center justify-between">
+                        <h2 class="section-title">@L("details.skipped_inputs")</h2>
+                        <span class="badge-chip">@skippedItems.Count</span>
+                    </div>
+                    <div class="table-shell">
+                        <table class="app-table">
+                            <thead>
+                                <tr>
+                                    <th>@L("common.source")</th>
+                                    <th>@L("common.status")</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in skippedItems)
+                                {
+                                    <tr>
+                                        <td class="text-slate-700">
+                                            <div class="font-medium text-slate-900">@item.FileName</div>
+                                        </td>
+                                        <td>@StageLabel(item.Status)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+        </div>
     </section>
 </section>
+
+<div id="details-download-modal"
+     class="modal-shell hidden"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="details-download-modal-title">
+    <div class="modal-backdrop" data-download-close="true"></div>
+    <div class="modal-card">
+        <div class="space-y-3">
+            <h2 class="section-title" id="details-download-modal-title">@L("jobs.list.download_title")</h2>
+            <p class="page-description !mt-0" id="details-download-modal-message"></p>
+        </div>
+        <div class="mt-6 flex flex-wrap gap-3">
+            <a id="details-download-modal-readable" class="btn-primary hidden" href="#">@L("artifact.readable_text")</a>
+            <a id="details-download-modal-ipa" class="btn-secondary hidden" href="#">@L("artifact.ipa")</a>
+        </div>
+        <div class="mt-6 flex items-center justify-end gap-3">
+            <button type="button" class="btn-secondary" id="details-download-modal-close">@L("common.cancel")</button>
+        </div>
+    </div>
+</div>
 
 @section Scripts
 {
     <script>
         (() => {
             const container = document.getElementById("job-details");
+            const downloadButton = document.getElementById("details-download-button");
+            const downloadModal = document.getElementById("details-download-modal");
+            const downloadModalMessage = document.getElementById("details-download-modal-message");
+            const downloadModalReadable = document.getElementById("details-download-modal-readable");
+            const downloadModalIpa = document.getElementById("details-download-modal-ipa");
+            const downloadModalClose = document.getElementById("details-download-modal-close");
             if (!container) return;
 
             const isActive = container.dataset.active === "true";
@@ -366,6 +379,62 @@
             if (isActive) {
                 window.setInterval(() => location.reload(), 5000);
             }
+
+            const downloadMessagePrefix = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.list.download_message_prefix")));
+
+            const closeDownloadModal = () => {
+                downloadModal?.classList.add("hidden");
+                if (downloadModalMessage) {
+                    downloadModalMessage.textContent = "";
+                }
+                if (downloadModalReadable) {
+                    downloadModalReadable.classList.add("hidden");
+                    downloadModalReadable.removeAttribute("href");
+                }
+                if (downloadModalIpa) {
+                    downloadModalIpa.classList.add("hidden");
+                    downloadModalIpa.removeAttribute("href");
+                }
+            };
+
+            downloadButton?.addEventListener("click", () => {
+                const jobId = downloadButton.dataset.downloadJobId || "";
+                const readableUrl = downloadButton.dataset.downloadReadable || "";
+                const ipaUrl = downloadButton.dataset.downloadIpa || "";
+                if (downloadModalMessage) {
+                    downloadModalMessage.textContent = `${downloadMessagePrefix} ${jobId}`;
+                }
+                if (downloadModalReadable) {
+                    if (readableUrl) {
+                        downloadModalReadable.setAttribute("href", readableUrl);
+                        downloadModalReadable.classList.remove("hidden");
+                    } else {
+                        downloadModalReadable.classList.add("hidden");
+                        downloadModalReadable.removeAttribute("href");
+                    }
+                }
+                if (downloadModalIpa) {
+                    if (ipaUrl) {
+                        downloadModalIpa.setAttribute("href", ipaUrl);
+                        downloadModalIpa.classList.remove("hidden");
+                    } else {
+                        downloadModalIpa.classList.add("hidden");
+                        downloadModalIpa.removeAttribute("href");
+                    }
+                }
+                downloadModal?.classList.remove("hidden");
+            });
+
+            downloadModalClose?.addEventListener("click", closeDownloadModal);
+            downloadModal?.querySelectorAll("[data-download-close='true']").forEach((element) => {
+                element.addEventListener("click", closeDownloadModal);
+            });
+
+            document.addEventListener("keydown", (event) => {
+                if (event.key === "Escape" && downloadModal && !downloadModal.classList.contains("hidden")) {
+                    closeDownloadModal();
+                }
+            });
         })();
     </script>
 }

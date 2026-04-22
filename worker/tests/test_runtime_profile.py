@@ -11,26 +11,18 @@ from timeline_for_audio_worker.runtime_profile import (
 
 
 class RuntimeProfileTests(unittest.TestCase):
-    def test_resolve_runtime_lane_maps_all_four_lanes(self) -> None:
+    def test_resolve_runtime_lane_maps_cpu_and_gpu_lanes(self) -> None:
         lanes = {
-            ("cpu", "standard"): resolve_runtime_lane("cpu", "standard"),
-            ("cpu", "high"): resolve_runtime_lane("cpu", "high"),
-            ("gpu", "standard"): resolve_runtime_lane("gpu", "standard"),
-            ("gpu", "high"): resolve_runtime_lane("gpu", "high"),
+            "cpu": resolve_runtime_lane("cpu"),
+            "gpu": resolve_runtime_lane("gpu"),
         }
 
-        self.assertEqual("medium", lanes[("cpu", "standard")].model_id)
-        self.assertEqual("large-v3", lanes[("cpu", "high")].model_id)
-        self.assertEqual("medium", lanes[("gpu", "standard")].model_id)
-        self.assertEqual("large-v3", lanes[("gpu", "high")].model_id)
-        self.assertEqual(("int8",), lanes[("cpu", "standard")].compute_types)
-        self.assertEqual(("int8",), lanes[("cpu", "high")].compute_types)
-        self.assertEqual(("float16", "int8_float16"), lanes[("gpu", "standard")].compute_types)
-        self.assertEqual(("float16", "int8_float16"), lanes[("gpu", "high")].compute_types)
-        self.assertFalse(lanes[("cpu", "standard")].diarization_default_enabled)
-        self.assertFalse(lanes[("cpu", "high")].diarization_default_enabled)
-        self.assertTrue(lanes[("gpu", "standard")].diarization_default_enabled)
-        self.assertTrue(lanes[("gpu", "high")].diarization_default_enabled)
+        self.assertEqual("medium", lanes["cpu"].model_id)
+        self.assertEqual("medium", lanes["gpu"].model_id)
+        self.assertEqual(("int8",), lanes["cpu"].compute_types)
+        self.assertEqual(("float16", "int8_float16"), lanes["gpu"].compute_types)
+        self.assertFalse(lanes["cpu"].diarization_default_enabled)
+        self.assertTrue(lanes["gpu"].diarization_default_enabled)
 
     def test_resolve_diarization_default_is_gpu_only_when_token_ready(self) -> None:
         self.assertFalse(resolve_diarization_default("cpu", token_ready=True))

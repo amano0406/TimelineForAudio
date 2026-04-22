@@ -6,7 +6,6 @@
     ".aac",
     ".flac"
   ],
-  "secondPassEnabled": true,
   "contextBuilderVersion": "context-builder-v1",
   "inputRoots": [
     {

@@ -7,7 +7,8 @@ namespace TimelineForAudio.Web.Services;
 public sealed class HuggingFaceAccessService(
     HttpClient httpClient,
     SettingsStore settingsStore,
-    IConfiguration configuration)
+    IConfiguration configuration,
+    AppPaths paths)
 {
     private const string PyannoteModelId = "pyannote/speaker-diarization-community-1";
     private const string PyannoteDisplayName = "pyannote speaker diarization";
@@ -16,7 +17,7 @@ public sealed class HuggingFaceAccessService(
     private const string PyannoteResolveUrl =
         "https://huggingface.co/pyannote/speaker-diarization-community-1/resolve/main/config.yaml";
     private const string FasterWhisperMediumModelId = "medium";
-    private const string FasterWhisperLargeModelId = "large-v3";
+    private const string FasterWhisperMediumModelUrl = "https://huggingface.co/Systran/faster-whisper-medium";
 
     private readonly string? _overrideState = configuration["TIMELINE_FOR_AUDIO_HF_ACCESS_OVERRIDE"];
 
@@ -24,10 +25,7 @@ public sealed class HuggingFaceAccessService(
     {
         var settings = await settingsStore.LoadAsync(cancellationToken);
         var hasToken = await settingsStore.HasTokenAsync(cancellationToken);
-        var isHighQuality = string.Equals(
-            settings.ProcessingQuality,
-            "high",
-            StringComparison.OrdinalIgnoreCase);
+        var pyannoteCachedLocally = IsModelCachedLocally(paths.HuggingFaceCacheRoot, PyannoteModelId);
         var snapshot = new HuggingFaceAccessSnapshot
         {
             HasToken = hasToken,
@@ -40,20 +38,28 @@ public sealed class HuggingFaceAccessService(
                     DisplayName = PyannoteDisplayName,
                     Purpose = PyannotePurpose,
                     ApprovalUrl = PyannoteApprovalUrl,
+                    ModelUrl = PyannoteApprovalUrl,
                     RequiresApproval = true,
                     TokenConfigured = hasToken,
                     TermsConfirmed = settings.HuggingfaceTermsConfirmed,
+                    CachedLocally = pyannoteCachedLocally,
                 },
                 CreateUngatedModel(
-                    isHighQuality ? FasterWhisperLargeModelId : FasterWhisperMediumModelId,
-                    isHighQuality ? "faster-whisper large-v3" : "faster-whisper medium",
-                    "Speech transcription"),
+                    FasterWhisperMediumModelId,
+                    "faster-whisper medium",
+                    "Speech transcription",
+                    FasterWhisperMediumModelUrl),
             ],
         };
 
         if (!string.IsNullOrWhiteSpace(_overrideState))
         {
-            return ApplyState(snapshot, _overrideState.Trim().ToLowerInvariant(), _overrideState);
+            var normalizedOverride = _overrideState.Trim().ToLowerInvariant() switch
+            {
+                "unauthorized" => "approval_required",
+                _ => _overrideState.Trim().ToLowerInvariant(),
+            };
+            return ApplyState(snapshot, normalizedOverride, _overrideState);
         }
 
         if (!hasToken)
@@ -81,9 +87,14 @@ public sealed class HuggingFaceAccessService(
                 return ApplyState(snapshot, "authorized", "Model access is available.");
             }
 
-            if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized)
+            if (response.StatusCode == HttpStatusCode.Forbidden)
             {
-                return ApplyState(snapshot, "unauthorized", "Token is saved, but model approval is not available yet.");
+                return ApplyState(snapshot, "approval_required", "Token is valid, but model approval is not available yet.");
+            }
+
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                return ApplyState(snapshot, "invalid_token", "Token is saved, but it is not valid.");
             }
 
             return ApplyState(snapshot, "unknown", $"Unexpected HTTP {(int)response.StatusCode}.");
@@ -113,16 +124,52 @@ public sealed class HuggingFaceAccessService(
         return snapshot;
     }
 
-    private static GatedModelStatusItem CreateUngatedModel(string modelId, string displayName, string purpose) =>
+    private static GatedModelStatusItem CreateUngatedModel(string modelId, string displayName, string purpose, string modelUrl) =>
         new()
         {
             ModelId = modelId,
             DisplayName = displayName,
             Purpose = purpose,
             ApprovalUrl = string.Empty,
+            ModelUrl = modelUrl,
             RequiresApproval = false,
             TokenConfigured = false,
             TermsConfirmed = true,
             AccessState = "available",
         };
+
+    private static bool IsModelCachedLocally(string huggingFaceCacheRoot, string modelId)
+    {
+        try
+        {
+            var normalized = $"models--{modelId.Replace("/", "--", StringComparison.Ordinal)}";
+            var candidates = new[]
+            {
+                Path.Combine(huggingFaceCacheRoot, normalized),
+                Path.Combine(huggingFaceCacheRoot, "hub", normalized),
+            };
+
+            foreach (var candidate in candidates)
+            {
+                var snapshotsRoot = Path.Combine(candidate, "snapshots");
+                if (!Directory.Exists(snapshotsRoot))
+                {
+                    continue;
+                }
+
+                if (Directory.EnumerateFiles(snapshotsRoot, "*", SearchOption.AllDirectories).Any())
+                {
+                    return true;
+                }
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+
+        return false;
+    }
 }

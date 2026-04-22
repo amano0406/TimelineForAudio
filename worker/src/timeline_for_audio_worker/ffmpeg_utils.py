@@ -4,6 +4,7 @@ import json
 import re
 import shutil
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -45,25 +46,75 @@ def _parse_optional_ratio(value: Any) -> float | None:
         return None
 
 
+def _parse_metadata_timestamp(value: Any) -> datetime | None:
+    if value in (None, "", "N/A"):
+        return None
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _resolve_recorded_at(
+    format_tags: dict[str, Any],
+    stream_tags: list[dict[str, Any]],
+) -> tuple[str | None, list[str]]:
+    candidate_keys = (
+        "creation_time",
+        "date",
+        "com.apple.quicktime.creationdate",
+        "encoded_date",
+        "tagged_date",
+    )
+    candidates: list[tuple[datetime, str]] = []
+
+    for tag_map in [format_tags, *stream_tags]:
+        if not isinstance(tag_map, dict):
+            continue
+        for key in candidate_keys:
+            value = tag_map.get(key)
+            parsed = _parse_metadata_timestamp(value)
+            if parsed is None:
+                continue
+            normalized = parsed.isoformat().replace("+00:00", "Z")
+            candidates.append((parsed, normalized))
+
+    if not candidates:
+        return None, []
+
+    candidates.sort(key=lambda item: item[0])
+    ordered_values: list[str] = []
+    seen: set[str] = set()
+    for _, value in candidates:
+        if value in seen:
+            continue
+        seen.add(value)
+        ordered_values.append(value)
+
+    return ordered_values[0], ordered_values
+
+
 def summarize_probe_payload(payload: dict[str, Any], path: Path) -> dict[str, Any]:
     format_info = payload.get("format", {}) or {}
     streams = payload.get("streams", []) or []
     duration = float(format_info.get("duration") or 0.0)
     size = int(format_info.get("size") or path.stat().st_size)
     format_tags = format_info.get("tags") or {}
-    stream_tags = (
-        next(
-            (
-                stream.get("tags")
-                for stream in streams
-                if isinstance(stream.get("tags"), dict)
-                and stream.get("tags", {}).get("creation_time")
-            ),
-            {},
-        )
-        or {}
-    )
-    creation_time = format_tags.get("creation_time") or stream_tags.get("creation_time")
+    stream_tags = [
+        stream.get("tags")
+        for stream in streams
+        if isinstance(stream.get("tags"), dict)
+    ]
+    creation_time, metadata_timestamp_candidates = _resolve_recorded_at(format_tags, stream_tags)
 
     audio_stream = next(
         (stream for stream in streams if str(stream.get("codec_type") or "").lower() == "audio"),
@@ -79,6 +130,7 @@ def summarize_probe_payload(payload: dict[str, Any], path: Path) -> dict[str, An
         "size_bytes": size,
         "streams": streams,
         "captured_at": creation_time,
+        "metadata_timestamp_candidates": metadata_timestamp_candidates,
         "container_name": format_name or None,
         "extension": path.suffix.lower() or None,
         "audio_codec": str(audio_stream.get("codec_name") or "").strip() or None
@@ -98,7 +150,13 @@ def probe_audio(path: Path) -> dict[str, Any]:
             "-v",
             "error",
             "-show_entries",
-            "format=duration,size,format_name",
+            (
+                "format=duration,size,bit_rate,format_name"
+                ":format_tags=creation_time,date,com.apple.quicktime.creationdate,"
+                "encoded_date,tagged_date"
+                ":stream=codec_type,codec_name,channels,sample_rate,bit_rate"
+                ":stream_tags=creation_time,date,encoded_date,tagged_date"
+            ),
             "-show_streams",
             "-print_format",
             "json",

@@ -6,3 +6,6 @@ pyannote.audio==4.0.1
 librosa==0.11.0
 soundfile==0.13.1
 python-dotenv==1.2.2
+SudachiPy==0.6.10
+sudachidict_core==20260116
+transformers==4.52.4

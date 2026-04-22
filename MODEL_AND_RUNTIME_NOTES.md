@@ -4,7 +4,7 @@ This document explains what `TimelineForAudio` downloads or expects at runtime a
 
 ## Public Release Contract
 
-The current public release line is `TimelineForAudio v0.3.4 Tech Preview`.
+The current public release line is `TimelineForAudio v0.4.0 Tech Preview`.
 
 - baseline support is Windows + Docker Desktop + CPU mode
 - macOS is an experimental source-based path
@@ -21,6 +21,10 @@ Current main components:
   - transcription
   - timestamped segment generation
   - built-in VAD filtering during transcription
+- `transformers`
+  - local readable-text reconstruction from IPA-oriented turns
+  - currently enabled for `GPU + Japanese language hint` jobs
+  - current reconstruction model: `Respair/Japanese_Phoneme_to_Grapheme_LLM`
 - `pyannote/speaker-diarization-community-1`
   - optional speaker diarization
   - driven from worker-preloaded waveform input instead of direct file-path decoding
@@ -34,7 +38,7 @@ Current main components:
 On first use, the worker may download:
 
 - Python package dependencies
-- Hugging Face model weights for transcription and diarization
+- Hugging Face model weights for transcription, readable-text reconstruction, and diarization
 
 These downloads are cached for reuse. The exact cache location depends on the runtime environment. In the Docker setup, cache volumes are mounted so the app does not need to download the same assets on every restart.
 
@@ -99,3 +103,4 @@ The sample timelines in this repository are based on real generated output, but 
 
 - English sample: [docs/examples/sample-timeline.en.md](docs/examples/sample-timeline.en.md)
 - Japanese sample: [docs/examples/sample-timeline.ja.md](docs/examples/sample-timeline.ja.md)
+

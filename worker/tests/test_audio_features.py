@@ -3,8 +3,10 @@ from __future__ import annotations
 import unittest
 
 from timeline_for_audio_worker.audio_features import (
+    build_speaker_count_metadata,
     build_diarization_summaries,
     build_overlap_summary,
+    _compute_pitch_and_voice_features,
 )
 
 
@@ -75,6 +77,39 @@ class AudioFeatureHelpersTests(unittest.TestCase):
         self.assertEqual("high", quality["quality_band"])
         self.assertEqual(2, quality["speaker_turn_count"])
 
+
+    def test_compute_pitch_and_voice_features_skips_long_audio_before_loading(self) -> None:
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmp:
+            audio_path = Path(tmp) / "long.wav"
+            audio_path.write_bytes(b"RIFF")
+            pitch, voice = _compute_pitch_and_voice_features(
+                audio_path,
+                duration_seconds=7200.0,
+            )
+
+        self.assertFalse(pitch["available"])
+        self.assertIn("Skipped optional librosa analysis", pitch["reason"])
+        self.assertFalse(voice["available"])
+
+    def test_compute_pitch_and_voice_features_skips_large_audio_before_loading(self) -> None:
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmp:
+            audio_path = Path(tmp) / "large.wav"
+            audio_path.write_bytes(b"0" * (129 * 1024 * 1024))
+            pitch, voice = _compute_pitch_and_voice_features(
+                audio_path,
+                duration_seconds=600.0,
+            )
+
+        self.assertFalse(pitch["available"])
+        self.assertIn("Skipped optional librosa analysis", pitch["reason"])
+        self.assertFalse(voice["available"])
+
     def test_build_diarization_summaries_handles_disabled_diarization(self) -> None:
         confidence, quality = build_diarization_summaries(
             {"diarization_used": False, "segments": []},
@@ -84,6 +119,32 @@ class AudioFeatureHelpersTests(unittest.TestCase):
 
         self.assertFalse(confidence["available"])
         self.assertFalse(quality["available"])
+
+    def test_build_speaker_count_metadata_marks_confirmed_when_diarization_used(self) -> None:
+        metadata = build_speaker_count_metadata(
+            {
+                "speaker_count": 2,
+                "diarization_used": True,
+            },
+            transcript_payload={"diarization_used": True},
+        )
+
+        self.assertEqual(2, metadata["speaker_count"])
+        self.assertEqual("confirmed", metadata["speaker_count_status"])
+        self.assertIsNone(metadata["speaker_count_note"])
+
+    def test_build_speaker_count_metadata_marks_estimated_without_diarization(self) -> None:
+        metadata = build_speaker_count_metadata(
+            {
+                "speaker_count": 1,
+                "diarization_used": False,
+            },
+            transcript_payload={"diarization_used": False},
+        )
+
+        self.assertEqual(1, metadata["speaker_count"])
+        self.assertEqual("estimated", metadata["speaker_count_status"])
+        self.assertIn("inferred", metadata["speaker_count_note"])
 
 
 if __name__ == "__main__":

@@ -54,8 +54,6 @@ def load_settings() -> dict[str, Any]:
             "audioExtensions": defaults.get("audioExtensions", []),
             "huggingfaceTermsConfirmed": False,
             "computeMode": "cpu",
-            "processingQuality": "standard",
-            "secondPassEnabled": True,
             "contextBuilderVersion": CONTEXT_BUILDER_VERSION,
             "uiLanguage": "en",
         }
@@ -80,12 +78,8 @@ def load_settings() -> dict[str, Any]:
     payload["computeMode"] = str(payload.get("computeMode") or "cpu").strip().lower()
     if payload["computeMode"] not in {"cpu", "gpu"}:
         payload["computeMode"] = "cpu"
-    payload["processingQuality"] = (
-        str(payload.get("processingQuality") or "standard").strip().lower()
-    )
-    if payload["processingQuality"] not in {"standard", "high"}:
-        payload["processingQuality"] = "standard"
-    payload["secondPassEnabled"] = bool(payload.get("secondPassEnabled", True))
+    payload.pop("processingQuality", None)
+    payload.pop("secondPassEnabled", None)
     payload["contextBuilderVersion"] = (
         str(payload.get("contextBuilderVersion") or CONTEXT_BUILDER_VERSION).strip()
         or CONTEXT_BUILDER_VERSION
@@ -103,6 +97,9 @@ def load_huggingface_token() -> str | None:
 
 
 def save_settings(payload: dict[str, Any]) -> None:
+    payload = dict(payload)
+    payload.pop("processingQuality", None)
+    payload.pop("secondPassEnabled", None)
     settings_path().parent.mkdir(parents=True, exist_ok=True)
     settings_path().write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 

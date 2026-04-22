@@ -44,9 +44,6 @@ public sealed class AppSettingsDocument
     [JsonPropertyName("computeMode")]
     public string ComputeMode { get; set; } = "cpu";
 
-    [JsonPropertyName("processingQuality")]
-    public string ProcessingQuality { get; set; } = "standard";
-
     [JsonPropertyName("uiLanguage")]
     public string UiLanguage { get; set; } = "en";
 
@@ -159,51 +156,6 @@ public sealed class CreateJobCommand
     public string? SupplementalContextText { get; set; }
 }
 
-public sealed class DuplicatePreviewRequest
-{
-    [JsonPropertyName("outputRootId")]
-    public string OutputRootId { get; set; } = "runs";
-
-    [JsonPropertyName("uploadedFiles")]
-    public List<UploadedFileReference> UploadedFiles { get; set; } = [];
-
-    [JsonPropertyName("supplementalContextText")]
-    public string? SupplementalContextText { get; set; }
-}
-
-public sealed class DuplicatePreviewItem
-{
-    [JsonPropertyName("referenceId")]
-    public string ReferenceId { get; set; } = "";
-
-    [JsonPropertyName("displayName")]
-    public string DisplayName { get; set; } = "";
-
-    [JsonPropertyName("existingJobId")]
-    public string? ExistingJobId { get; set; }
-
-    [JsonPropertyName("existingMediaId")]
-    public string? ExistingMediaId { get; set; }
-
-    [JsonPropertyName("timelinePath")]
-    public string? TimelinePath { get; set; }
-}
-
-public sealed class DuplicatePreviewResponse
-{
-    [JsonPropertyName("totalCount")]
-    public int TotalCount { get; set; }
-
-    [JsonPropertyName("duplicateCount")]
-    public int DuplicateCount { get; set; }
-
-    [JsonPropertyName("newCount")]
-    public int NewCount { get; set; }
-
-    [JsonPropertyName("duplicates")]
-    public List<DuplicatePreviewItem> Duplicates { get; set; } = [];
-}
-
 public sealed class HuggingFaceSaveRequest
 {
     [JsonPropertyName("token")]
@@ -245,6 +197,9 @@ public sealed class GatedModelStatusItem
     [JsonPropertyName("approvalUrl")]
     public string ApprovalUrl { get; set; } = "";
 
+    [JsonPropertyName("modelUrl")]
+    public string ModelUrl { get; set; } = "";
+
     [JsonPropertyName("requiresApproval")]
     public bool RequiresApproval { get; set; }
 
@@ -256,6 +211,9 @@ public sealed class GatedModelStatusItem
 
     [JsonPropertyName("accessState")]
     public string AccessState { get; set; } = "unknown";
+
+    [JsonPropertyName("cachedLocally")]
+    public bool CachedLocally { get; set; }
 }
 
 public sealed class WorkerCapabilitySnapshot
@@ -307,6 +265,8 @@ public sealed class SetupState
     public bool TermsConfirmed { get; set; }
 
     public bool HasSelectedLanguage { get; set; }
+
+    public bool HasJobs { get; set; }
 
     public bool IsReady => HasSelectedLanguage;
 }
@@ -368,13 +328,35 @@ public sealed class JobRequestDocument
     public string ComputeMode { get; set; } = "cpu";
 
     [JsonPropertyName("processing_quality")]
-    public string ProcessingQuality { get; set; } = "standard";
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LegacyProcessingQuality { get; set; }
 
     [JsonPropertyName("pipeline_version")]
     public string PipelineVersion { get; set; } = "";
 
+    [JsonPropertyName("generation_signature")]
+    public string GenerationSignature { get; set; } = "";
+
     [JsonPropertyName("conversion_signature")]
-    public string ConversionSignature { get; set; } = "";
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LegacyConversionSignature
+    {
+        get => string.IsNullOrWhiteSpace(GenerationSignature) ? null : GenerationSignature;
+        set
+        {
+            if (!string.IsNullOrWhiteSpace(value) && string.IsNullOrWhiteSpace(GenerationSignature))
+            {
+                GenerationSignature = value;
+            }
+        }
+    }
+
+    [JsonIgnore]
+    public string ConversionSignature
+    {
+        get => GenerationSignature;
+        set => GenerationSignature = value ?? "";
+    }
 
     [JsonPropertyName("transcription_backend")]
     public string TranscriptionBackend { get; set; } = "";
@@ -385,8 +367,21 @@ public sealed class JobRequestDocument
     [JsonPropertyName("supplemental_context_text")]
     public string? SupplementalContextText { get; set; }
 
+    [JsonPropertyName("language_hint")]
+    public string? LanguageHint { get; set; }
+
+    [JsonPropertyName("reconstruction_backend")]
+    public string? ReconstructionBackend { get; set; }
+
+    [JsonPropertyName("reconstruction_model_id")]
+    public string? ReconstructionModelId { get; set; }
+
+    [JsonPropertyName("reconstruction_prompt_version")]
+    public string? ReconstructionPromptVersion { get; set; }
+
     [JsonPropertyName("second_pass_enabled")]
-    public bool SecondPassEnabled { get; set; } = true;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? LegacySecondPassEnabled { get; set; }
 
     [JsonPropertyName("context_builder_version")]
     public string ContextBuilderVersion { get; set; } = "context-builder-v1";
@@ -550,9 +545,6 @@ public sealed class JobResultDocument
     [JsonPropertyName("batch_count")]
     public int BatchCount { get; set; }
 
-    [JsonPropertyName("timeline_index_path")]
-    public string? TimelineIndexPath { get; set; }
-
     [JsonPropertyName("warnings")]
     public List<string> Warnings { get; set; } = [];
 }
@@ -587,8 +579,29 @@ public sealed class ManifestItemDocument
         set => SourceHash = value;
     }
 
+    [JsonPropertyName("generation_signature")]
+    public string GenerationSignature { get; set; } = "";
+
     [JsonPropertyName("conversion_signature")]
-    public string ConversionSignature { get; set; } = "";
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LegacyConversionSignature
+    {
+        get => string.IsNullOrWhiteSpace(GenerationSignature) ? null : GenerationSignature;
+        set
+        {
+            if (!string.IsNullOrWhiteSpace(value) && string.IsNullOrWhiteSpace(GenerationSignature))
+            {
+                GenerationSignature = value;
+            }
+        }
+    }
+
+    [JsonIgnore]
+    public string ConversionSignature
+    {
+        get => GenerationSignature;
+        set => GenerationSignature = value ?? "";
+    }
 
     [JsonPropertyName("duplicate_status")]
     public string DuplicateStatus { get; set; } = "";
@@ -629,6 +642,15 @@ public sealed class ManifestItemDocument
 
     [JsonPropertyName("diarization_enabled")]
     public bool DiarizationEnabled { get; set; }
+
+    [JsonPropertyName("speaker_count")]
+    public int? SpeakerCount { get; set; }
+
+    [JsonPropertyName("speaker_count_status")]
+    public string? SpeakerCountStatus { get; set; }
+
+    [JsonPropertyName("speaker_count_note")]
+    public string? SpeakerCountNote { get; set; }
 
     [JsonPropertyName("model_id")]
     public string? ModelId { get; set; }
@@ -702,16 +724,26 @@ public sealed class RunSummary
     public double? EstimatedRemainingSec { get; set; }
     public double ProgressPercent { get; set; }
     public bool HasDownloadableArchive { get; set; }
+    public bool HasIpaArchive { get; set; }
+    public bool HasReadableTextArchive { get; set; }
     public string? UpdatedAt { get; set; }
     public string? CreatedAt { get; set; }
 }
 
-public sealed class TimelineMediaItem
+public sealed class MediaArtifactItem
 {
     public string MediaId { get; set; } = "";
+    public string FileName { get; set; } = "";
     public string SourcePath { get; set; } = "";
-    public string TimelinePath { get; set; } = "";
+    public string? PrimaryArtifactPath { get; set; }
+    public string PrimaryArtifactKind { get; set; } = "readable_text";
+    public string? IpaPath { get; set; }
+    public string? ReadableTextPath { get; set; }
     public string Status { get; set; } = "pending";
+    public int? SpeakerCount { get; set; }
+    public string? SpeakerCountStatus { get; set; }
+    public string? SpeakerCountNote { get; set; }
+    public bool IsCacheReused { get; set; }
     public bool IsReferencedDuplicate { get; set; }
     public string? ReferencedJobId { get; set; }
     public string? ReferencedMediaId { get; set; }
@@ -727,6 +759,7 @@ public sealed class RunDetails
     public JobStatusDocument? Status { get; set; }
     public JobResultDocument? Result { get; set; }
     public ManifestDocument? Manifest { get; set; }
-    public IReadOnlyList<TimelineMediaItem> TimelineItems { get; set; } = [];
+    public IReadOnlyList<MediaArtifactItem> ArtifactItems { get; set; } = [];
+    public string ConversionInfoText { get; set; } = "";
     public string LogTail { get; set; } = "";
 }

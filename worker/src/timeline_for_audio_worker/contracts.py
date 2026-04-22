@@ -3,6 +3,12 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from .reconstruction import (
+    resolve_reconstruction_backend,
+    resolve_reconstruction_model_id,
+    resolve_reconstruction_prompt_version,
+)
+
 
 @dataclass
 class InputItem:
@@ -27,13 +33,11 @@ class JobRequest:
     output_root_path: str
     profile: str
     compute_mode: str
-    processing_quality: str
     pipeline_version: str
     conversion_signature: str
     transcription_backend: str
     transcription_model_id: str
     supplemental_context_text: str | None
-    second_pass_enabled: bool
     context_builder_version: str
     diarization_enabled: bool
     diarization_model_id: str | None
@@ -42,6 +46,10 @@ class JobRequest:
     reprocess_duplicates: bool
     token_enabled: bool
     input_items: list[InputItem]
+    language_hint: str | None = None
+    reconstruction_backend: str | None = None
+    reconstruction_model_id: str | None = None
+    reconstruction_prompt_version: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -52,13 +60,12 @@ class JobRequest:
             "output_root_path": self.output_root_path,
             "profile": self.profile,
             "compute_mode": self.compute_mode,
-            "processing_quality": self.processing_quality,
             "pipeline_version": self.pipeline_version,
+            "generation_signature": self.conversion_signature,
             "conversion_signature": self.conversion_signature,
             "transcription_backend": self.transcription_backend,
             "transcription_model_id": self.transcription_model_id,
             "supplemental_context_text": self.supplemental_context_text,
-            "second_pass_enabled": self.second_pass_enabled,
             "context_builder_version": self.context_builder_version,
             "diarization_enabled": self.diarization_enabled,
             "diarization_model_id": self.diarization_model_id,
@@ -66,12 +73,21 @@ class JobRequest:
             "vad_model_id": self.vad_model_id,
             "reprocess_duplicates": self.reprocess_duplicates,
             "token_enabled": self.token_enabled,
+            "language_hint": self.language_hint,
+            "reconstruction_backend": self.reconstruction_backend,
+            "reconstruction_model_id": self.reconstruction_model_id,
+            "reconstruction_prompt_version": self.reconstruction_prompt_version,
             "input_items": [item.to_dict() for item in self.input_items],
         }
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "JobRequest":
         return cls(
+            language_hint=(
+                str(payload["language_hint"])
+                if payload.get("language_hint") not in (None, "")
+                else None
+            ),
             schema_version=int(payload["schema_version"]),
             job_id=str(payload["job_id"]),
             created_at=str(payload["created_at"]),
@@ -79,9 +95,10 @@ class JobRequest:
             output_root_path=str(payload["output_root_path"]),
             profile=str(payload["profile"]),
             compute_mode=str(payload.get("compute_mode") or "cpu"),
-            processing_quality=str(payload.get("processing_quality") or "standard"),
             pipeline_version=str(payload.get("pipeline_version") or ""),
-            conversion_signature=str(payload.get("conversion_signature") or ""),
+            conversion_signature=str(
+                payload.get("generation_signature") or payload.get("conversion_signature") or ""
+            ),
             transcription_backend=str(payload.get("transcription_backend") or ""),
             transcription_model_id=str(payload.get("transcription_model_id") or ""),
             supplemental_context_text=(
@@ -89,7 +106,6 @@ class JobRequest:
                 if payload.get("supplemental_context_text") not in (None, "")
                 else None
             ),
-            second_pass_enabled=bool(payload.get("second_pass_enabled", True)),
             context_builder_version=str(
                 payload.get("context_builder_version") or "context-builder-v1"
             ),
@@ -104,7 +120,45 @@ class JobRequest:
             reprocess_duplicates=bool(payload["reprocess_duplicates"]),
             token_enabled=bool(payload.get("token_enabled", False)),
             input_items=[InputItem(**item) for item in payload.get("input_items", [])],
+            reconstruction_backend=(
+                str(payload["reconstruction_backend"])
+                if payload.get("reconstruction_backend") not in (None, "")
+                else resolve_reconstruction_backend(
+                    str(payload["language_hint"])
+                    if payload.get("language_hint") not in (None, "")
+                    else None,
+                    str(payload.get("compute_mode") or "cpu"),
+                )
+            ),
+            reconstruction_model_id=(
+                str(payload["reconstruction_model_id"])
+                if payload.get("reconstruction_model_id") not in (None, "")
+                else resolve_reconstruction_model_id(
+                    str(payload["language_hint"])
+                    if payload.get("language_hint") not in (None, "")
+                    else None,
+                    str(payload.get("compute_mode") or "cpu"),
+                )
+            ),
+            reconstruction_prompt_version=(
+                str(payload["reconstruction_prompt_version"])
+                if payload.get("reconstruction_prompt_version") not in (None, "")
+                else resolve_reconstruction_prompt_version(
+                    str(payload["language_hint"])
+                    if payload.get("language_hint") not in (None, "")
+                    else None,
+                    str(payload.get("compute_mode") or "cpu"),
+                )
+            ),
         )
+
+    @property
+    def generation_signature(self) -> str:
+        return self.conversion_signature
+
+    @generation_signature.setter
+    def generation_signature(self, value: str) -> None:
+        self.conversion_signature = value
 
 
 @dataclass
@@ -222,6 +276,9 @@ class ManifestItem:
     audio_sample_rate: int | None = None
     bitrate: int | None = None
     diarization_enabled: bool = False
+    speaker_count: int | None = None
+    speaker_count_status: str | None = None
+    speaker_count_note: str | None = None
     model_id: str | None = None
     model_version: str | None = None
     pipeline_version: str | None = None
@@ -237,7 +294,9 @@ class ManifestItem:
     optional_voice_feature_summary: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        payload = asdict(self)
+        payload["generation_signature"] = self.conversion_signature
+        return payload
 
     @property
     def sha256(self) -> str:
@@ -246,6 +305,14 @@ class ManifestItem:
     @sha256.setter
     def sha256(self, value: str) -> None:
         self.source_hash = value
+
+    @property
+    def generation_signature(self) -> str:
+        return self.conversion_signature
+
+    @generation_signature.setter
+    def generation_signature(self, value: str) -> None:
+        self.conversion_signature = value
 
     @property
     def media_id(self) -> str | None:

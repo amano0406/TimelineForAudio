@@ -14,6 +14,11 @@ from .contracts import InputItem, JobRequest, JobResult, JobStatus
 from .context_builder import CONTEXT_BUILDER_VERSION
 from .discovery import discover_audio
 from .fs_utils import ensure_dir, now_iso, slugify, write_text
+from .reconstruction import (
+    resolve_reconstruction_backend,
+    resolve_reconstruction_model_id,
+    resolve_reconstruction_prompt_version,
+)
 from .signature import (
     CONTEXT_BUILDER_VERSION as SIGNATURE_CONTEXT_BUILDER_VERSION,
     DIARIZATION_MODEL_ID,
@@ -23,7 +28,6 @@ from .signature import (
     VAD_MODEL_ID,
     build_conversion_signature,
     normalize_compute_mode,
-    normalize_processing_quality,
     resolve_transcription_model_id,
 )
 from .settings import load_huggingface_token, load_settings
@@ -226,44 +230,73 @@ def build_run_archive(
     *,
     settings: dict[str, Any] | None = None,
     output: Path | None = None,
+    artifact_kind: str = "readable-text",
 ) -> Path:
     run_dir = find_run_dir(job_id, settings)
-    archive_base = (output if output is not None else run_dir.parent / job_id).resolve()
+    normalized_artifact_kind = _normalize_export_artifact_kind(artifact_kind)
+    archive_stem = f"{job_id}-{normalized_artifact_kind}"
+    archive_base = (output if output is not None else run_dir.parent / archive_stem).resolve()
     archive_base.parent.mkdir(parents=True, exist_ok=True)
     archive_path = archive_base.with_suffix(".zip")
     if archive_path.exists():
         archive_path.unlink()
 
-    staging_root = Path(tempfile.mkdtemp(prefix=f"{job_id}-export-", dir=str(archive_base.parent)))
+    staging_root = Path(
+        tempfile.mkdtemp(prefix=f"{archive_stem}-export-", dir=str(archive_base.parent))
+    )
     try:
-        _build_export_package(run_dir, job_id, staging_root)
+        _build_export_package(run_dir, job_id, staging_root, normalized_artifact_kind)
         created = shutil.make_archive(str(archive_base), "zip", root_dir=str(staging_root))
         return Path(created)
     finally:
         shutil.rmtree(staging_root, ignore_errors=True)
 
 
-def _build_export_package(run_dir: Path, job_id: str, export_root: Path) -> None:
-    timelines_root = export_root / "timelines"
-    pass1_transcripts_root = export_root / "pass1-transcripts"
-    pass2_transcripts_root = export_root / "pass2-transcripts"
-    context_docs_root = export_root / "context-docs"
-    speaker_summaries_root = export_root / "speaker-summaries"
-    feature_summaries_root = export_root / "audio-feature-summaries"
-    timelines_root.mkdir(parents=True, exist_ok=True)
-    pass1_transcripts_root.mkdir(parents=True, exist_ok=True)
-    pass2_transcripts_root.mkdir(parents=True, exist_ok=True)
-    context_docs_root.mkdir(parents=True, exist_ok=True)
-    speaker_summaries_root.mkdir(parents=True, exist_ok=True)
-    feature_summaries_root.mkdir(parents=True, exist_ok=True)
+def _conversion_info_candidate_paths(run_dir: Path) -> list[Path]:
+    return [
+        run_dir / "CONVERSION_INFO.md",
+        run_dir / "TRANSCRIPTION_INFO.md",
+    ]
+
+
+def _find_conversion_info_path(run_dir: Path) -> Path | None:
+    for candidate in _conversion_info_candidate_paths(run_dir):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _normalize_export_artifact_kind(value: str | None) -> str:
+    normalized = str(value or "readable-text").strip().lower()
+    if normalized in {"readable-text", "readable_text", "readable"}:
+        return "readable-text"
+    if normalized == "ipa":
+        return "ipa"
+    raise ValueError(f"Unsupported artifact kind: {value}")
+
+
+def _artifact_export_title(artifact_kind: str) -> str:
+    return "Readable Text" if artifact_kind == "readable-text" else "IPA"
+
+
+def _build_export_package(
+    run_dir: Path,
+    job_id: str,
+    export_root: Path,
+    artifact_kind: str,
+) -> None:
+    normalized_artifact_kind = _normalize_export_artifact_kind(artifact_kind)
+    artifact_root = export_root / normalized_artifact_kind
+    artifact_root.mkdir(parents=True, exist_ok=True)
     timelines: list[dict[str, str]] = []
     media_root = run_dir / "media"
     if media_root.exists():
         for media_dir in sorted(media_root.iterdir()):
             if not media_dir.is_dir():
                 continue
-            timeline_path = media_dir / "timeline" / "timeline.md"
-            if not timeline_path.exists():
+            readable_text_path = media_dir / "readable-text" / "Readable Text.md"
+            ipa_path = media_dir / "ipa" / "IPA.md"
+            if not readable_text_path.exists() and not ipa_path.exists():
                 continue
             source_path = media_dir / "source.json"
             source_info = (
@@ -275,67 +308,49 @@ def _build_export_package(run_dir: Path, job_id: str, export_root: Path) -> None
             timelines.append(
                 {
                     "media_id": media_dir.name,
-                    "timeline_path": str(timeline_path),
+                    "readable_text_path": str(readable_text_path),
+                    "ipa_path": str(ipa_path),
                     "label": label,
                     "source_path": str(source_info.get("original_path") or ""),
-                    "pass1_transcript_path": str(media_dir / "transcript" / "pass1.md"),
-                    "pass2_transcript_path": str(media_dir / "transcript" / "pass2.md"),
-                    "context_doc_path": str(media_dir / "transcript" / "context_merged.txt"),
-                    "speaker_summary_path": str(media_dir / "analysis" / "speaker_summary.md"),
-                    "audio_feature_summary_path": str(
-                        media_dir / "analysis" / "audio_features.md"
-                    ),
                 }
             )
 
     timelines.sort(key=lambda row: (row["label"], row["media_id"]))
 
-    transcription_info_path = run_dir / "TRANSCRIPTION_INFO.md"
-    if transcription_info_path.exists():
-        shutil.copy2(transcription_info_path, export_root / "TRANSCRIPTION_INFO.md")
+    conversion_info_path = _find_conversion_info_path(run_dir)
+    if conversion_info_path is not None:
+        shutil.copy2(conversion_info_path, export_root / "CONVERSION_INFO.md")
 
     used_names: set[str] = set()
     exported_rows: list[dict[str, str]] = []
     for row in timelines:
+        source_key = "readable_text_path" if normalized_artifact_kind == "readable-text" else "ipa_path"
+        source_path = Path(row[source_key])
+        if not source_path.exists():
+            continue
         timeline_file_name = _ensure_unique_export_file_name(f"{row['label']}.md", used_names)
-        destination = timelines_root / timeline_file_name
+        destination = artifact_root / timeline_file_name
         destination.write_text(
-            Path(row["timeline_path"]).read_text(encoding="utf-8", errors="replace"),
+            source_path.read_text(encoding="utf-8", errors="replace"),
             encoding="utf-8",
         )
         exported_row = {
             "label": row["label"],
             "source_path": row["source_path"],
-            "timeline_path": f"timelines/{timeline_file_name}",
-            "pass1_transcript_path": "",
-            "pass2_transcript_path": "",
-            "context_doc_path": "",
-            "speaker_summary_path": "",
-            "audio_feature_summary_path": "",
+            "artifact_path": f"{artifact_root.name}/{timeline_file_name}",
         }
-        export_specs = (
-            ("pass1_transcript_path", pass1_transcripts_root, ".md"),
-            ("pass2_transcript_path", pass2_transcripts_root, ".md"),
-            ("context_doc_path", context_docs_root, ".txt"),
-            ("speaker_summary_path", speaker_summaries_root, ".md"),
-            ("audio_feature_summary_path", feature_summaries_root, ".md"),
-        )
-        for source_key, target_root, extension in export_specs:
-            source_path = Path(row[source_key])
-            if source_path.exists():
-                target_name = f"{Path(timeline_file_name).stem}{extension}"
-                target_root.joinpath(target_name).write_text(
-                    source_path.read_text(encoding="utf-8", errors="replace"),
-                    encoding="utf-8",
-                )
-                exported_row[source_key] = f"{target_root.name}/{target_name}"
         exported_rows.append(exported_row)
+
+    if not exported_rows:
+        title = _artifact_export_title(normalized_artifact_kind)
+        raise ValueError(f"No completed {title} artifacts are available to download for this job.")
 
     _write_export_index_html(
         export_root=export_root,
         job_id=job_id,
+        artifact_kind=normalized_artifact_kind,
         exported_rows=exported_rows,
-        has_transcription_info=(export_root / "TRANSCRIPTION_INFO.md").exists(),
+        has_conversion_info=(export_root / "CONVERSION_INFO.md").exists(),
         has_failure_report=(export_root / "FAILURE_REPORT.md").exists(),
         has_worker_log=(export_root / "logs" / "worker.log").exists(),
     )
@@ -345,8 +360,9 @@ def _write_export_index_html(
     *,
     export_root: Path,
     job_id: str,
+    artifact_kind: str,
     exported_rows: list[dict[str, str]],
-    has_transcription_info: bool,
+    has_conversion_info: bool,
     has_failure_report: bool,
     has_worker_log: bool,
 ) -> None:
@@ -356,8 +372,8 @@ def _write_export_index_html(
         return f'<a href="{html.escape(path, quote=True)}">{html.escape(label)}</a>'
 
     top_links: list[str] = []
-    if has_transcription_info:
-        top_links.append('<li><a href="TRANSCRIPTION_INFO.md">TRANSCRIPTION_INFO.md</a></li>')
+    if has_conversion_info:
+        top_links.append('<li><a href="CONVERSION_INFO.md">CONVERSION_INFO.md</a></li>')
     if has_failure_report:
         top_links.append('<li><a href="FAILURE_REPORT.md">FAILURE_REPORT.md</a></li>')
     if has_worker_log:
@@ -371,12 +387,7 @@ def _write_export_index_html(
                     "<tr>",
                     f"<td>{html.escape(row['label'])}</td>",
                     f"<td><code>{html.escape(row['source_path'] or '')}</code></td>",
-                    f"<td>{anchor(row['timeline_path'], 'timeline')}</td>",
-                    f"<td>{anchor(row['pass1_transcript_path'], 'pass1')}</td>",
-                    f"<td>{anchor(row['pass2_transcript_path'], 'pass2')}</td>",
-                    f"<td>{anchor(row['context_doc_path'], 'context')}</td>",
-                    f"<td>{anchor(row['speaker_summary_path'], 'speaker')}</td>",
-                    f"<td>{anchor(row['audio_feature_summary_path'], 'features')}</td>",
+                    f"<td>{anchor(row['artifact_path'], _artifact_export_title(artifact_kind).lower())}</td>",
                     "</tr>",
                 ]
             )
@@ -409,7 +420,7 @@ def _write_export_index_html(
             '  <section class="panel">',
             "    <h1>TimelineForAudio export</h1>",
             f"    <p>Job ID: <code>{html.escape(job_id)}</code></p>",
-            "    <p>Open the links below to inspect the generated markdown, transcript artifacts, and summaries.</p>",
+            f"    <p>This package contains the {_artifact_export_title(artifact_kind)} export for the selected job.</p>",
             "  </section>",
             '  <section class="panel">',
             "    <h2>Top-level files</h2>",
@@ -419,7 +430,7 @@ def _write_export_index_html(
             "    <h2>Per-item artifacts</h2>",
             "    <table>",
             "      <thead>",
-            "        <tr><th>Item</th><th>Source</th><th>Timeline</th><th>Pass1</th><th>Pass2</th><th>Context</th><th>Speaker</th><th>Features</th></tr>",
+            f"        <tr><th>Item</th><th>Source</th><th>{html.escape(_artifact_export_title(artifact_kind))}</th></tr>",
             "      </thead>",
             "      <tbody>",
             *item_rows,
@@ -436,6 +447,7 @@ def _write_export_index_html(
 
 def _best_export_label(media_id: str, source_info: dict[str, Any]) -> str:
     candidates = [
+        str(source_info.get("recorded_at") or "").strip(),
         str(source_info.get("captured_at") or "").strip(),
         str(source_info.get("display_name") or "").strip(),
         str(source_info.get("original_path") or "").strip(),
@@ -450,7 +462,12 @@ def _best_export_label(media_id: str, source_info: dict[str, Any]) -> str:
         str(source_info.get("resolved_path") or source_info.get("original_path") or media_id)
     )
     if fallback.exists():
-        return datetime.fromtimestamp(fallback.stat().st_mtime).strftime("%Y-%m-%d %H-%M-%S")
+        last_write = fallback.stat().st_mtime
+        if last_write > 0:
+            return datetime.fromtimestamp(last_write).strftime("%Y-%m-%d %H-%M-%S")
+        creation_time = fallback.stat().st_ctime
+        if creation_time > 0:
+            return datetime.fromtimestamp(creation_time).strftime("%Y-%m-%d %H-%M-%S")
 
     return slugify(media_id)
 
@@ -517,6 +534,8 @@ def create_job(
     diarization_enabled = bool(load_huggingface_token()) and bool(
         settings.get("huggingfaceTermsConfirmed", False)
     )
+    language_hint = str(settings.get("uiLanguage") or "en").strip() or "en"
+    compute_mode = normalize_compute_mode(settings.get("computeMode"))
     request = JobRequest(
         schema_version=1,
         job_id=job_id,
@@ -524,21 +543,18 @@ def create_job(
         output_root_id=str(output_root.get("id") or "runs"),
         output_root_path=str(output_root_path),
         profile="quality-first",
-        compute_mode=normalize_compute_mode(settings.get("computeMode")),
-        processing_quality=normalize_processing_quality(settings.get("processingQuality")),
+        compute_mode=compute_mode,
         pipeline_version=PIPELINE_VERSION,
         conversion_signature=build_conversion_signature(
             compute_mode=settings.get("computeMode"),
-            processing_quality=settings.get("processingQuality"),
             diarization_enabled=diarization_enabled,
+            language_hint=language_hint,
             supplemental_context_text=None,
-            second_pass_enabled=True,
             context_builder_version=SIGNATURE_CONTEXT_BUILDER_VERSION,
         ),
         transcription_backend=TRANSCRIPTION_BACKEND,
-        transcription_model_id=resolve_transcription_model_id(settings.get("processingQuality")),
+        transcription_model_id=resolve_transcription_model_id(),
         supplemental_context_text=None,
-        second_pass_enabled=True,
         context_builder_version=CONTEXT_BUILDER_VERSION,
         diarization_enabled=diarization_enabled,
         diarization_model_id=DIARIZATION_MODEL_ID if diarization_enabled else None,
@@ -547,6 +563,10 @@ def create_job(
         reprocess_duplicates=reprocess_duplicates,
         token_enabled=bool(load_huggingface_token()),
         input_items=input_items,
+        language_hint=language_hint,
+        reconstruction_backend=resolve_reconstruction_backend(language_hint, compute_mode),
+        reconstruction_model_id=resolve_reconstruction_model_id(language_hint, compute_mode),
+        reconstruction_prompt_version=resolve_reconstruction_prompt_version(language_hint, compute_mode),
     )
     status = JobStatus(
         job_id=job_id,
@@ -583,9 +603,8 @@ def create_job(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     write_text(run_dir / "RUN_INFO.md", "# Run Info\n\nPending worker pickup.\n")
-    write_text(
-        run_dir / "TRANSCRIPTION_INFO.md", "# Transcription Info\n\nPending worker pickup.\n"
-    )
+    conversion_info = "# Conversion Info\n\nPending worker pickup.\n"
+    write_text(run_dir / "CONVERSION_INFO.md", conversion_info)
     write_text(run_dir / "NOTICE.md", "# Notice\n\nPending worker pickup.\n")
 
     return job_id, run_dir
@@ -605,8 +624,6 @@ def settings_snapshot(settings: dict[str, Any] | None = None) -> dict[str, Any]:
         "terms_confirmed": bool(settings.get("huggingfaceTermsConfirmed", False)),
         "ready": bool(token) and bool(settings.get("huggingfaceTermsConfirmed", False)),
         "compute_mode": str(settings.get("computeMode") or "cpu"),
-        "processing_quality": str(settings.get("processingQuality") or "standard"),
-        "second_pass_enabled": bool(settings.get("secondPassEnabled", True)),
         "context_builder_version": str(
             settings.get("contextBuilderVersion") or CONTEXT_BUILDER_VERSION
         ),

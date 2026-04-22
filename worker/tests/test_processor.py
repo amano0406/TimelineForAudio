@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+from types import SimpleNamespace
 import unittest
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -27,13 +28,11 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                processing_quality="standard",
                 pipeline_version="2026-04-10-2pass1",
                 conversion_signature="sig-123",
                 transcription_backend="faster-whisper",
                 transcription_model_id="medium",
                 supplemental_context_text=None,
-                second_pass_enabled=True,
                 context_builder_version="context-builder-v1",
                 diarization_enabled=False,
                 diarization_model_id=None,
@@ -92,13 +91,11 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                processing_quality="standard",
                 pipeline_version="2026-04-10-2pass1",
                 conversion_signature="sig-123",
                 transcription_backend="faster-whisper",
                 transcription_model_id="medium",
                 supplemental_context_text=None,
-                second_pass_enabled=True,
                 context_builder_version="context-builder-v1",
                 diarization_enabled=False,
                 diarization_model_id=None,
@@ -161,14 +158,13 @@ class ProcessorQueueTests(unittest.TestCase):
                 ),
                 patch.object(processor, "_estimate_remaining_with_history", return_value=None),
                 patch.object(processor, "_process_one_item", return_value=[]),
-                patch.object(processor, "_llm_export", return_value=(0, None)),
                 patch.object(processor, "append_catalog_rows"),
             ):
                 self.assertTrue(processor.process_job(job_dir))
 
             self.assertFalse((job_dir / ".job.lock").exists())
 
-    def test_resolve_duplicate_timeline_path_returns_none_for_stale_catalog_entry(self) -> None:
+    def test_resolve_duplicate_artifact_path_returns_none_for_stale_catalog_entry(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             duplicate = {
@@ -177,14 +173,16 @@ class ProcessorQueueTests(unittest.TestCase):
                 "media_id": "sample-media",
             }
 
-            self.assertIsNone(processor._resolve_duplicate_timeline_path(duplicate))
+            self.assertIsNone(processor._resolve_duplicate_artifact_path(duplicate))
 
-    def test_resolve_duplicate_timeline_path_uses_run_dir_when_timeline_path_is_missing(self) -> None:
+    def test_resolve_duplicate_artifact_path_uses_run_dir_when_artifact_path_is_missing(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            timeline_path = root / "job-1" / "media" / "sample-media" / "timeline" / "timeline.md"
-            timeline_path.parent.mkdir(parents=True, exist_ok=True)
-            timeline_path.write_text("# Timeline\n", encoding="utf-8")
+            readable_text_path = (
+                root / "job-1" / "media" / "sample-media" / "readable-text" / "Readable Text.md"
+            )
+            readable_text_path.parent.mkdir(parents=True, exist_ok=True)
+            readable_text_path.write_text("# Readable Text\n", encoding="utf-8")
 
             duplicate = {
                 "timeline_path": str(root / "stale-timeline.md"),
@@ -192,7 +190,108 @@ class ProcessorQueueTests(unittest.TestCase):
                 "media_id": "sample-media",
             }
 
-            self.assertEqual(timeline_path, processor._resolve_duplicate_timeline_path(duplicate))
+            self.assertEqual(readable_text_path, processor._resolve_duplicate_artifact_path(duplicate))
+
+    def test_process_job_reclaims_stale_running_job_before_pending_queue(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            running_job_dir = root / "job-running"
+            pending_job_dir = root / "job-pending"
+            running_job_dir.mkdir()
+            pending_job_dir.mkdir()
+            source_path = root / "sample.wav"
+            source_path.write_bytes(b"audio")
+
+            request = JobRequest(
+                schema_version=1,
+                job_id="job-running",
+                created_at="2026-04-11T12:00:00+09:00",
+                output_root_id="runs",
+                output_root_path=str(root),
+                profile="quality-first",
+                compute_mode="cpu",
+                pipeline_version="2026-04-10-2pass1",
+                conversion_signature="sig-123",
+                transcription_backend="faster-whisper",
+                transcription_model_id="medium",
+                supplemental_context_text=None,
+                context_builder_version="context-builder-v1",
+                diarization_enabled=False,
+                diarization_model_id=None,
+                vad_backend="faster-whisper",
+                vad_model_id="faster-whisper-default",
+                reprocess_duplicates=False,
+                token_enabled=False,
+                input_items=[
+                    InputItem(
+                        input_id="item-1",
+                        source_kind="upload",
+                        source_id="uploads",
+                        original_path=str(source_path),
+                        display_name="sample.wav",
+                        size_bytes=source_path.stat().st_size,
+                        uploaded_path=str(source_path),
+                    )
+                ],
+            )
+            (running_job_dir / "request.json").write_text(
+                json.dumps(request.to_dict(), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            (running_job_dir / "status.json").write_text(
+                json.dumps(
+                    {
+                        "job_id": "job-running",
+                        "state": "running",
+                        "updated_at": "2026-04-10T00:00:00+00:00",
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            (running_job_dir / ".job.lock").write_text("{}", encoding="utf-8")
+            (pending_job_dir / "request.json").write_text("{}", encoding="utf-8")
+            (pending_job_dir / "status.json").write_text(
+                json.dumps({"state": "pending"}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+
+            def fake_probe_audio(path: Path) -> dict[str, object]:
+                return {
+                    "size_bytes": source_path.stat().st_size,
+                    "duration_seconds": 5.0,
+                    "container_name": "wav",
+                    "extension": "wav",
+                    "audio_codec": "pcm_s16le",
+                    "audio_channels": 1,
+                    "audio_sample_rate": 16000,
+                    "bitrate": 256000,
+                    "captured_at": None,
+                }
+
+            with (
+                patch.object(processor, "_write_support_docs"),
+                patch.object(processor, "load_catalog", return_value={}),
+                patch.object(processor, "probe_audio", side_effect=fake_probe_audio),
+                patch.object(processor, "sha256_file", return_value="good-hash"),
+                patch.object(
+                    processor,
+                    "build_eta_predictor",
+                    return_value=type("Predictor", (), {"sample_count": 0})(),
+                ),
+                patch.object(processor, "_estimate_remaining_with_history", return_value=None),
+                patch.object(processor, "_process_one_item", return_value=[]),
+                patch.object(processor, "append_catalog_rows"),
+                patch.object(processor, "_collect_running_jobs", return_value=[running_job_dir]),
+                patch.object(processor, "_collect_pending_jobs", return_value=[pending_job_dir]),
+            ):
+                self.assertTrue(processor.process_job())
+
+            running_status = json.loads((running_job_dir / "status.json").read_text(encoding="utf-8"))
+            pending_status = json.loads((pending_job_dir / "status.json").read_text(encoding="utf-8"))
+            self.assertEqual("completed", running_status["state"])
+            self.assertEqual("pending", pending_status["state"])
 
     def test_process_job_waits_for_running_job_before_picking_pending(self) -> None:
         with (
@@ -220,13 +319,11 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                processing_quality="standard",
                 pipeline_version="2026-04-10-2pass1",
                 conversion_signature="sig-123",
                 transcription_backend="faster-whisper",
                 transcription_model_id="medium",
                 supplemental_context_text=None,
-                second_pass_enabled=True,
                 context_builder_version="context-builder-v1",
                 diarization_enabled=False,
                 diarization_model_id=None,
@@ -298,7 +395,6 @@ class ProcessorQueueTests(unittest.TestCase):
                 ),
                 patch.object(processor, "_estimate_remaining_with_history", return_value=None),
                 patch.object(processor, "_process_one_item", side_effect=fake_process_one_item),
-                patch.object(processor, "_llm_export", return_value=(0, None)),
                 patch.object(processor, "append_catalog_rows"),
             ):
                 self.assertTrue(processor.process_job(job_dir))
@@ -338,13 +434,11 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                processing_quality="standard",
                 pipeline_version="2026-04-10-2pass1",
                 conversion_signature="sig-123",
                 transcription_backend="faster-whisper",
                 transcription_model_id="medium",
                 supplemental_context_text=None,
-                second_pass_enabled=True,
                 context_builder_version="context-builder-v1",
                 diarization_enabled=False,
                 diarization_model_id=None,
@@ -426,7 +520,6 @@ class ProcessorQueueTests(unittest.TestCase):
                 ),
                 patch.object(processor, "_estimate_remaining_with_history", return_value=None),
                 patch.object(processor, "_process_one_item", side_effect=fake_process_one_item),
-                patch.object(processor, "_llm_export", return_value=(0, None)),
                 patch.object(processor, "append_catalog_rows"),
             ):
                 self.assertTrue(processor.process_job(job_dir))
@@ -466,13 +559,11 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                processing_quality="standard",
                 pipeline_version="2026-04-10-2pass1",
                 conversion_signature="sig-123",
                 transcription_backend="faster-whisper",
                 transcription_model_id="medium",
                 supplemental_context_text=None,
-                second_pass_enabled=True,
                 context_builder_version="context-builder-v1",
                 diarization_enabled=False,
                 diarization_model_id=None,
@@ -545,7 +636,6 @@ class ProcessorQueueTests(unittest.TestCase):
                 ),
                 patch.object(processor, "_estimate_remaining_with_history", return_value=None),
                 patch.object(processor, "_process_one_item", return_value=[]),
-                patch.object(processor, "_llm_export", return_value=(0, None)),
                 patch.object(processor, "append_catalog_rows"),
             ):
                 self.assertTrue(processor.process_job(job_dir))
@@ -581,13 +671,11 @@ class ProcessorQueueTests(unittest.TestCase):
                     output_root_path=str(root),
                     profile="quality-first",
                     compute_mode="cpu",
-                    processing_quality="standard",
                     pipeline_version="2026-04-10-2pass1",
                     conversion_signature=f"sig-{job_id}",
                     transcription_backend="faster-whisper",
                     transcription_model_id="medium",
                     supplemental_context_text=None,
-                    second_pass_enabled=True,
                     context_builder_version="context-builder-v1",
                     diarization_enabled=False,
                     diarization_model_id=None,
@@ -650,7 +738,6 @@ class ProcessorQueueTests(unittest.TestCase):
                 ),
                 patch.object(processor, "_estimate_remaining_with_history", return_value=None),
                 patch.object(processor, "_process_one_item", return_value=[]),
-                patch.object(processor, "_llm_export", return_value=(0, None)),
                 patch.object(processor, "append_catalog_rows"),
             ):
                 self.assertTrue(processor.process_job())
@@ -702,13 +789,11 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                processing_quality="standard",
                 pipeline_version="2026-04-10-2pass1",
                 conversion_signature="sig-123",
                 transcription_backend="faster-whisper",
                 transcription_model_id="medium",
                 supplemental_context_text=None,
-                second_pass_enabled=True,
                 context_builder_version="context-builder-v1",
                 diarization_enabled=False,
                 diarization_model_id=None,
@@ -766,7 +851,7 @@ class ProcessorQueueTests(unittest.TestCase):
 
             def fake_process_one_item(**kwargs):
                 (job_dir / ".delete-requested").write_text("requested\n", encoding="utf-8")
-                kwargs["ensure_not_delete_requested"]("transcribe_pass2")
+                kwargs["ensure_not_delete_requested"]("transcribe_turns")
                 return []
 
             with (
@@ -782,7 +867,6 @@ class ProcessorQueueTests(unittest.TestCase):
                 ),
                 patch.object(processor, "_estimate_remaining_with_history", return_value=None),
                 patch.object(processor, "_process_one_item", side_effect=fake_process_one_item),
-                patch.object(processor, "_llm_export", return_value=(0, None)),
                 patch.object(processor, "append_catalog_rows"),
             ):
                 self.assertTrue(processor.process_job(job_dir))
@@ -791,7 +875,7 @@ class ProcessorQueueTests(unittest.TestCase):
             self.assertFalse(session_dir.exists())
             self.assertFalse(catalog_path.exists())
 
-    def test_process_one_item_runs_two_pass_transcription_and_renders_from_pass2(self) -> None:
+    def test_process_one_item_runs_cleanup_and_turn_alignment_before_artifacts(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source_path = root / "sample.wav"
@@ -807,13 +891,11 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                processing_quality="standard",
                 pipeline_version="2026-04-10-2pass1",
                 conversion_signature="sig-123",
                 transcription_backend="faster-whisper",
                 transcription_model_id="medium",
                 supplemental_context_text="Known spelling: TimelineForAudio",
-                second_pass_enabled=True,
                 context_builder_version="context-builder-v1",
                 diarization_enabled=True,
                 diarization_model_id="pyannote/speaker-diarization-community-1",
@@ -855,10 +937,11 @@ class ProcessorQueueTests(unittest.TestCase):
 
             def fake_transcribe_audio(**kwargs):
                 transcribe_calls.append(kwargs)
-                pass_name = kwargs["pass_name"]
-                if pass_name == "pass1":
+                transcript_label = kwargs["transcript_label"]
+                if transcript_label == "cleanup_source":
                     return {
-                        "pass_name": "pass1",
+                        "artifact_stem": "cleanup-source",
+                        "transcript_label": "cleanup_source",
                         "diarization_used": False,
                         "segments": [
                             {
@@ -872,7 +955,8 @@ class ProcessorQueueTests(unittest.TestCase):
                         "speaker_turns": [],
                     }
                 return {
-                    "pass_name": "pass2",
+                    "artifact_stem": "turns-source",
+                    "transcript_label": "turns_source",
                     "diarization_used": True,
                     "segments": [
                         {
@@ -899,10 +983,10 @@ class ProcessorQueueTests(unittest.TestCase):
                     },
                 ) as build_context_documents,
                 patch(
-                    "timeline_for_audio_worker.processor.write_pass_diff",
+                    "timeline_for_audio_worker.processor.write_transcript_delta",
                     create=True,
                     return_value={"changed_segment_count": 1},
-                ) as write_pass_diff,
+                ) as write_transcript_delta,
                 patch(
                     "timeline_for_audio_worker.processor.apply_speaker_diarization",
                     create=True,
@@ -939,7 +1023,47 @@ class ProcessorQueueTests(unittest.TestCase):
                         "optional_voice_feature_summary": {},
                     },
                 ) as analyze_audio,
-                patch.object(processor, "render_timeline") as render_timeline,
+                patch.object(
+                    processor,
+                    "generate_ipa_turns",
+                    return_value=SimpleNamespace(
+                        backend_name="stub-ipa",
+                        status="ok",
+                        warnings=[],
+                        turns=[
+                            SimpleNamespace(
+                                index=1,
+                                start=0.0,
+                                end=1.0,
+                                speaker="SPEAKER_01",
+                                ipa="/sekənd pæs tekst/",
+                            )
+                        ],
+                    ),
+                ) as generate_ipa_turns,
+                patch.object(
+                    processor,
+                    "reconstruct_readable_text",
+                    return_value=SimpleNamespace(
+                        backend_name="stub-readable-text",
+                        status="ok",
+                        warnings=[],
+                        model_id="stub-model",
+                        prompt_version="stub-prompt",
+                        requested_compute_mode="cpu",
+                        effective_device="cpu",
+                        decoding=None,
+                        turns=[
+                            SimpleNamespace(
+                                index=1,
+                                start=0.0,
+                                end=1.0,
+                                speaker="SPEAKER_01",
+                                text="second pass text",
+                            )
+                        ],
+                    ),
+                ) as reconstruct_readable_text,
             ):
                 warnings = processor._process_one_item(
                     job_dir=job_dir,
@@ -950,20 +1074,45 @@ class ProcessorQueueTests(unittest.TestCase):
 
             self.assertEqual([], warnings)
             self.assertEqual(2, len(transcribe_calls))
-            self.assertEqual("pass1", transcribe_calls[0]["pass_name"])
+            self.assertEqual("cleanup_source", transcribe_calls[0]["transcript_label"])
             self.assertFalse(transcribe_calls[0]["diarization_enabled"])
-            self.assertEqual("pass2", transcribe_calls[1]["pass_name"])
+            self.assertEqual("turns_source", transcribe_calls[1]["transcript_label"])
             self.assertTrue(transcribe_calls[1]["diarization_enabled"])
-            self.assertEqual("pass2", apply_speaker_diarization.call_args.kwargs["transcript_payload"]["pass_name"])
+            self.assertEqual(
+                "turns_source",
+                apply_speaker_diarization.call_args.kwargs["transcript_payload"]["transcript_label"],
+            )
             self.assertEqual("Known spelling: TimelineForAudio", build_context_documents.call_args.kwargs["supplemental_context_text"])
-            self.assertEqual("pass1", write_pass_diff.call_args.kwargs["pass1_payload"]["pass_name"])
-            self.assertEqual("pass2", write_pass_diff.call_args.kwargs["pass2_payload"]["pass_name"])
-            self.assertEqual("pass2", write_speaker_summary.call_args.kwargs["transcript_payload"]["pass_name"])
-            self.assertEqual("pass2", analyze_audio.call_args.kwargs["transcript_payload"]["pass_name"])
-            self.assertEqual("pass2", render_timeline.call_args.kwargs["transcript_payload"]["pass_name"])
+            self.assertEqual(
+                "cleanup_source",
+                write_transcript_delta.call_args.kwargs["cleanup_source_payload"]["transcript_label"],
+            )
+            self.assertEqual(
+                "turns_source",
+                write_transcript_delta.call_args.kwargs["turns_source_payload"]["transcript_label"],
+            )
+            self.assertEqual(
+                "turns_source",
+                write_speaker_summary.call_args.kwargs["transcript_payload"]["transcript_label"],
+            )
+            self.assertEqual(
+                "turns_source",
+                analyze_audio.call_args.kwargs["transcript_payload"]["transcript_label"],
+            )
+            self.assertEqual(
+                "turns_source",
+                generate_ipa_turns.call_args.kwargs["transcript_payload"]["transcript_label"],
+            )
+            self.assertEqual(
+                "turns_source",
+                reconstruct_readable_text.call_args.kwargs["transcript_payload"]["transcript_label"],
+            )
+            self.assertEqual(1, manifest_item.speaker_count)
+            self.assertEqual("confirmed", manifest_item.speaker_count_status)
+            self.assertIsNone(manifest_item.speaker_count_note)
+            self.assertTrue((job_dir / "media" / manifest_item.media_id / "ipa" / "IPA.md").exists())
+            self.assertTrue((job_dir / "media" / manifest_item.media_id / "readable-text" / "Readable Text.md").exists())
 
 
 if __name__ == "__main__":
     unittest.main()
-
-

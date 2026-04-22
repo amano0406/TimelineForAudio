@@ -120,15 +120,15 @@ public sealed class LanguageService(
         new(
             "en",
             [
-                new("ja", "Japanese", ["ja"]),
+                new("ja", "日本語", ["ja"]),
                 new("en", "English", ["en"]),
-                new("zh-CN", "Simplified Chinese", ["zh-cn", "zh-sg", "zh-hans"]),
-                new("zh-TW", "Traditional Chinese", ["zh-tw", "zh-hk", "zh-mo", "zh-hant"]),
-                new("ko", "Korean", ["ko"]),
-                new("es", "Spanish", ["es"]),
-                new("fr", "French", ["fr"]),
+                new("zh-CN", "简体中文", ["zh-cn", "zh-sg", "zh-hans"]),
+                new("zh-TW", "繁體中文", ["zh-tw", "zh-hk", "zh-mo", "zh-hant"]),
+                new("ko", "한국어", ["ko"]),
+                new("es", "Español", ["es"]),
+                new("fr", "Français", ["fr"]),
                 new("de", "Deutsch", ["de"]),
-                new("pt", "Portuguese", ["pt"]),
+                new("pt", "Português", ["pt"]),
             ]);
 
     private static string? LoadSavedLanguage(AppPaths paths, ILogger<LanguageService> logger)

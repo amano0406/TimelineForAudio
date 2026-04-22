@@ -221,36 +221,20 @@ app.MapPost("/api/jobs", async (CreateJobCommand command, RunStore runStore, Can
     }
 });
 
-app.MapPost("/api/jobs/duplicates", async (
-    DuplicatePreviewRequest request,
-    RunStore runStore,
-    CancellationToken cancellationToken) =>
-{
-    try
-    {
-        var preview = await runStore.PreviewDuplicatesAsync(request, cancellationToken);
-        return Results.Ok(preview);
-    }
-    catch (InvalidOperationException ex)
-    {
-        return Results.BadRequest(new { error = ex.Message });
-    }
-});
-
 app.MapGet("/api/jobs/{id}", async (string id, RunStore runStore, CancellationToken cancellationToken) =>
 {
     var status = await runStore.GetJobStatusAsync(id, cancellationToken);
     return status is null ? Results.NotFound() : Results.Ok(status);
 });
 
-app.MapGet("/jobs/{id}/download", async (string id, RunStore runStore, CancellationToken cancellationToken) =>
+app.MapGet("/jobs/{id}/download", async (string id, string? artifact, RunStore runStore, CancellationToken cancellationToken) =>
 {
     try
     {
-        var archivePath = await runStore.BuildRunArchiveAsync(id, cancellationToken);
+        var archivePath = await runStore.BuildRunArchiveAsync(id, artifact, cancellationToken);
         return archivePath is null
             ? Results.NotFound()
-            : Results.File(archivePath, "application/zip", $"{id}.zip");
+            : Results.File(archivePath, "application/zip", Path.GetFileName(archivePath));
     }
     catch (InvalidOperationException ex)
     {

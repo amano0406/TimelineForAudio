@@ -25,9 +25,13 @@ public sealed class NewModel(
 
     public IReadOnlyList<string> AllowedExtensions { get; private set; } = [];
 
+    public bool HasExistingJobs { get; private set; }
+
     public string AcceptAttribute => string.Join(",", AllowedExtensions);
 
     public string AllowedExtensionsDisplay => string.Join(", ", AllowedExtensions);
+
+    public string CancelHref => HasExistingJobs ? "/jobs" : "/settings";
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
@@ -79,6 +83,7 @@ public sealed class NewModel(
     private async Task LoadPageStateAsync(CancellationToken cancellationToken)
     {
         var settings = await settingsStore.LoadAsync(cancellationToken);
+        HasExistingJobs = await runStore.HasAnyRunsAsync(cancellationToken);
         AllowedExtensions = settings.AudioExtensions
             .Select(static value => value.Trim())
             .Where(static value => !string.IsNullOrWhiteSpace(value))

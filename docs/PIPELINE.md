@@ -11,8 +11,10 @@ The request contains:
 - duplicate policy
 - token-enabled flag
 - fully expanded input items
-- compute mode and processing quality
+- compute mode
+- UI language, which is reused as the language hint
 - job-level supplemental context text
+- generation signature
 
 ## 2. Worker Pickup
 
@@ -25,7 +27,7 @@ For every input item:
 - resolve the source path
 - probe duration, codec, channels, sample rate, and file size with `ffprobe`
 - compute SHA-256
-- compute the conversion signature
+- compute the generation signature
 - check duplicate state against `.timeline-for-audio/catalog.jsonl`
 
 The worker writes `manifest.json` before heavy processing starts.
@@ -40,51 +42,52 @@ The worker normalizes each input into a stable analysis format:
 
 In the current audio-only pipeline, `cut_map.json` is present for contract stability even when no trimming is applied.
 
-## 5. Transcription Pass 1
+## 5. Cleanup-Source Transcription
 
-The worker calls `faster-whisper` with:
+The worker calls `faster-whisper` to generate cleanup-oriented source text from the full recording.
 
-- model: `medium` for `standard`, `large-v3` for `high`
-- language: `ja`
+- language: derived from the current UI language when available
 - device: `cpu` or `cuda`
 - built-in VAD filtering
-- no diarization
-- no user prompt injection
+- no user-visible prompt injection at this stage
 
 If GPU transcription fails, the worker can fall back to CPU and records a warning in the transcript metadata.
 
-## 6. Context Builder
-
-The worker builds deterministic plain-text context documents from:
-
-- pass1 transcript cues
-- extracted frequent terms and identifier-like tokens
-- optional job-level supplemental context text
-
 Artifacts written here:
+
+- `transcript/cleanup_source.json`
+- `transcript/cleanup_source.md`
+
+## 6. Cleanup And Reconstruction Preparation
+
+The worker prepares turn alignment and readable-text reconstruction input from:
+
+- cleanup-source cues
+- optional job-level supplemental context text
+- normalized language hint
+
+Artifacts written here can include:
 
 - `transcript/context_primary.txt`
 - `transcript/context_secondary.txt` when provided
 - `transcript/context_merged.txt`
 - `transcript/context_report.json`
 
-## 7. Transcription Pass 2
+## 7. Turn Alignment And Speaker Assignment
 
-The worker runs ASR on the same audio again, using `context_merged.txt` as the pass2 `initial_prompt`.
+The worker produces turn-oriented source spans from the recording and aligns speakers when diarization is available.
 
 Artifacts written here:
 
-- `transcript/pass1.json`
-- `transcript/pass1.md`
-- `transcript/pass2.json`
-- `transcript/pass2.md`
-- `transcript/pass_diff.json`
+- `transcript/turns_source.json`
+- `transcript/turns_source.md`
+- `transcript/transcript_delta.json`
 
 ## 8. Diarization Enrichment
 
-If `pyannote/speaker-diarization-community-1` is available and the Hugging Face prerequisites are satisfied, diarization runs after pass2.
+If `pyannote/speaker-diarization-community-1` is available and the Hugging Face prerequisites are satisfied, diarization runs on the normalized audio and aligns speaker turns to the current turn spans.
 
-The worker preloads the normalized audio with `torchaudio`, passes waveform + sample rate into `pyannote`, keeps the pass2 text fixed, and assigns speakers from diarization turns to pass2 timestamps for downstream timeline and summary generation.
+The worker preloads the normalized audio with `torchaudio`, passes waveform + sample rate into `pyannote`, keeps the current turn text fixed, and assigns speakers from diarization turns to turn timestamps for downstream IPA and readable-text generation.
 
 If diarization is unavailable or fails:
 
@@ -94,82 +97,37 @@ If diarization is unavailable or fails:
 
 Artifacts written here:
 
-- `transcript/pass2_words.json`
-- `transcript/pass2_speaker_spans.json`
+- `transcript/turns_words.json`
+- `transcript/turns_speaker_spans.json`
 - `analysis/diarization_turns.json`
 
-## 9. Audio Analysis
+## 9. IPA Generation
 
-The worker computes audio-oriented summaries from `audio/normalized.wav` and the pass2 transcript:
-
-- pause and silence summary
-- loudness summary
-- speaking rate summary
-- pitch summary
-- overlap and interruption summary
-- speaker confidence summary
-- diarization quality summary
-- optional voice feature summary
+The worker derives IPA per turn and keeps speaker + timestamp + IPA aligned as the canonical intermediate.
 
 Artifacts written here:
 
-- `analysis/speaker_summary.json`
-- `analysis/speaker_summary.md`
-- `analysis/audio_features.json`
-- `analysis/audio_features.md`
+- `ipa/ipa_turns.json`
+- `ipa/IPA.md`
 
-## 10. Timeline Rendering
+## 10. Readable-Text Reconstruction
 
-`timeline.md` is rendered from:
+The worker reconstructs readable text from IPA turns, language hint, and optional supplemental context.
 
-- source metadata
-- pass2 speaker-attributed spans when available, otherwise pass2 transcript segments
-- speaker summary
-- audio feature summary
+Artifacts written here:
 
-The main output shape is:
-
-```md
-# Audio Timeline
-
-- Source: `...`
-- Audio ID: `...`
-- Duration: `...`
-- Model: `...`
-- Transcript source: `pass2`
-- Supplemental context configured: `...`
-- Diarization used: `...`
-
-## Summary
-
-- Speakers: `...`
-- Silence seconds: `...`
-- Loudness LUFS: `...`
-- Estimated units/min: `...`
-- Median pitch Hz: `...`
-- Overlap segments: `...`
-- Interruptions: `...`
-- Speaker confidence mean ratio: `...`
-- Diarization quality: `...`
-
-## 00:00:12.345 - 00:00:15.678
-
-- Speaker: `SPEAKER_01`
-- Text: ...
-- Pause before: `...`
-- Overlap with previous: `...`
-- Estimated units/min: `...`
-```
+- `readable-text/readable_text_turns.json`
+- `readable-text/Readable Text.md`
 
 ## 11. Export Packaging
 
-After the job finishes, the app can build a reduced review package containing:
+After the job finishes, the app can build one of two reduced review packages:
 
 - `README.html`
-- `TRANSCRIPTION_INFO.md`
+- `CONVERSION_INFO.md`
 - `FAILURE_REPORT.md` when needed
 - `logs/worker.log` when needed
-- the per-item markdown artifacts grouped by type
+- either the IPA markdown output or the Readable Text markdown output
 
 `README.html` is the human entrypoint for exported results.
 

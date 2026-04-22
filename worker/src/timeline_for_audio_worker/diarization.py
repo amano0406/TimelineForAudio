@@ -287,7 +287,12 @@ def apply_speaker_diarization(
 ) -> dict[str, Any]:
     from .transcribe import _write_transcript_payload
 
-    artifact_name = str(artifact_stem or transcript_payload.get("pass_name") or "pass2")
+    artifact_name = str(
+        artifact_stem
+        or transcript_payload.get("artifact_stem")
+        or transcript_payload.get("transcript_label")
+        or "turns-source"
+    )
     settings = load_settings()
     token = load_huggingface_token()
     diarization_requested = bool(transcript_payload.get("diarization_requested", False))

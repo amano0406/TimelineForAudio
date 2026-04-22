@@ -1,12 +1,12 @@
 # TimelineForAudio
 
-Turn audio files you already have into timeline markdown packages that are easier to hand to ChatGPT or other LLM tools.
+Turn local audio files into IPA-first markdown packages that are easier to review locally and easier to hand to ChatGPT or other LLM tools.
 
 [Japanese README](README.ja.md) | [Sample Timeline](docs/examples/sample-timeline.en.md) | [Third-Party Notices](THIRD_PARTY_NOTICES.md) | [Model and Runtime Notes](MODEL_AND_RUNTIME_NOTES.md) | [Security And Safety](docs/SECURITY_AND_SAFETY.md) | [Release Checklist](docs/PUBLIC_RELEASE_CHECKLIST.md) | [License](LICENSE)
 
 ## Public Release Status
 
-The current public release line is `TimelineForAudio v0.3.4 Tech Preview`.
+The current public release line is `TimelineForAudio v0.4.0 Tech Preview`.
 
 Current public contract:
 
@@ -18,19 +18,21 @@ Current public contract:
 
 ## What This App Does
 
-This app takes audio files on your computer and turns them into a ZIP package that is easier to upload to an LLM.
+This app takes audio files on your computer and turns them into two review-ready outputs:
 
-Inside the app, the processing is simple:
+- `IPA.md`
+- `Readable Text.md`
 
-1. it normalizes the input audio into a stable worker format
-2. it runs pass1 ASR to capture the whole recording
-3. it builds deterministic plain-text context from pass1 and any job-level supplemental context
-4. it runs pass2 ASR on the same audio with that merged context, and uses pass2 as the final transcript
-5. it applies optional speaker diarization after pass2 and adds speaker-attributed spans without rewriting transcript text
-6. it computes audio summaries such as pauses, loudness, speaking rate, pitch, and overlap
-7. it packages the final results into a ZIP file
+Inside the app, the main flow is:
 
-You do not need to know model names or internal details to use it.
+1. normalize the input audio into a stable worker format
+2. transcribe the recording into cleanup-oriented source text
+3. align speaker-aware turns when diarization is available
+4. derive turn-level IPA as the canonical intermediate
+5. reconstruct readable turn text from IPA, language hint, and optional supplemental context
+6. package either the IPA view or the Readable Text view into a ZIP file
+
+The app keeps audio-relative timestamps per turn. The downloadable ZIP does not include the original audio file.
 
 ## Typical Uses
 
@@ -68,7 +70,7 @@ You do not need to know model names or internal details to use it.
 2. start processing
 3. wait for completion  
    Advanced AI processing takes some time
-4. download the ZIP package
+4. download either the IPA ZIP or the Readable Text ZIP
 5. open `README.html` inside the ZIP
 6. upload the ZIP to ChatGPT, Claude, or another LLM if you want downstream analysis
 
@@ -82,40 +84,37 @@ Examples of what you can ask an LLM after that:
 
 ## What Is Inside The ZIP
 
-The ZIP is intentionally compact, but it keeps the key review artifacts separated.
+The ZIP is intentionally compact and output-specific.
 
-Typical contents:
+IPA ZIP:
 
 - `README.html`
-- `TRANSCRIPTION_INFO.md`
-- `timelines/<captured-datetime>.md`
-- `pass1-transcripts/<captured-datetime>.md`
-- `pass2-transcripts/<captured-datetime>.md`
-- `context-docs/<captured-datetime>.txt`
-- `speaker-summaries/<captured-datetime>.md`
-- `audio-feature-summaries/<captured-datetime>.md`
+- `CONVERSION_INFO.md`
+- `ipa/<captured-datetime>.md`
+
+Readable Text ZIP:
+
+- `README.html`
+- `CONVERSION_INFO.md`
+- `readable-text/<captured-datetime>.md`
 
 Example:
 
 ```text
-TimelineForAudio-export.zip
+TimelineForAudio-ipa.zip
   README.html
-  TRANSCRIPTION_INFO.md
-  timelines/
+  CONVERSION_INFO.md
+  ipa/
     2026-03-26 18-00-00.md
-  pass1-transcripts/
-    2026-03-26 18-00-00.md
-  pass2-transcripts/
-    2026-03-26 18-00-00.md
-  context-docs/
-    2026-03-26 18-00-00.txt
-  speaker-summaries/
-    2026-03-26 18-00-00.md
-  audio-feature-summaries/
+
+TimelineForAudio-readable-text.zip
+  README.html
+  CONVERSION_INFO.md
+  readable-text/
     2026-03-26 18-00-00.md
 ```
 
-`README.html` is the export entrypoint. It links to each generated timeline, pass1 transcript, pass2 transcript, merged context document, speaker summary, and audio feature summary.
+`README.html` is the export entrypoint. It links to the generated artifact and explains the conversion at a high level.
 
 ## Internal Working Files vs ZIP Output
 
@@ -126,9 +125,10 @@ That internal folder can contain:
 - request, status, result, and manifest JSON files
 - worker logs
 - normalized audio and probe metadata
-- pass1 and pass2 transcript JSON and markdown
-- context builder artifacts and pass diff JSON
-- speaker and audio feature summaries in JSON and markdown
+- cleanup-source and turn-source transcript JSON and markdown
+- context builder artifacts and transcript delta JSON
+- IPA and readable-text internal artifacts
+- speaker alignment metadata
 - temporary processing files
 
 Those files are for the app itself. The downloadable ZIP is the reduced handoff package for LLM use.
@@ -141,7 +141,7 @@ Windows:
 .\start.bat
 ```
 
-This is the primary supported path for the `v0.3.4` public release line.
+This is the primary supported path for the `v0.4.0` public release line.
 
 macOS:
 
@@ -149,7 +149,7 @@ macOS:
 ./start.command
 ```
 
-This path is available as an experimental source-based setup in `v0.3.4`. It is not the baseline support contract for the current public release line.
+This path is available as an experimental source-based setup in `v0.4.0`. It is not the baseline support contract for the current public release line.
 
 Then:
 
@@ -157,10 +157,11 @@ Then:
 2. open `Settings`
 3. save your Hugging Face token if you want speaker diarization
 4. choose `CPU` or `GPU`
-5. choose processing quality
-6. create a new job
-7. wait for processing to finish
-8. download the ZIP package
+5. create a new job
+6. wait for processing to finish
+7. download the IPA ZIP or Readable Text ZIP
+
+`transformers` is included in the worker because the IPA-first pipeline now runs local readable-text reconstruction in `GPU + Japanese language hint` jobs.
 
 The start script tries to open an app-style window with Google Chrome, Microsoft Edge, Brave, or Chromium. If none of those are available, it falls back to a normal browser window.
 
@@ -176,26 +177,16 @@ The start script tries to open an app-style window with Google Chrome, Microsoft
 
 ## Compute Modes
 
-The public release baseline is `CPU + Standard`.
+The public UI exposes only two compute choices:
 
-- `CPU + Standard`
+- `CPU`
   - baseline lane
-  - `faster-whisper medium`
-  - diarization default: off
-- `CPU + High`
-  - expert lane
-  - `faster-whisper large-v3`
-  - slower, but available
-  - diarization default: off
-- `GPU + Standard`
-  - practical fast lane
-  - `faster-whisper medium`
-  - diarization default: on when Hugging Face token and gated approval are ready
-- `GPU + High`
-  - recommended best-quality lane
-  - `faster-whisper large-v3`
-  - around 10 GB or more of VRAM is the practical target
-  - 8-10 GB should be treated as experimental / expert
+  - slower, but available on the broadest range of machines
+- `GPU`
+  - NVIDIA-only path through the GPU worker overlay
+  - faster on supported machines
+
+Model selection and reconstruction details stay internal. The app does not expose `standard` / `high` quality modes in the current UI.
 
 In this development environment, GPU execution was verified on `NVIDIA GeForce RTX 4070` with Docker GPU access.
 
@@ -287,3 +278,4 @@ git config core.hooksPath .githooks
 ## License
 
 This repository is licensed under the MIT License. See [LICENSE](LICENSE).
+

@@ -11,19 +11,14 @@ from .fs_utils import now_iso, write_text
 from .runtime_profile import (
     TRANSCRIPTION_LANGUAGE,
     normalize_compute_mode,
-    normalize_processing_quality as _normalize_processing_quality,
-    resolve_model_name_for_quality as _resolve_model_name_for_quality,
     resolve_runtime_lane,
+    resolve_transcription_model_id as _resolve_transcription_model_id,
 )
 from .settings import load_huggingface_token, load_settings
 
 
-def normalize_processing_quality(value: str | None) -> str:
-    return _normalize_processing_quality(value)
-
-
-def resolve_model_name_for_quality(value: str | None) -> str:
-    return _resolve_model_name_for_quality(value)
+def resolve_transcription_model_id() -> str:
+    return _resolve_transcription_model_id()
 
 
 def _is_cuda_oom(exc: Exception) -> bool:
@@ -41,10 +36,10 @@ def _is_cuda_runtime_failure(exc: Exception) -> bool:
     )
 
 
-def _initial_batch_size(device: str, processing_quality: str) -> int:
+def _initial_batch_size(device: str) -> int:
     if device != "cuda":
         return 8
-    return 4 if normalize_processing_quality(processing_quality) == "high" else 16
+    return 16
 
 
 def _candidate_batch_sizes(initial: int) -> list[int]:
@@ -214,9 +209,8 @@ def _render_markdown(
         "",
         "## Metadata",
         "",
-        f"- Pass: `{metadata.get('pass_name', '')}`",
+        f"- Transcript label: `{metadata.get('transcript_label', '')}`",
         f"- Model: `{metadata['model']}`",
-        f"- Processing quality: `{metadata.get('processing_quality', 'standard')}`",
         f"- Language: `{metadata['language']}`",
         f"- Device: `{metadata['device']}`",
         f"- Requested compute mode: `{metadata.get('requested_compute_mode', 'cpu')}`",
@@ -224,7 +218,7 @@ def _render_markdown(
         f"- GPU available: `{metadata.get('gpu_available', False)}`",
         f"- Compute type: `{metadata['compute_type']}`",
         f"- Batch size: `{metadata.get('batch_size', '')}`",
-        f"- Alignment used: `{metadata['alignment_used']}`",
+        f"- Turn alignment enabled: `{metadata['alignment_used']}`",
         f"- Context prompt configured: `{metadata.get('context_prompt_configured', False)}`",
         f"- Context prompt length: `{metadata.get('context_prompt_length', 0)}`",
         f"- Diarization requested: `{metadata.get('diarization_requested', False)}`",
@@ -320,21 +314,21 @@ def _error_payload(
     source_name: str,
     transcript_dir: Path,
     artifact_stem: str,
-    pass_name: str,
+    transcript_label: str,
     error_message: str,
-    processing_quality: str | None,
     context_prompt: str | None,
     diarization_requested: bool,
+    word_timestamps: bool,
 ) -> dict[str, Any]:
     resolved_context_prompt = _normalize_prompt(context_prompt)
     payload = {
         "status": "error",
-        "pass_name": pass_name,
+        "artifact_stem": artifact_stem,
+        "transcript_label": transcript_label,
         "error": error_message,
         "generated_at": now_iso(),
-        "model": resolve_model_name_for_quality(processing_quality),
-        "processing_quality": normalize_processing_quality(processing_quality),
-        "model_id": resolve_model_name_for_quality(processing_quality),
+        "model": resolve_transcription_model_id(),
+        "model_id": resolve_transcription_model_id(),
         "device": "cpu",
         "requested_compute_mode": "cpu",
         "effective_compute_mode": "cpu",
@@ -343,7 +337,7 @@ def _error_payload(
         "batch_size": 4,
         "language": TRANSCRIPTION_LANGUAGE,
         "language_probability": None,
-        "alignment_used": False,
+        "alignment_used": word_timestamps,
         "context_prompt_configured": bool(resolved_context_prompt),
         "context_prompt_sha256": (
             hashlib.sha256(resolved_context_prompt.encode("utf-8")).hexdigest()
@@ -376,12 +370,12 @@ def transcribe_audio(
     audio_path: Path,
     transcript_dir: Path,
     artifact_stem: str,
-    pass_name: str,
+    transcript_label: str,
     cut_map: list[dict[str, float]],
     compute_mode: str | None = None,
-    processing_quality: str | None = None,
     initial_prompt: str | None = None,
     diarization_enabled: bool = True,
+    word_timestamps: bool = False,
 ) -> dict[str, Any]:
     settings = load_settings()
 
@@ -392,11 +386,11 @@ def transcribe_audio(
             source_name=source_name,
             transcript_dir=transcript_dir,
             artifact_stem=artifact_stem,
-            pass_name=pass_name,
+            transcript_label=transcript_label,
             error_message=f"faster-whisper is not available: {exc}",
-            processing_quality=processing_quality,
             context_prompt=initial_prompt,
             diarization_requested=diarization_enabled,
+            word_timestamps=word_timestamps,
         )
 
     try:
@@ -418,17 +412,16 @@ def transcribe_audio(
 
     requested_compute_mode = normalize_compute_mode(compute_mode or settings.get("computeMode"))
     gpu_available = bool(getattr(torch.cuda, "is_available", lambda: False)())
-    runtime_lane = resolve_runtime_lane(requested_compute_mode, processing_quality or settings.get("processingQuality"))
+    runtime_lane = resolve_runtime_lane(requested_compute_mode)
     device = "cuda" if requested_compute_mode == "gpu" and gpu_available else "cpu"
     effective_compute_mode = "gpu" if device == "cuda" else "cpu"
     compute_type = runtime_lane.compute_types[0] if device == "cuda" else "int8"
-    resolved_quality = runtime_lane.processing_quality
     model_name = runtime_lane.model_id
     language = TRANSCRIPTION_LANGUAGE
     resolved_initial_prompt = _normalize_prompt(initial_prompt)
 
     transcription_warnings: list[str] = []
-    batch_size = _initial_batch_size(device, resolved_quality)
+    batch_size = _initial_batch_size(device)
 
     def load_transcription_model(target_device: str, target_compute_type: str) -> Any:
         whisper_model = WhisperModel(
@@ -463,7 +456,7 @@ def transcribe_audio(
                 vad_filter=True,
                 vad_parameters={"min_silence_duration_ms": 500},
                 initial_prompt=resolved_initial_prompt,
-                word_timestamps=pass_name == "pass2",
+                word_timestamps=word_timestamps,
             )
             segment_rows = [
                 {
@@ -479,9 +472,7 @@ def transcribe_audio(
                 for index, segment in enumerate(list(segments), start=1)
             ]
             batch_size = candidate_batch_size
-            if device == "cuda" and candidate_batch_size != _initial_batch_size(
-                device, resolved_quality
-            ):
+            if device == "cuda" and candidate_batch_size != _initial_batch_size(device):
                 transcription_warnings.append(
                     f"GPU batch size was reduced to {candidate_batch_size} to fit available memory."
                 )
@@ -526,7 +517,7 @@ def transcribe_audio(
             vad_filter=True,
             vad_parameters={"min_silence_duration_ms": 500},
             initial_prompt=resolved_initial_prompt,
-            word_timestamps=pass_name == "pass2",
+            word_timestamps=word_timestamps,
         )
         segment_rows = [
             {
@@ -554,10 +545,10 @@ def transcribe_audio(
     words = [word for segment in segment_rows for word in segment.get("words", []) or []]
     payload = {
         "status": "ok",
-        "pass_name": pass_name,
+        "artifact_stem": artifact_stem,
+        "transcript_label": transcript_label,
         "generated_at": now_iso(),
         "model": model_name,
-        "processing_quality": resolved_quality,
         "model_id": model_name,
         "runtime_lane": runtime_lane.lane_id,
         "device": device,
@@ -575,7 +566,7 @@ def transcribe_audio(
             else None
         ),
         "context_prompt_length": len(resolved_initial_prompt or ""),
-        "alignment_used": False,
+        "alignment_used": word_timestamps,
         "diarization_requested": diarization_enabled,
         "diarization_used": False,
         "diarization_error": None,

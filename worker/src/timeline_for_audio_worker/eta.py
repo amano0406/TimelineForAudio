@@ -17,21 +17,21 @@ _TERMINAL_ITEM_STATES = {
 _MAX_MATCH_SCORE = 9.0
 _STAGE_ORDER = [
     "extract_audio",
-    "transcribe_pass1",
-    "build_context",
-    "transcribe_pass2",
+    "transcribe_cleanup_source",
+    "prepare_cleanup_context",
+    "transcribe_turns",
     "diarize_audio",
     "analyze_audio",
-    "timeline_render",
+    "generate_artifacts",
 ]
 _DEFAULT_STAGE_SHARES = {
     "extract_audio": 0.12,
-    "transcribe_pass1": 0.30,
-    "build_context": 0.08,
-    "transcribe_pass2": 0.28,
+    "transcribe_cleanup_source": 0.30,
+    "prepare_cleanup_context": 0.08,
+    "transcribe_turns": 0.28,
     "diarize_audio": 0.10,
     "analyze_audio": 0.12,
-    "timeline_render": 0.04,
+    "generate_artifacts": 0.04,
 }
 
 
@@ -86,7 +86,6 @@ class EtaPrediction:
 @dataclass(frozen=True)
 class HistoricalSample:
     compute_mode: str
-    processing_quality: str
     container_name: str | None
     audio_codec: str | None
     channel_count: int | None
@@ -98,10 +97,9 @@ class HistoricalSample:
 
 
 class EtaPredictor:
-    def __init__(self, samples: Iterable[HistoricalSample], compute_mode: str, processing_quality: str) -> None:
+    def __init__(self, samples: Iterable[HistoricalSample], compute_mode: str) -> None:
         self._samples = list(samples)
         self._compute_mode = _normalize_text(compute_mode) or "cpu"
-        self._processing_quality = _normalize_text(processing_quality) or "standard"
 
     @property
     def sample_count(self) -> int:
@@ -112,7 +110,6 @@ class EtaPredictor:
             sample
             for sample in self._samples
             if sample.compute_mode == self._compute_mode
-            and sample.processing_quality == self._processing_quality
         ]
         if not candidates:
             return None
@@ -172,13 +169,11 @@ def build_eta_predictor(
     output_root: Path,
     current_job_id: str,
     compute_mode: str,
-    processing_quality: str,
 ) -> EtaPredictor:
     samples: list[HistoricalSample] = []
     normalized_compute_mode = _normalize_text(compute_mode) or "cpu"
-    normalized_processing_quality = _normalize_text(processing_quality) or "standard"
     if not output_root.exists():
-        return EtaPredictor(samples, normalized_compute_mode, normalized_processing_quality)
+        return EtaPredictor(samples, normalized_compute_mode)
 
     job_dirs = sorted(output_root.glob("job-*")) + sorted(output_root.glob("run-*"))
     seen_dirs: set[Path] = set()
@@ -201,8 +196,6 @@ def build_eta_predictor(
 
         if (_normalize_text(request.get("compute_mode")) or "cpu") != normalized_compute_mode:
             continue
-        if (_normalize_text(request.get("processing_quality")) or "standard") != normalized_processing_quality:
-            continue
 
         for item in manifest.get("items", []):
             if str(item.get("status") or "").lower() != "completed":
@@ -215,7 +208,6 @@ def build_eta_predictor(
             samples.append(
                 HistoricalSample(
                     compute_mode=normalized_compute_mode,
-                    processing_quality=normalized_processing_quality,
                     container_name=_normalize_text(item.get("container_name")),
                     audio_codec=_normalize_text(item.get("audio_codec")),
                     channel_count=_to_optional_int(item.get("audio_channels")),
@@ -227,7 +219,7 @@ def build_eta_predictor(
                 )
             )
 
-    return EtaPredictor(samples, normalized_compute_mode, normalized_processing_quality)
+    return EtaPredictor(samples, normalized_compute_mode)
 
 
 def estimate_remaining_seconds(

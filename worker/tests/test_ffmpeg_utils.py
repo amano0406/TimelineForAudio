@@ -16,6 +16,7 @@ class ProbeSummaryTests(unittest.TestCase):
                 "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
                 "tags": {
                     "creation_time": "2026-03-25T01:02:03Z",
+                    "date": "2026-03-24T23:59:59Z",
                 },
             },
             "streams": [
@@ -24,6 +25,9 @@ class ProbeSummaryTests(unittest.TestCase):
                     "codec_name": "aac",
                     "channels": 2,
                     "sample_rate": "48000",
+                    "tags": {
+                        "encoded_date": "2026-03-25T00:30:00Z",
+                    },
                 },
             ],
         }
@@ -38,7 +42,15 @@ class ProbeSummaryTests(unittest.TestCase):
         self.assertEqual(2, summary["audio_channels"])
         self.assertEqual(48000, summary["audio_sample_rate"])
         self.assertEqual(256000, summary["bitrate"])
-        self.assertEqual("2026-03-25T01:02:03Z", summary["captured_at"])
+        self.assertEqual("2026-03-24T23:59:59Z", summary["captured_at"])
+        self.assertEqual(
+            [
+                "2026-03-24T23:59:59Z",
+                "2026-03-25T00:30:00Z",
+                "2026-03-25T01:02:03Z",
+            ],
+            summary["metadata_timestamp_candidates"],
+        )
 
 
 if __name__ == "__main__":

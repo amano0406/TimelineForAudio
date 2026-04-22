@@ -9,6 +9,10 @@ from .ffmpeg_utils import detect_silences, run_command
 from .fs_utils import write_text
 
 
+_MAX_LIBROSA_ANALYSIS_DURATION_SECONDS = 30 * 60
+_MAX_LIBROSA_ANALYSIS_FILE_BYTES = 128 * 1024 * 1024
+
+
 def _round(value: float | int | None, digits: int = 3) -> float | None:
     if value is None:
         return None
@@ -272,6 +276,42 @@ def build_speaker_summary(transcript_payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def build_speaker_count_metadata(
+    summary: dict[str, Any],
+    transcript_payload: dict[str, Any],
+) -> dict[str, Any]:
+    speaker_count = int(summary.get("speaker_count") or 0)
+    diarization_used = bool(
+        summary.get("diarization_used", transcript_payload.get("diarization_used", False))
+    )
+    diarization_error = _compact_text(
+        summary.get("diarization_error") or transcript_payload.get("diarization_error")
+    )
+
+    if speaker_count <= 0:
+        return {
+            "speaker_count": None,
+            "speaker_count_status": "unavailable",
+            "speaker_count_note": diarization_error or "No speaker-attributed turns were available.",
+        }
+
+    if diarization_used:
+        return {
+            "speaker_count": speaker_count,
+            "speaker_count_status": "confirmed",
+            "speaker_count_note": None,
+        }
+
+    note = diarization_error or (
+        "Speaker count is inferred from current turns without confirmed speaker separation."
+    )
+    return {
+        "speaker_count": speaker_count,
+        "speaker_count_status": "estimated",
+        "speaker_count_note": note,
+    }
+
+
 def write_speaker_summary(
     *,
     source_name: str,
@@ -279,6 +319,7 @@ def write_speaker_summary(
     transcript_payload: dict[str, Any],
 ) -> dict[str, Any]:
     summary = build_speaker_summary(transcript_payload)
+    summary.update(build_speaker_count_metadata(summary, transcript_payload))
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "speaker_summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2),
@@ -289,10 +330,14 @@ def write_speaker_summary(
         f"# Speaker Summary: {source_name}",
         "",
         f"- Speaker count: `{summary['speaker_count']}`",
+        f"- Speaker count status: `{summary.get('speaker_count_status')}`",
         f"- Diarization used: `{summary['diarization_used']}`",
         f"- Diarization error: `{summary.get('diarization_error') or ''}`",
         "",
     ]
+    if summary.get("speaker_count_note"):
+        lines.append(f"- Speaker count note: {summary['speaker_count_note']}")
+        lines.append("")
     if not summary["speakers"]:
         lines.append("_No speaker segments were available._")
     else:
@@ -344,7 +389,31 @@ def _compute_loudness(input_path: Path) -> dict[str, Any]:
     return _parse_loudnorm((completed.stderr or "") + "\n" + (completed.stdout or ""))
 
 
-def _compute_pitch_and_voice_features(input_path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+def _compute_pitch_and_voice_features(
+    input_path: Path,
+    *,
+    duration_seconds: float | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    skip_reason: str | None = None
+    if duration_seconds is not None and duration_seconds > _MAX_LIBROSA_ANALYSIS_DURATION_SECONDS:
+        skip_reason = (
+            "Skipped optional librosa analysis because the audio is too long "
+            f"({duration_seconds:.1f}s > {_MAX_LIBROSA_ANALYSIS_DURATION_SECONDS}s)."
+        )
+    else:
+        try:
+            file_size = input_path.stat().st_size
+        except OSError:
+            file_size = None
+        if file_size is not None and file_size > _MAX_LIBROSA_ANALYSIS_FILE_BYTES:
+            skip_reason = (
+                "Skipped optional librosa analysis because the normalized audio is too large "
+                f"({file_size} bytes > {_MAX_LIBROSA_ANALYSIS_FILE_BYTES} bytes)."
+            )
+
+    if skip_reason is not None:
+        return {"available": False, "reason": skip_reason}, {"available": False, "reason": skip_reason}
+
     try:
         import librosa
         import numpy as np
@@ -440,7 +509,10 @@ def analyze_audio(
     }
 
     loudness_summary = _compute_loudness(audio_path)
-    pitch_summary, optional_voice_feature_summary = _compute_pitch_and_voice_features(audio_path)
+    pitch_summary, optional_voice_feature_summary = _compute_pitch_and_voice_features(
+        audio_path,
+        duration_seconds=duration_seconds,
+    )
     speaker_confidence_summary, diarization_quality_summary = build_diarization_summaries(
         transcript_payload,
         duration_seconds=duration_seconds,

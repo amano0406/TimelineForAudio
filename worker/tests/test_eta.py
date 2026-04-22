@@ -14,7 +14,6 @@ def _write_run(
     *,
     job_id: str,
     compute_mode: str,
-    processing_quality: str,
     items: list[dict[str, object]],
 ) -> None:
     run_dir = root / job_id
@@ -27,7 +26,6 @@ def _write_run(
         "output_root_path": str(root),
         "profile": "quality-first",
         "compute_mode": compute_mode,
-        "processing_quality": processing_quality,
         "reprocess_duplicates": False,
         "token_enabled": False,
         "input_items": [],
@@ -86,7 +84,6 @@ class EtaPredictorTests(unittest.TestCase):
                 root,
                 job_id="job-old-mono",
                 compute_mode="cpu",
-                processing_quality="standard",
                 items=[
                     {
                         "status": "completed",
@@ -104,7 +101,6 @@ class EtaPredictorTests(unittest.TestCase):
                 root,
                 job_id="job-old-stereo",
                 compute_mode="cpu",
-                processing_quality="standard",
                 items=[
                     {
                         "status": "completed",
@@ -123,7 +119,6 @@ class EtaPredictorTests(unittest.TestCase):
                 output_root=root,
                 current_job_id="job-current",
                 compute_mode="cpu",
-                processing_quality="standard",
             )
 
             mono_item = _manifest_item(
@@ -170,7 +165,6 @@ class EtaPredictorTests(unittest.TestCase):
                 root,
                 job_id="job-old-1",
                 compute_mode="cpu",
-                processing_quality="standard",
                 items=[
                     {
                         "status": "completed",
@@ -188,7 +182,6 @@ class EtaPredictorTests(unittest.TestCase):
                 output_root=root,
                 current_job_id="job-current",
                 compute_mode="cpu",
-                processing_quality="standard",
             )
 
             items = [
@@ -241,7 +234,6 @@ class EtaPredictorTests(unittest.TestCase):
                 root,
                 job_id="job-old-stage-aware",
                 compute_mode="cpu",
-                processing_quality="standard",
                 items=[
                     {
                         "status": "completed",
@@ -254,11 +246,11 @@ class EtaPredictorTests(unittest.TestCase):
                         "bitrate": 64000,
                         "stage_elapsed_seconds": {
                             "extract_audio": 1.0,
-                            "transcribe_pass1": 3.0,
-                            "build_context": 1.0,
-                            "transcribe_pass2": 2.0,
+                            "transcribe_cleanup_source": 3.0,
+                            "prepare_cleanup_context": 1.0,
+                            "transcribe_turns": 2.0,
                             "analyze_audio": 2.0,
-                            "timeline_render": 1.0,
+                            "generate_artifacts": 1.0,
                         },
                     }
                 ],
@@ -267,7 +259,6 @@ class EtaPredictorTests(unittest.TestCase):
                 output_root=root,
                 current_job_id="job-current",
                 compute_mode="cpu",
-                processing_quality="standard",
             )
 
             items = [
@@ -292,7 +283,7 @@ class EtaPredictorTests(unittest.TestCase):
                 legacy_remaining_sec=None,
                 current_item_index=0,
                 current_item_elapsed_sec=6.0,
-                current_stage_name="transcribe_pass2",
+                current_stage_name="transcribe_turns",
                 current_stage_elapsed_sec=1.0,
                 include_export_stage=False,
             )

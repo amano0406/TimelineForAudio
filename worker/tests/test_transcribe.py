@@ -20,11 +20,11 @@ from timeline_for_audio_worker.transcribe import (
 
 
 class TranscribeHelpersTests(unittest.TestCase):
-    def test_high_quality_gpu_uses_conservative_initial_batch_size(self) -> None:
-        self.assertEqual(4, _initial_batch_size("cuda", "high"))
+    def test_cpu_uses_fixed_initial_batch_size(self) -> None:
+        self.assertEqual(8, _initial_batch_size("cpu"))
 
-    def test_standard_gpu_uses_larger_initial_batch_size(self) -> None:
-        self.assertEqual(16, _initial_batch_size("cuda", "standard"))
+    def test_gpu_uses_fixed_initial_batch_size(self) -> None:
+        self.assertEqual(16, _initial_batch_size("cuda"))
 
     def test_candidate_batch_sizes_are_unique_and_descending(self) -> None:
         self.assertEqual([16, 12, 8, 6, 4, 2, 1], _candidate_batch_sizes(16))
@@ -97,12 +97,11 @@ class TranscribeHelpersTests(unittest.TestCase):
             payload = _write_transcript_payload(
                 source_name="sample.wav",
                 transcript_dir=transcript_dir,
-                artifact_stem="pass2",
+                artifact_stem="turns-source",
                 metadata={
                     "status": "ok",
-                    "pass_name": "pass2",
+                    "transcript_label": "turns_source",
                     "model": "medium",
-                    "processing_quality": "standard",
                     "device": "cpu",
                     "requested_compute_mode": "cpu",
                     "effective_compute_mode": "cpu",
@@ -134,11 +133,11 @@ class TranscribeHelpersTests(unittest.TestCase):
                 },
             )
 
-            self.assertEqual("pass2", payload["pass_name"])
-            self.assertTrue((transcript_dir / "pass2.json").exists())
-            self.assertTrue((transcript_dir / "pass2.md").exists())
-            rendered = (transcript_dir / "pass2.md").read_text(encoding="utf-8")
-            self.assertIn("Pass: `pass2`", rendered)
+            self.assertEqual("turns_source", payload["transcript_label"])
+            self.assertTrue((transcript_dir / "turns-source.json").exists())
+            self.assertTrue((transcript_dir / "turns-source.md").exists())
+            rendered = (transcript_dir / "turns-source.md").read_text(encoding="utf-8")
+            self.assertIn("Transcript label: `turns_source`", rendered)
             self.assertIn("Context prompt configured: `True`", rendered)
             self.assertIn("Diarization requested: `True`", rendered)
 
@@ -187,16 +186,16 @@ class TranscribeHelpersTests(unittest.TestCase):
                 source_name="sample.wav",
                 audio_path=Path(temp_dir) / "audio.wav",
                 transcript_dir=Path(temp_dir) / "transcript",
-                artifact_stem="pass1",
-                pass_name="pass1",
+                artifact_stem="cleanup-source",
+                transcript_label="cleanup_source",
                 cut_map=[],
                 compute_mode="cpu",
-                processing_quality="standard",
                 initial_prompt=None,
                 diarization_enabled=False,
+                word_timestamps=False,
             )
 
-        self.assertEqual("pass1", payload["pass_name"])
+        self.assertEqual("cleanup_source", payload["transcript_label"])
         self.assertFalse(payload["context_prompt_configured"])
         self.assertFalse(payload["diarization_requested"])
         self.assertFalse(payload["diarization_used"])
@@ -246,16 +245,16 @@ class TranscribeHelpersTests(unittest.TestCase):
                 source_name="sample.wav",
                 audio_path=Path(temp_dir) / "audio.wav",
                 transcript_dir=Path(temp_dir) / "transcript",
-                artifact_stem="pass2",
-                pass_name="pass2",
+                artifact_stem="turns-source",
+                transcript_label="turns_source",
                 cut_map=[],
                 compute_mode="cpu",
-                processing_quality="standard",
                 initial_prompt="known words",
                 diarization_enabled=True,
+                word_timestamps=True,
             )
 
-        self.assertEqual("pass2", payload["pass_name"])
+        self.assertEqual("turns_source", payload["transcript_label"])
         self.assertTrue(payload["context_prompt_configured"])
         self.assertTrue(payload["diarization_requested"])
         self.assertFalse(payload["diarization_used"])

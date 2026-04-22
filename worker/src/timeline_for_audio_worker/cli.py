@@ -41,9 +41,8 @@ def parse_args() -> argparse.Namespace:
         "save", help="Save Hugging Face token and terms confirmation."
     )
     settings_save.add_argument("--token", type=str, required=False)
-    settings_save.add_argument("--terms-confirmed", action="store_true")
+    settings_save.add_argument("--terms-confirmed", action="store_const", const=True, default=None)
     settings_save.add_argument("--compute-mode", choices=["cpu", "gpu"], required=False)
-    settings_save.add_argument("--processing-quality", choices=["standard", "high"], required=False)
     settings_save.add_argument("--json", action="store_true")
 
     jobs_parser = subparsers.add_parser("jobs", help="Create or inspect jobs.")
@@ -73,6 +72,7 @@ def parse_args() -> argparse.Namespace:
     )
     jobs_archive.add_argument("--job-id", type=str, required=True)
     jobs_archive.add_argument("--output", type=Path, required=False)
+    jobs_archive.add_argument("--artifact-kind", choices=["readable-text", "ipa"], default="readable-text")
     jobs_archive.add_argument("--json", action="store_true")
 
     scan_parser = subparsers.add_parser(
@@ -238,9 +238,8 @@ def cmd_settings_status(as_json: bool) -> int:
 
 def cmd_settings_save(
     token: str | None,
-    terms_confirmed: bool,
+    terms_confirmed: bool | None,
     compute_mode: str | None,
-    processing_quality: str | None,
     as_json: bool,
 ) -> int:
     settings = load_settings()
@@ -248,9 +247,8 @@ def cmd_settings_save(
         save_huggingface_token(token)
     if compute_mode is not None:
         settings["computeMode"] = compute_mode
-    if processing_quality is not None:
-        settings["processingQuality"] = processing_quality
-    settings["huggingfaceTermsConfirmed"] = terms_confirmed
+    if terms_confirmed is not None:
+        settings["huggingfaceTermsConfirmed"] = terms_confirmed
     save_settings(settings)
     _print_payload(settings_snapshot(settings), as_json)
     return 0
@@ -352,10 +350,11 @@ def cmd_jobs_run(job_id: str, as_json: bool) -> int:
     return 0
 
 
-def cmd_jobs_archive(job_id: str, output: Path | None, as_json: bool) -> int:
-    archive_path = build_run_archive(job_id, output=output)
+def cmd_jobs_archive(job_id: str, output: Path | None, artifact_kind: str, as_json: bool) -> int:
+    archive_path = build_run_archive(job_id, output=output, artifact_kind=artifact_kind)
     payload = {
         "job_id": job_id,
+        "artifact_kind": artifact_kind,
         "archive_path": str(archive_path),
     }
     _print_payload(payload, as_json)
@@ -373,7 +372,6 @@ def main() -> int:
                 token,
                 args.terms_confirmed,
                 args.compute_mode,
-                args.processing_quality,
                 args.json,
             )
     if args.command == "jobs":
@@ -394,7 +392,7 @@ def main() -> int:
         if args.jobs_command == "run":
             return cmd_jobs_run(args.job_id, args.json)
         if args.jobs_command == "archive":
-            return cmd_jobs_archive(args.job_id, args.output, args.json)
+            return cmd_jobs_archive(args.job_id, args.output, args.artifact_kind, args.json)
     if args.command == "scan":
         return cmd_scan(args.config, args.output)
     if args.command == "compare-images":

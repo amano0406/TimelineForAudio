@@ -25,44 +25,54 @@ def _segment_start(segment: dict[str, Any] | None) -> float:
     )
 
 
-def write_pass_diff(
+def write_transcript_delta(
     *,
     transcript_dir: Path,
-    pass1_payload: dict[str, Any],
-    pass2_payload: dict[str, Any],
+    cleanup_source_payload: dict[str, Any],
+    turns_source_payload: dict[str, Any],
 ) -> dict[str, Any]:
-    pass1_segments = pass1_payload.get("raw_segments") or pass1_payload.get("segments", []) or []
-    pass2_segments = pass2_payload.get("raw_segments") or pass2_payload.get("segments", []) or []
-    max_len = max(len(pass1_segments), len(pass2_segments))
+    cleanup_segments = (
+        cleanup_source_payload.get("raw_segments")
+        or cleanup_source_payload.get("segments", [])
+        or []
+    )
+    turns_segments = (
+        turns_source_payload.get("raw_segments")
+        or turns_source_payload.get("segments", [])
+        or []
+    )
+    max_len = max(len(cleanup_segments), len(turns_segments))
     changes: list[dict[str, Any]] = []
 
     for index in range(max_len):
-        left = pass1_segments[index] if index < len(pass1_segments) else None
-        right = pass2_segments[index] if index < len(pass2_segments) else None
+        left = cleanup_segments[index] if index < len(cleanup_segments) else None
+        right = turns_segments[index] if index < len(turns_segments) else None
         if left == right:
             continue
         changes.append(
             {
                 "index": index,
-                "pass1_start": _segment_start(left) if left else None,
-                "pass2_start": _segment_start(right) if right else None,
-                "pass1_speaker": _segment_speaker(left) if left else None,
-                "pass2_speaker": _segment_speaker(right) if right else None,
-                "pass1_text": _segment_text(left) if left else None,
-                "pass2_text": _segment_text(right) if right else None,
+                "cleanup_start": _segment_start(left) if left else None,
+                "turns_start": _segment_start(right) if right else None,
+                "cleanup_speaker": _segment_speaker(left) if left else None,
+                "turns_speaker": _segment_speaker(right) if right else None,
+                "cleanup_text": _segment_text(left) if left else None,
+                "turns_text": _segment_text(right) if right else None,
             }
         )
 
     payload = {
-        "pass1_name": str(pass1_payload.get("pass_name") or "pass1"),
-        "pass2_name": str(pass2_payload.get("pass_name") or "pass2"),
-        "pass1_segment_count": len(pass1_segments),
-        "pass2_segment_count": len(pass2_segments),
+        "cleanup_source_name": str(
+            cleanup_source_payload.get("transcript_label") or "cleanup_source"
+        ),
+        "turns_source_name": str(turns_source_payload.get("transcript_label") or "turns_source"),
+        "cleanup_segment_count": len(cleanup_segments),
+        "turns_segment_count": len(turns_segments),
         "changed_segment_count": len(changes),
         "changes": changes,
     }
     transcript_dir.mkdir(parents=True, exist_ok=True)
-    (transcript_dir / "pass_diff.json").write_text(
+    (transcript_dir / "transcript_delta.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )

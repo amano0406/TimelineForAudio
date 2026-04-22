@@ -30,22 +30,25 @@ public sealed class DashboardSmokeTests : PageTest
     {
         await Page.GotoAsync($"{_fixture.BaseUrl}/");
 
-        await Expect(Page).ToHaveURLAsync(new Regex(".*/jobs/new$"));
+        await Expect(Page).ToHaveURLAsync(new Regex(".*/jobs$"));
         await Expect(Page.Locator("html")).ToHaveAttributeAsync("lang", "en");
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "New Job" })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Jobs", Exact = true })).ToBeVisibleAsync();
         await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "Jobs" })).ToBeVisibleAsync();
     }
 
     [TestMethod]
-    public async Task Settings_Shows_Save_Button_And_ProcessingQuality()
+    public async Task Settings_Shows_ProcessingMode_And_SaveButton()
     {
         await Page.GotoAsync($"{_fixture.BaseUrl}/settings");
 
         await Expect(Page.Locator("html")).ToHaveAttributeAsync("lang", "en");
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Settings" })).ToBeVisibleAsync();
-        await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "Save And Continue" })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "Save Settings" })).ToBeVisibleAsync();
         await Expect(Page.GetByLabel("Language")).ToBeVisibleAsync();
-        await Expect(Page.GetByText("Processing Quality")).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Processing Mode")).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Hugging Face Connection")).ToBeVisibleAsync();
+        await Expect(Page.GetByText("App Language")).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Next Step", new() { Exact = true })).ToHaveCountAsync(0);
     }
 
     [TestMethod]
@@ -53,19 +56,29 @@ public sealed class DashboardSmokeTests : PageTest
     {
         await Page.GotoAsync($"{_fixture.BaseUrl}/settings");
 
+        await Expect(Page.GetByText("hf_t...alue")).ToBeVisibleAsync();
+        await Expect(Page.GetByLabel("Hugging Face Token")).ToBeHiddenAsync();
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Change" }).ClickAsync();
+        await Expect(Page.GetByLabel("Hugging Face Token")).ToBeVisibleAsync();
         await Expect(Page.GetByLabel("Hugging Face Token")).ToHaveValueAsync(string.Empty);
         var html = await Page.ContentAsync();
         Assert.IsFalse(html.Contains("hf_test_token_value", StringComparison.Ordinal));
     }
 
     [TestMethod]
-    public async Task Settings_Localizes_SavedModels_Section_In_Japanese()
+    public async Task Settings_Localizes_Current_Sections_In_Japanese()
     {
         await Page.GotoAsync($"{_fixture.BaseUrl}/settings?lang=ja");
 
         await Expect(Page.Locator("html")).ToHaveAttributeAsync("lang", "ja");
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "保存済みモチE��" })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "設定" })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("処理モード")).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Hugging Face 接続")).ToBeVisibleAsync();
+        await Expect(Page.GetByText("アプリの言語")).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "設定を保存" })).ToBeVisibleAsync();
         await Expect(Page.GetByText("Saved Models", new() { Exact = true })).ToHaveCountAsync(0);
+        await Expect(Page.GetByText("Save And Continue", new() { Exact = true })).ToHaveCountAsync(0);
+        await Expect(Page.GetByText("次にやること", new() { Exact = true })).ToHaveCountAsync(0);
     }
 
     [TestMethod]
@@ -94,7 +107,7 @@ public sealed class DashboardSmokeTests : PageTest
         await Expect(Page.Locator("#decision-modal-list").GetByText("already-processed.wav")).ToBeVisibleAsync();
         await Page.GetByRole(AriaRole.Button, new() { Name = "Cancel" }).ClickAsync();
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Previously Converted Files Found" })).ToHaveCountAsync(0);
-        await Expect(Page).ToHaveURLAsync(new Regex(".*/jobs/new$"));
+        await Expect(Page).ToHaveURLAsync(new Regex(".*/jobs$"));
     }
 
     [TestMethod]
@@ -161,7 +174,7 @@ public sealed class DashboardSmokeTests : PageTest
         var row = Page.Locator("tr").Filter(new() { HasText = _fixture.DuplicateSkippedJobId });
         await Expect(row).ToContainTextAsync(_fixture.DuplicateSkippedJobId);
         await Expect(row).ToContainTextAsync("1 / 1");
-        await Expect(row).ToContainTextAsync("Processed 0 | Reused 1 | Errors 0");
+        await Expect(row).ToContainTextAsync("Processed 0 | Skipped 1 | Errors 0");
         await Expect(row.GetByRole(AriaRole.Link, new() { Name = "ZIP" })).ToBeVisibleAsync();
     }
 
@@ -173,7 +186,7 @@ public sealed class DashboardSmokeTests : PageTest
         var row = Page.Locator("tr").Filter(new() { HasText = _fixture.LegacyDuplicateProgressJobId });
         await Expect(row).ToContainTextAsync(_fixture.LegacyDuplicateProgressJobId);
         await Expect(row).ToContainTextAsync("1 / 1");
-        await Expect(row).ToContainTextAsync("Processed 0 | Reused 1 | Errors 0");
+        await Expect(row).ToContainTextAsync("Processed 0 | Skipped 1 | Errors 0");
     }
 
     [TestMethod]
@@ -208,7 +221,7 @@ public sealed class DashboardSmokeTests : PageTest
 
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = _fixture.DuplicateSkippedJobId })).ToBeVisibleAsync();
         await Expect(Page.GetByText("1 / 1")).ToBeVisibleAsync();
-        await Expect(Page.GetByText("Processed 0 | Reused 1 | Errors 0")).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Processed 0 | Skipped 1 | Errors 0")).ToBeVisibleAsync();
         await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "Download ZIP" })).ToBeVisibleAsync();
         await Expect(Page.GetByRole(AriaRole.Link, new() { Name = _fixture.DuplicateSkippedMediaId })).ToBeVisibleAsync();
         await Expect(Page.GetByText($"Reused from job: {_fixture.CompletedJobId}")).ToBeVisibleAsync();
@@ -352,7 +365,7 @@ public sealed class DashboardSmokeTests : PageTest
 
             await Page.GotoAsync($"{_fixture.BaseUrl}/");
 
-            await Expect(Page).ToHaveURLAsync(new Regex(".*/jobs/new$"));
+            await Expect(Page).ToHaveURLAsync(new Regex(".*/jobs$"));
         }
         finally
         {
@@ -404,4 +417,5 @@ public sealed class DashboardSmokeTests : PageTest
         }
     }
 }
+
 
