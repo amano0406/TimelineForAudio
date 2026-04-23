@@ -60,10 +60,48 @@ public sealed class ModelCacheService(AppPaths paths)
         return Task.FromResult(cleared);
     }
 
+    public Task<long> GetHuggingFaceModelSizeBytesAsync(string modelId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (string.IsNullOrWhiteSpace(modelId))
+        {
+            return Task.FromResult(0L);
+        }
+
+        var normalized = $"models--{modelId.Replace("/", "--", StringComparison.Ordinal)}";
+        long totalBytes = 0;
+
+        foreach (var candidate in EnumerateHuggingFaceModelRoots(normalized))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!Directory.Exists(candidate))
+            {
+                continue;
+            }
+
+            var snapshotsRoot = Path.Combine(candidate, "snapshots");
+            if (!Directory.Exists(snapshotsRoot))
+            {
+                continue;
+            }
+
+            totalBytes += GetDirectorySize(candidate);
+        }
+
+        return Task.FromResult(totalBytes);
+    }
+
     private IEnumerable<string> EnumerateCacheRoots()
     {
         yield return paths.HuggingFaceCacheRoot;
         yield return paths.TorchCacheRoot;
+    }
+
+    private IEnumerable<string> EnumerateHuggingFaceModelRoots(string normalizedModelId)
+    {
+        yield return Path.Combine(paths.HuggingFaceCacheRoot, normalizedModelId);
+        yield return Path.Combine(paths.HuggingFaceCacheRoot, "hub", normalizedModelId);
     }
 
     private static long GetDirectorySize(string root)

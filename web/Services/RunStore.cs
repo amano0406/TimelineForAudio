@@ -130,6 +130,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             settings.ComputeMode,
             settings.UiLanguage,
             command.SupplementalContextText,
+            command.ReadableTextEnabled,
             cancellationToken);
     }
 
@@ -210,6 +211,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
             useCurrentSettings ? settings.ComputeMode : existingRequest.ComputeMode,
             useCurrentSettings ? settings.UiLanguage : existingRequest.LanguageHint,
             existingRequest.SupplementalContextText,
+            existingRequest.ReadableTextEnabled,
             cancellationToken);
     }
 
@@ -235,7 +237,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         await DeleteOrRequestRunDeletionAsync(runDirectory, cancellationToken);
     }
 
-    public async Task<int> DeleteCompletedRunsAsync(CancellationToken cancellationToken = default)
+    public async Task<int> DeleteAllRunsAsync(CancellationToken cancellationToken = default)
     {
         var deleted = 0;
         var settings = await settingsStore.LoadAsync(cancellationToken);
@@ -456,6 +458,29 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         return await File.ReadAllTextAsync(artifactPath, cancellationToken);
     }
 
+    public async Task<string?> GetArtifactPathAsync(
+        string jobId,
+        string mediaId,
+        string? artifactKind,
+        CancellationToken cancellationToken = default)
+    {
+        var mediaItem = await GetMediaArtifactItemAsync(jobId, mediaId, cancellationToken);
+        var artifactPath = ResolveSelectedArtifactPath(mediaItem, artifactKind);
+        return string.IsNullOrWhiteSpace(artifactPath) || !File.Exists(artifactPath)
+            ? null
+            : artifactPath;
+    }
+
+    public async Task<string?> GetConversionInfoPathAsync(
+        string jobId,
+        CancellationToken cancellationToken = default)
+    {
+        var runDirectory = await FindRunDirectoryAsync(jobId, cancellationToken);
+        return string.IsNullOrWhiteSpace(runDirectory)
+            ? null
+            : FindConversionInfoPath(runDirectory);
+    }
+
     public async Task<MediaArtifactItem?> GetMediaArtifactItemAsync(
         string jobId,
         string mediaId,
@@ -555,6 +580,7 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
         string computeMode,
         string? languageHint,
         string? supplementalContextText,
+        bool readableTextEnabled,
         CancellationToken cancellationToken)
     {
         var jobId = $"job-{DateTimeOffset.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}"[..28];
@@ -579,13 +605,21 @@ public sealed class RunStore(AppPaths paths, SettingsStore settingsStore, ScanSe
                 diarizationEnabled,
                 languageHint,
                 supplementalContextText,
-                contextBuilderVersion: ConversionSignature.ContextBuilderVersion),
+                contextBuilderVersion: ConversionSignature.ContextBuilderVersion,
+                readableTextEnabled: readableTextEnabled),
             TranscriptionBackend = ConversionSignature.TranscriptionBackend,
             TranscriptionModelId = ConversionSignature.ResolveTranscriptionModelId(),
             LanguageHint = ConversionSignature.NormalizeLanguageHint(languageHint),
-            ReconstructionBackend = ConversionSignature.ResolveReconstructionBackend(languageHint, computeMode),
-            ReconstructionModelId = ConversionSignature.ResolveReconstructionModelId(languageHint, computeMode),
-            ReconstructionPromptVersion = ConversionSignature.ResolveReconstructionPromptVersion(languageHint, computeMode),
+            ReadableTextEnabled = readableTextEnabled,
+            ReconstructionBackend = readableTextEnabled
+                ? ConversionSignature.ResolveReconstructionBackend(languageHint, computeMode)
+                : null,
+            ReconstructionModelId = readableTextEnabled
+                ? ConversionSignature.ResolveReconstructionModelId(languageHint, computeMode)
+                : null,
+            ReconstructionPromptVersion = readableTextEnabled
+                ? ConversionSignature.ResolveReconstructionPromptVersion(languageHint, computeMode)
+                : null,
             SupplementalContextText = string.IsNullOrWhiteSpace(supplementalContextText)
                 ? null
                 : supplementalContextText.Replace("\r\n", "\n").Replace('\r', '\n').Trim(),

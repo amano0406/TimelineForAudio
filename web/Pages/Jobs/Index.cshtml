@@ -146,10 +146,7 @@
     }
 
     <section class="panel">
-        <div class="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-                <h2 class="section-title">@L("jobs.list.history_title")</h2>
-            </div>
+        <div class="mb-4 flex justify-end">
             <form method="post" asp-page-handler="DeleteAll" id="delete-all-form">
                 <input type="hidden" name="confirmation" id="delete-all-confirmation" />
                 <button type="submit"
@@ -449,14 +446,6 @@
                 closeModal();
                 targetForm.submit();
             });
-
-            if (deleteAllForm && deleteAllConfirmation) {
-                deleteAllForm.addEventListener("submit", () => {
-                    if (!deleteAllConfirmation.value) {
-                        deleteAllConfirmation.value = "DELETE";
-                    }
-                });
-            }
 
             const downloadMessagePrefix = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.list.download_message_prefix")));
 

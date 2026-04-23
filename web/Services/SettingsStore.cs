@@ -86,6 +86,22 @@ public sealed class SettingsStore(AppPaths paths)
         return Task.FromResult(File.Exists(paths.SettingsPath));
     }
 
+    public Task ResetAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (File.Exists(paths.SettingsPath))
+        {
+            File.Delete(paths.SettingsPath);
+        }
+
+        if (File.Exists(paths.TokenPath))
+        {
+            File.Delete(paths.TokenPath);
+        }
+
+        return Task.CompletedTask;
+    }
+
     public async Task<string?> ReadTokenAsync(CancellationToken cancellationToken = default)
     {
         if (!File.Exists(paths.TokenPath))

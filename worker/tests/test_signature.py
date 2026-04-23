@@ -34,6 +34,22 @@ class SignatureTests(unittest.TestCase):
 
         self.assertEqual(left, right)
 
+    def test_generation_signature_changes_when_readable_text_is_disabled(self) -> None:
+        full_output = build_generation_signature(
+            compute_mode="gpu",
+            diarization_enabled=True,
+            language_hint="ja",
+            readable_text_enabled=True,
+        )
+        ipa_only = build_generation_signature(
+            compute_mode="gpu",
+            diarization_enabled=True,
+            language_hint="ja",
+            readable_text_enabled=False,
+        )
+
+        self.assertNotEqual(full_output, ipa_only)
+
 
 if __name__ == "__main__":
     unittest.main()

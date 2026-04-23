@@ -1,0 +1,268 @@
+@page "/setup"
+@model TimelineForAudio.Web.Pages.SetupModel
+@inject TimelineForAudio.Web.Services.LanguageService LanguageService
+@inject TimelineForAudio.Web.Services.JsonLocalizationService Localizer
+@{
+    Layout = "_SetupLayout";
+    var lang = LanguageService.Resolve(ViewContext.HttpContext.Request);
+    string L(string key) => Localizer.Get(lang, key);
+    string StepClass(string step) => string.Equals(Model.Step, step, StringComparison.OrdinalIgnoreCase)
+        ? "setup-step setup-step-active"
+        : "setup-step";
+    var gpuReady = Model.WorkerCapability.GpuAvailable && Model.WorkerCapability.DeviceNames.Count > 0;
+    var detectedGpuLabel = gpuReady
+        ? string.Join(", ", Model.WorkerCapability.DeviceNames)
+        : L("settings.compute_mode.help_no_gpu_detected");
+    var recommendedComputeMode = gpuReady ? "gpu" : "cpu";
+    var recommendedComputeLabel = recommendedComputeMode == "gpu"
+        ? L("settings.compute_mode.gpu")
+        : L("settings.compute_mode.cpu");
+    ViewData["Title"] = L("setup.page_title");
+}
+
+<section class="setup-page">
+    <aside class="setup-progress-panel">
+        <div class="space-y-3">
+            <p class="setup-eyebrow">@L("setup.eyebrow")</p>
+            <h1 class="setup-title">@L("setup.title")</h1>
+            <p class="setup-description">@L("setup.description")</p>
+        </div>
+
+        <ol class="setup-steps">
+            <li class="@StepClass("language")">@L("setup.step.language")</li>
+            <li class="@StepClass("compute")">@L("setup.step.compute")</li>
+            <li class="@StepClass("account")">@L("setup.step.account")</li>
+            <li class="@StepClass("token")">@L("setup.step.token")</li>
+            <li class="@StepClass("approval")">@L("setup.step.approval")</li>
+        </ol>
+    </aside>
+
+    <section class="setup-card">
+        @if (!ViewContext.ModelState.IsValid)
+        {
+            <section class="error-panel">
+                <ul class="list-disc space-y-1 pl-5">
+                    @foreach (var error in ViewContext.ModelState.Values.SelectMany(static value => value.Errors))
+                    {
+                        <li>@error.ErrorMessage</li>
+                    }
+                </ul>
+            </section>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+        {
+            <section class="notice-panel">
+                @Model.StatusMessage
+            </section>
+        }
+
+        @if (Model.Step == "language")
+        {
+            <form method="post" asp-page-handler="Language" class="setup-form">
+                <div class="space-y-2">
+                    <p class="setup-eyebrow">@L("setup.step_label") 1</p>
+                    <h2 class="section-title">@L("setup.language.title")</h2>
+                </div>
+                <div class="space-y-2">
+                    <label class="metric-label" for="setup-language-select">@L("layout.language")</label>
+                    <select id="setup-language-select" asp-for="UiLanguage" class="form-input w-full">
+                        @foreach (var item in Model.SupportedLanguages)
+                        {
+                            <option value="@item.Code">@item.NativeName</option>
+                        }
+                    </select>
+                </div>
+                <div class="setup-actions">
+                    <button class="btn-primary" type="submit">@L("common.next")</button>
+                </div>
+            </form>
+        }
+
+        @if (Model.Step == "compute")
+        {
+            <form method="post" asp-page-handler="Compute" class="setup-form">
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div class="space-y-2">
+                        <p class="setup-eyebrow">@L("setup.step_label") 2</p>
+                        <h2 class="section-title">@L("setup.compute.title")</h2>
+                    </div>
+                    <span class="badge-chip">@string.Format(L("settings.compute_mode.recommended"), recommendedComputeLabel)</span>
+                </div>
+
+                <div class="rounded-[18px] border border-slate-200 bg-white/70 px-4 py-4 text-sm text-slate-700">
+                    <div class="font-medium text-slate-900">
+                        @(gpuReady
+                            ? string.Format(L("settings.compute_mode.gpu_ready"), detectedGpuLabel)
+                            : L("settings.compute_mode.gpu_unavailable_note"))
+                    </div>
+                </div>
+
+                <div class="grid gap-3 md:grid-cols-2">
+                    <label class="setup-choice">
+                        <input asp-for="ComputeMode"
+                               type="radio"
+                               value="cpu"
+                               class="mt-1 h-4 w-4 border-slate-300 text-slate-900" />
+                        <span>
+                            <span class="block font-medium text-slate-900">@L("settings.compute_mode.cpu")</span>
+                            <span class="block text-xs text-slate-500">@L("settings.compute_mode.cpu_note")</span>
+                        </span>
+                    </label>
+                    <label class="setup-choice @(!gpuReady ? "opacity-60 cursor-not-allowed" : "")">
+                        <input asp-for="ComputeMode"
+                               type="radio"
+                               value="gpu"
+                               disabled="@(!gpuReady)"
+                               class="mt-1 h-4 w-4 border-slate-300 text-slate-900" />
+                        <span>
+                            <span class="block font-medium text-slate-900">@L("settings.compute_mode.gpu")</span>
+                            <span class="block text-xs text-slate-500">@L("settings.compute_mode.gpu_note")</span>
+                        </span>
+                    </label>
+                </div>
+
+                <div class="setup-actions">
+                    <a class="btn-secondary" href="/setup?step=language">@L("common.previous")</a>
+                    <button class="btn-primary" type="submit">@L("common.next")</button>
+                </div>
+            </form>
+        }
+
+        @if (Model.Step == "account")
+        {
+            <form method="post" asp-page-handler="Account" class="setup-form">
+                <div class="space-y-2">
+                    <p class="setup-eyebrow">@L("setup.step_label") 3</p>
+                    <h2 class="section-title">@L("setup.account.title")</h2>
+                    <p class="text-sm leading-7 text-slate-600">@L("setup.account.description")</p>
+                </div>
+
+                <div class="grid gap-3 md:grid-cols-2">
+                    <button class="setup-choice-button" type="submit" name="answer" value="yes">
+                        <span class="block font-medium">@L("setup.account.yes")</span>
+                        <span class="block text-xs text-slate-500">@L("setup.account.yes_note")</span>
+                    </button>
+                    <button class="setup-choice-button" type="submit" name="answer" value="no">
+                        <span class="block font-medium">@L("setup.account.no")</span>
+                        <span class="block text-xs text-slate-500">@L("setup.account.no_note")</span>
+                    </button>
+                </div>
+
+                <div class="setup-actions">
+                    <a class="btn-secondary" href="/setup?step=compute">@L("common.previous")</a>
+                </div>
+            </form>
+        }
+
+        @if (Model.Step == "register")
+        {
+            <form method="post" asp-page-handler="RegisterDone" class="setup-form">
+                <div class="space-y-2">
+                    <p class="setup-eyebrow">@L("setup.step_label") 3</p>
+                    <h2 class="section-title">@L("setup.register.title")</h2>
+                    <p class="text-sm leading-7 text-slate-600">@L("setup.register.description")</p>
+                </div>
+
+                <a class="btn-primary w-fit"
+                   href="@Model.HuggingFaceJoinUrl"
+                   target="_blank"
+                   rel="noreferrer">
+                    @L("setup.register.open")
+                </a>
+
+                <div class="setup-actions">
+                    <a class="btn-secondary" href="/setup?step=account">@L("common.previous")</a>
+                    <button class="btn-primary" type="submit">@L("setup.register.done")</button>
+                </div>
+            </form>
+        }
+
+        @if (Model.Step == "token")
+        {
+            <form method="post" asp-page-handler="Token" class="setup-form">
+                <div class="space-y-2">
+                    <p class="setup-eyebrow">@L("setup.step_label") 4</p>
+                    <h2 class="section-title">@L("setup.token.title")</h2>
+                    <p class="text-sm leading-7 text-slate-600">@L("setup.token.description")</p>
+                </div>
+
+                <div class="setup-guide">
+                    <div class="setup-guide-step">1. @L("setup.token.guide_open")</div>
+                    <div class="setup-guide-step">2. @L("setup.token.guide_create")</div>
+                    <div class="setup-guide-step">3. @L("setup.token.guide_read")</div>
+                    <div class="setup-guide-step">4. @L("setup.token.guide_name")</div>
+                    <div class="setup-guide-step">5. @L("setup.token.guide_copy")</div>
+                </div>
+
+                <div class="flex flex-wrap gap-3">
+                    <a class="btn-secondary"
+                       href="@Model.TokenSettingsUrl"
+                       target="_blank"
+                       rel="noreferrer">
+                        @L("setup.token.open")
+                    </a>
+                </div>
+
+                <div class="space-y-2">
+                    <label class="metric-label" for="setup-token-input">@L("settings.token")</label>
+                    <input id="setup-token-input"
+                           asp-for="Token"
+                           type="password"
+                           class="form-input"
+                           placeholder="hf_..."
+                           spellcheck="false"
+                           autocomplete="off" />
+                    <p class="text-xs leading-6 text-slate-500">@L("setup.token.security_note")</p>
+                </div>
+
+                <div class="setup-actions">
+                    <a class="btn-secondary" href="/setup?step=account">@L("common.previous")</a>
+                    <button class="btn-primary" type="submit">@L("setup.token.verify")</button>
+                </div>
+            </form>
+        }
+
+        @if (Model.Step == "approval")
+        {
+            <form method="post" asp-page-handler="CheckApproval" class="setup-form">
+                <div class="space-y-2">
+                    <p class="setup-eyebrow">@L("setup.step_label") 5</p>
+                    <h2 class="section-title">@L("setup.approval.title")</h2>
+                    <p class="text-sm leading-7 text-slate-600">@L("setup.approval.description")</p>
+                </div>
+
+                <a class="btn-primary w-fit"
+                   href="@Model.PyannoteModelUrl"
+                   target="_blank"
+                   rel="noreferrer">
+                    @L("setup.approval.open")
+                </a>
+
+                <div class="setup-actions">
+                    <a class="btn-secondary" href="/setup?step=token">@L("common.previous")</a>
+                    <button class="btn-primary" type="submit">@L("setup.approval.check")</button>
+                </div>
+            </form>
+        }
+
+        @if (Model.Step == "complete")
+        {
+            <section class="setup-form">
+                <div class="space-y-2">
+                    <p class="setup-eyebrow">@L("setup.complete.eyebrow")</p>
+                    <h2 class="section-title">@L("setup.complete.title")</h2>
+                    <p class="text-sm leading-7 text-slate-600">@L("setup.complete.description")</p>
+                </div>
+
+                <div class="rounded-[18px] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm leading-7 text-emerald-900">
+                    @L("setup.complete.status")
+                </div>
+
+                <div class="setup-actions">
+                    <a class="btn-primary" href="/jobs/new">@L("setup.complete.new_job")</a>
+                </div>
+            </section>
+        }
+    </section>
+</section>

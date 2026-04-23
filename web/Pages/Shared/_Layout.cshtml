@@ -48,11 +48,9 @@
         <aside class="app-sidebar">
             <div class="space-y-6">
                 <div class="space-y-3">
-                    <a href="/" class="brand-link">
-                        <img src="~/brand/logo-horizontal.svg"
-                             asp-append-version="true"
-                             alt="TimelineForAudio"
-                             class="brand-logo" />
+                    <a href="/" class="brand-link brand-wordmark" aria-label="Timeline For Audio">
+                        <span class="brand-wordmark-main">Timeline</span>
+                        <span class="brand-wordmark-sub">For Audio</span>
                     </a>
                 </div>
 
@@ -60,20 +58,21 @@
                     @if (settingsReady)
                     {
                         <a href="/jobs/new" class="@NavClass("/jobs/new")">@L("layout.new_job")</a>
-                        @if (hasJobs)
-                        {
-                            <a href="/jobs" class="@NavClass("/jobs", includeRuns: true)">@L("layout.jobs")</a>
-                        }
-                        else
-                        {
-                            <span class="nav-link nav-link-disabled"
-                                  aria-disabled="true"
-                                  title="@L("jobs.list.empty")">
-                                @L("layout.jobs")
-                            </span>
-                        }
                     }
-                    <a href="/settings" class="@NavClass("/settings")">@L("layout.settings")</a>
+                    @if (hasJobs)
+                    {
+                        <a href="/jobs" class="@NavClass("/jobs", includeRuns: true)">@L("layout.jobs")</a>
+                    }
+                    else if (settingsReady)
+                    {
+                        <span class="nav-link nav-link-disabled"
+                              aria-disabled="true"
+                              title="@L("jobs.list.empty")">
+                            @L("layout.jobs")
+                        </span>
+                    }
+                    <a href="@(settingsReady ? "/settings" : "/setup")"
+                       class="@(settingsReady ? NavClass("/settings") : NavClass("/setup"))">@L("layout.settings")</a>
                 </nav>
             </div>
 
@@ -89,6 +88,7 @@
          class="fixed bottom-4 right-4 hidden rounded-xl border border-slate-200 bg-slate-950 px-4 py-3 text-sm font-medium text-white shadow-2xl">
         @L("layout.update_detected")
     </div>
+    <script src="~/js/site.js" asp-append-version="true"></script>
     <script>
         (() => {
             const currentInstanceId = "@appInstanceId";

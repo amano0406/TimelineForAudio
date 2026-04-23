@@ -50,6 +50,7 @@ class JobRequest:
     reconstruction_backend: str | None = None
     reconstruction_model_id: str | None = None
     reconstruction_prompt_version: str | None = None
+    readable_text_enabled: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -77,11 +78,13 @@ class JobRequest:
             "reconstruction_backend": self.reconstruction_backend,
             "reconstruction_model_id": self.reconstruction_model_id,
             "reconstruction_prompt_version": self.reconstruction_prompt_version,
+            "readable_text_enabled": self.readable_text_enabled,
             "input_items": [item.to_dict() for item in self.input_items],
         }
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "JobRequest":
+        readable_text_enabled = bool(payload.get("readable_text_enabled", True))
         return cls(
             language_hint=(
                 str(payload["language_hint"])
@@ -120,35 +123,42 @@ class JobRequest:
             reprocess_duplicates=bool(payload["reprocess_duplicates"]),
             token_enabled=bool(payload.get("token_enabled", False)),
             input_items=[InputItem(**item) for item in payload.get("input_items", [])],
+            readable_text_enabled=readable_text_enabled,
             reconstruction_backend=(
                 str(payload["reconstruction_backend"])
-                if payload.get("reconstruction_backend") not in (None, "")
+                if readable_text_enabled and payload.get("reconstruction_backend") not in (None, "")
                 else resolve_reconstruction_backend(
                     str(payload["language_hint"])
                     if payload.get("language_hint") not in (None, "")
                     else None,
                     str(payload.get("compute_mode") or "cpu"),
                 )
+                if readable_text_enabled
+                else None
             ),
             reconstruction_model_id=(
                 str(payload["reconstruction_model_id"])
-                if payload.get("reconstruction_model_id") not in (None, "")
+                if readable_text_enabled and payload.get("reconstruction_model_id") not in (None, "")
                 else resolve_reconstruction_model_id(
                     str(payload["language_hint"])
                     if payload.get("language_hint") not in (None, "")
                     else None,
                     str(payload.get("compute_mode") or "cpu"),
                 )
+                if readable_text_enabled
+                else None
             ),
             reconstruction_prompt_version=(
                 str(payload["reconstruction_prompt_version"])
-                if payload.get("reconstruction_prompt_version") not in (None, "")
+                if readable_text_enabled and payload.get("reconstruction_prompt_version") not in (None, "")
                 else resolve_reconstruction_prompt_version(
                     str(payload["language_hint"])
                     if payload.get("language_hint") not in (None, "")
                     else None,
                     str(payload.get("compute_mode") or "cpu"),
                 )
+                if readable_text_enabled
+                else None
             ),
         )
 

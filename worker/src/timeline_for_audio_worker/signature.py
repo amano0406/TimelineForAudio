@@ -61,6 +61,7 @@ def build_conversion_signature(
     language_hint: str | None = None,
     supplemental_context_text: str | None = None,
     context_builder_version: str | None = None,
+    readable_text_enabled: bool = True,
 ) -> str:
     return build_generation_signature(
         compute_mode=compute_mode,
@@ -68,6 +69,7 @@ def build_conversion_signature(
         language_hint=language_hint,
         supplemental_context_text=supplemental_context_text,
         context_builder_version=context_builder_version,
+        readable_text_enabled=readable_text_enabled,
     )
 
 
@@ -78,7 +80,21 @@ def build_generation_signature(
     language_hint: str | None = None,
     supplemental_context_text: str | None = None,
     context_builder_version: str | None = None,
+    readable_text_enabled: bool = True,
 ) -> str:
+    reconstruction_payload: dict[str, object | None]
+    if readable_text_enabled:
+        reconstruction_payload = {
+            "backend": resolve_reconstruction_backend(language_hint, compute_mode),
+            "model_id": resolve_reconstruction_model_id(language_hint, compute_mode),
+            "prompt_version": resolve_reconstruction_prompt_version(language_hint, compute_mode),
+            "decoding": build_reconstruction_decoding(language_hint, compute_mode),
+            "language_hint": _normalize_language_hint(language_hint),
+            "readable_text_schema": READABLE_TEXT_MARKDOWN_SCHEMA,
+        }
+    else:
+        reconstruction_payload = {"enabled": False}
+
     payload = {
         "pipeline": "TimelineForAudio",
         "pipeline_version": PIPELINE_VERSION,
@@ -88,14 +104,7 @@ def build_generation_signature(
             "model_id": resolve_transcription_model_id(),
             "language": TRANSCRIPTION_LANGUAGE,
         },
-        "reconstruction": {
-            "backend": resolve_reconstruction_backend(language_hint, compute_mode),
-            "model_id": resolve_reconstruction_model_id(language_hint, compute_mode),
-            "prompt_version": resolve_reconstruction_prompt_version(language_hint, compute_mode),
-            "decoding": build_reconstruction_decoding(language_hint, compute_mode),
-            "language_hint": _normalize_language_hint(language_hint),
-            "readable_text_schema": READABLE_TEXT_MARKDOWN_SCHEMA,
-        },
+        "reconstruction": reconstruction_payload,
         "ipa": {
             "backend": IPA_BACKEND,
             "reading_backend": IPA_READING_BACKEND,

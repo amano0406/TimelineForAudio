@@ -56,6 +56,7 @@ class ContractsTests(unittest.TestCase):
             restored.reconstruction_model_id,
         )
         self.assertEqual("ipa-turn-reconstruction-ja-v2", restored.reconstruction_prompt_version)
+        self.assertTrue(restored.readable_text_enabled)
         self.assertEqual(
             "Known names: TimelineForAudio, WhisperX",
             restored.supplemental_context_text,
@@ -101,6 +102,37 @@ class ContractsTests(unittest.TestCase):
         self.assertEqual("ipa-aligned-text-fallback-v1", restored.reconstruction_backend)
         self.assertEqual("prior terms", restored.supplemental_context_text)
         self.assertEqual("context-builder-v1", restored.context_builder_version)
+
+    def test_job_request_from_dict_can_disable_readable_text(self) -> None:
+        restored = JobRequest.from_dict(
+            {
+                "schema_version": 1,
+                "job_id": "run-ipa-only",
+                "created_at": "2026-04-23T10:00:00+09:00",
+                "output_root_id": "default",
+                "output_root_path": "/shared/outputs/default",
+                "profile": "quality-first",
+                "compute_mode": "gpu",
+                "pipeline_version": "2026-04-21-v2-ipa1",
+                "generation_signature": "sig-ipa-only",
+                "transcription_backend": "faster-whisper",
+                "transcription_model_id": "medium",
+                "context_builder_version": "context-builder-v1",
+                "diarization_enabled": True,
+                "vad_backend": "faster-whisper-builtin",
+                "vad_model_id": "faster-whisper-default",
+                "reprocess_duplicates": False,
+                "token_enabled": True,
+                "language_hint": "ja",
+                "readable_text_enabled": False,
+                "input_items": [],
+            }
+        )
+
+        self.assertFalse(restored.readable_text_enabled)
+        self.assertIsNone(restored.reconstruction_backend)
+        self.assertIsNone(restored.reconstruction_model_id)
+        self.assertIsNone(restored.reconstruction_prompt_version)
 
 
 if __name__ == "__main__":

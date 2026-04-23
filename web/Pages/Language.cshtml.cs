@@ -32,7 +32,7 @@ public sealed class LanguageModel(
         settings.LanguageSelected = true;
         await settingsStore.SaveAsync(settings, cancellationToken: cancellationToken);
 
-        return RedirectToPage("/Settings");
+        return RedirectToPage("/Setup", new { step = "compute", lang = normalizedLanguage });
     }
 
     private string L(string key) => localizer.Get(languageService.Resolve(Request), key);

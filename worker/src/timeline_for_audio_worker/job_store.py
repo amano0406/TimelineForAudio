@@ -516,6 +516,7 @@ def create_job(
     input_items: list[InputItem],
     output_root_id: str | None = None,
     reprocess_duplicates: bool = False,
+    readable_text_enabled: bool = True,
 ) -> tuple[str, Path]:
     settings = settings or load_settings()
     if not input_items:
@@ -551,6 +552,7 @@ def create_job(
             language_hint=language_hint,
             supplemental_context_text=None,
             context_builder_version=SIGNATURE_CONTEXT_BUILDER_VERSION,
+            readable_text_enabled=readable_text_enabled,
         ),
         transcription_backend=TRANSCRIPTION_BACKEND,
         transcription_model_id=resolve_transcription_model_id(),
@@ -564,9 +566,16 @@ def create_job(
         token_enabled=bool(load_huggingface_token()),
         input_items=input_items,
         language_hint=language_hint,
-        reconstruction_backend=resolve_reconstruction_backend(language_hint, compute_mode),
-        reconstruction_model_id=resolve_reconstruction_model_id(language_hint, compute_mode),
-        reconstruction_prompt_version=resolve_reconstruction_prompt_version(language_hint, compute_mode),
+        readable_text_enabled=readable_text_enabled,
+        reconstruction_backend=resolve_reconstruction_backend(language_hint, compute_mode)
+        if readable_text_enabled
+        else None,
+        reconstruction_model_id=resolve_reconstruction_model_id(language_hint, compute_mode)
+        if readable_text_enabled
+        else None,
+        reconstruction_prompt_version=resolve_reconstruction_prompt_version(language_hint, compute_mode)
+        if readable_text_enabled
+        else None,
     )
     status = JobStatus(
         job_id=job_id,

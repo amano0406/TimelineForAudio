@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using TimelineForAudio.Web.Infrastructure;
@@ -9,6 +10,7 @@ namespace TimelineForAudio.Web.Pages;
 public sealed class SettingsModel(
     HuggingFaceAccessService accessService,
     ModelCacheService modelCacheService,
+    RunStore runStore,
     SettingsStore settingsStore,
     SetupStateService setupStateService,
     WorkerCapabilityService workerCapabilityService,
@@ -28,6 +30,8 @@ public sealed class SettingsModel(
 
     public WorkerCapabilitySnapshot WorkerCapability { get; private set; } = new();
 
+    public int TotalRunCount { get; private set; }
+
     [BindProperty]
     public string Token { get; set; } = "";
 
@@ -43,9 +47,9 @@ public sealed class SettingsModel(
 
     public bool SavedGpuPreferenceUnavailable { get; private set; }
 
-    public string TokenMaskValue => DisplayMaskedTokenValue;
-
     public string TokenPreview { get; private set; } = string.Empty;
+
+    public string DraftTokenPreview => CreateTokenPreview(Token);
 
     public bool ShowTokenEditor { get; private set; }
 
@@ -65,6 +69,12 @@ public sealed class SettingsModel(
         WorkerCapability = await workerCapabilityService.GetAsync(cancellationToken);
         var hasSavedTokenConfigured = await settingsStore.HasTokenAsync(cancellationToken);
         var submittedToken = Token?.Trim();
+
+        if (!hasSavedTokenConfigured && string.IsNullOrWhiteSpace(submittedToken))
+        {
+            ModelState.AddModelError(nameof(Token), L("settings.token_required"));
+        }
+
         if (string.Equals(ComputeMode, "gpu", StringComparison.OrdinalIgnoreCase) && !WorkerCapability.GpuAvailable)
         {
             ModelState.AddModelError(nameof(ComputeMode), L("settings.compute_mode.gpu_unavailable"));
@@ -78,12 +88,18 @@ public sealed class SettingsModel(
                 Token = submittedToken;
                 ShowTokenEditor = true;
             }
+            else if (!hasSavedTokenConfigured)
+            {
+                ShowTokenEditor = true;
+            }
+
             StatusMessage = L("settings.save_blocked");
             return Page();
         }
 
         var settings = await settingsStore.LoadAsync(cancellationToken);
         settings.ComputeMode = ComputeMode;
+        settings.SetupComputeModeSelected = true;
         settings.UiLanguage = languageService.Normalize(UiLanguage) ?? "en";
         settings.LanguageSelected = true;
         settings.HuggingfaceTermsConfirmed = false;
@@ -124,27 +140,40 @@ public sealed class SettingsModel(
         return RedirectToPage(new { lang = languageService.Resolve(Request) });
     }
 
-    public async Task<IActionResult> OnPostResetAppAsync(CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostDeleteAllJobsAsync(string confirmation, CancellationToken cancellationToken)
     {
-        var normalizedLanguage = languageService.Resolve(Request);
-        WorkerCapability = await workerCapabilityService.GetAsync(cancellationToken);
-        var defaultComputeMode = WorkerCapability.GpuAvailable ? "gpu" : "cpu";
+        if (!string.Equals(confirmation, "DELETE", StringComparison.Ordinal))
+        {
+            await LoadPageAsync(cancellationToken);
+            ModelState.AddModelError(string.Empty, L("jobs.list.delete_all_invalid"));
+            return Page();
+        }
 
+        var deleted = await runStore.DeleteAllRunsAsync(cancellationToken);
+        TempData["StatusMessage"] = string.Format(
+            CultureInfo.CurrentCulture,
+            L("jobs.list.delete_all_deleted"),
+            deleted);
+        return RedirectToPage(new { lang = languageService.Resolve(Request) });
+    }
+
+    public async Task<IActionResult> OnPostResetAppAsync(string confirmation, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(confirmation, "DELETE", StringComparison.Ordinal))
+        {
+            await LoadPageAsync(cancellationToken);
+            ModelState.AddModelError(string.Empty, L("jobs.list.delete_all_invalid"));
+            return Page();
+        }
+
+        var normalizedLanguage = languageService.Resolve(Request);
+
+        await runStore.DeleteAllRunsAsync(cancellationToken);
         await modelCacheService.ClearAsync(cancellationToken);
-        await settingsStore.SaveAsync(
-            new AppSettingsDocument
-            {
-                UiLanguage = normalizedLanguage,
-                LanguageSelected = true,
-                ComputeMode = defaultComputeMode,
-                HuggingfaceTermsConfirmed = false,
-            },
-            token: null,
-            replaceToken: true,
-            cancellationToken: cancellationToken);
+        await settingsStore.ResetAsync(cancellationToken);
 
         TempData["StatusMessage"] = L("settings.maintenance.reset_done");
-        return RedirectToPage(new { lang = normalizedLanguage });
+        return RedirectToPage("/Setup", new { lang = normalizedLanguage });
     }
 
     private async Task LoadPageAsync(CancellationToken cancellationToken)
@@ -154,13 +183,14 @@ public sealed class SettingsModel(
         ModelStatuses = Snapshot.Models;
         ModelCache = await modelCacheService.GetSnapshotAsync(cancellationToken);
         WorkerCapability = await workerCapabilityService.GetAsync(cancellationToken);
+        TotalRunCount = (await runStore.ListRunsAsync(cancellationToken)).Count;
         HasSavedTokenConfigured = Snapshot.HasToken;
         var savedToken = HasSavedTokenConfigured
             ? await settingsStore.ReadTokenAsync(cancellationToken)
             : null;
         Token = string.Empty;
         TokenPreview = CreateTokenPreview(savedToken);
-        ShowTokenEditor = !HasSavedTokenConfigured;
+        ShowTokenEditor = false;
         var settings = await settingsStore.LoadAsync(cancellationToken);
         HasPersistedSettings = await settingsStore.HasPersistedSettingsAsync(cancellationToken);
         SavedGpuPreferenceUnavailable = HasPersistedSettings &&

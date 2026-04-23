@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using TimelineForAudio.Web.Infrastructure;
 using TimelineForAudio.Web.Models;
 using TimelineForAudio.Web.Services;
 
@@ -41,7 +42,7 @@ public sealed class IndexModel(
         }
         catch (InvalidOperationException ex)
         {
-            ModelState.AddModelError(string.Empty, ex.Message);
+            ModelState.AddModelError(string.Empty, KnownMessageLocalizer.Localize(ex.Message, L));
             return Page();
         }
     }
@@ -55,7 +56,7 @@ public sealed class IndexModel(
             return Page();
         }
 
-        var deleted = await runStore.DeleteCompletedRunsAsync(cancellationToken);
+        var deleted = await runStore.DeleteAllRunsAsync(cancellationToken);
         StatusMessage = string.Format(CultureInfo.CurrentCulture, L("jobs.list.delete_all_deleted"), deleted);
         return RedirectToPage();
     }

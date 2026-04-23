@@ -16,7 +16,12 @@ builder.WebHost.ConfigureKestrel(options =>
     options.Limits.MaxRequestBodySize = MaxUploadBytes;
 });
 
-builder.Services.AddRazorPages();
+builder.Services
+    .AddRazorPages()
+    .AddMvcOptions(options =>
+    {
+        options.SuppressImplicitRequiredAttributeForNonNullableReferenceTypes = true;
+    });
 builder.Services.AddSingleton(appPaths);
 builder.Services.AddSingleton<AppInstanceService>();
 builder.Services.AddDataProtection()
@@ -72,28 +77,13 @@ app.Use(async (context, next) =>
         return;
     }
 
-    if (!setupState.HasSelectedLanguage)
+    if (IsAllowedDuringSetup(path))
     {
-        if (IsAllowedBeforeLanguageSelection(path))
-        {
-            await next();
-            return;
-        }
-
-        if (path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
-        {
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            await context.Response.WriteAsJsonAsync(
-                new { error = "Choose a language before using this endpoint." },
-                context.RequestAborted);
-            return;
-        }
-
-        context.Response.Redirect("/language");
+        await next();
         return;
     }
 
-    if (IsAllowedWithoutSetup(path))
+    if (setupState.HasJobs && IsExistingJobPath(path))
     {
         await next();
         return;
@@ -102,13 +92,20 @@ app.Use(async (context, next) =>
     if (path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
     {
         context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        var languageService = context.RequestServices.GetRequiredService<LanguageService>();
+        var localizer = context.RequestServices.GetRequiredService<JsonLocalizationService>();
         await context.Response.WriteAsJsonAsync(
-            new { error = "Complete settings before using this endpoint." },
+            new
+            {
+                error = localizer.Get(
+                    languageService.Resolve(context.Request),
+                    "errors.api.settings_required"),
+            },
             context.RequestAborted);
         return;
     }
 
-    context.Response.Redirect("/settings");
+    context.Response.Redirect("/setup");
 });
 app.UseAuthorization();
 
@@ -122,11 +119,16 @@ app.MapPost("/api/scan", async (ScanRequest request, ScanService scanService, Ca
     return Results.Ok(new { items, total = items.Count });
 });
 
-app.MapPost("/api/uploads", async (HttpRequest request, RunStore runStore, CancellationToken cancellationToken) =>
+app.MapPost("/api/uploads", async (
+    HttpRequest request,
+    RunStore runStore,
+    LanguageService languageService,
+    JsonLocalizationService localizer,
+    CancellationToken cancellationToken) =>
 {
     if (!request.HasFormContentType)
     {
-        return Results.BadRequest(new { error = "multipart/form-data is required." });
+        return LocalizedBadRequest(request, languageService, localizer, "errors.api.multipart_required");
     }
 
     var form = await request.ReadFormAsync(cancellationToken);
@@ -144,6 +146,9 @@ app.MapPost("/api/uploads/sessions/{sessionId}/files", async (
     string sessionId,
     CreateUploadFileRequest request,
     UploadSessionStore uploadSessionStore,
+    HttpRequest httpRequest,
+    LanguageService languageService,
+    JsonLocalizationService localizer,
     CancellationToken cancellationToken) =>
 {
     try
@@ -153,7 +158,7 @@ app.MapPost("/api/uploads/sessions/{sessionId}/files", async (
     }
     catch (InvalidOperationException ex)
     {
-        return Results.BadRequest(new { error = ex.Message });
+        return LocalizedBadRequestForException(httpRequest, languageService, localizer, ex);
     }
 });
 
@@ -163,6 +168,8 @@ app.MapPost("/api/uploads/sessions/{sessionId}/files/{fileId}/chunks/{chunkIndex
     int chunkIndex,
     HttpRequest request,
     UploadSessionStore uploadSessionStore,
+    LanguageService languageService,
+    JsonLocalizationService localizer,
     CancellationToken cancellationToken) =>
 {
     try
@@ -172,13 +179,16 @@ app.MapPost("/api/uploads/sessions/{sessionId}/files/{fileId}/chunks/{chunkIndex
     }
     catch (InvalidOperationException ex)
     {
-        return Results.BadRequest(new { error = ex.Message });
+        return LocalizedBadRequestForException(request, languageService, localizer, ex);
     }
 });
 
 app.MapPost("/api/uploads/sessions/{sessionId}/complete", async (
     string sessionId,
     UploadSessionStore uploadSessionStore,
+    HttpRequest request,
+    LanguageService languageService,
+    JsonLocalizationService localizer,
     CancellationToken cancellationToken) =>
 {
     try
@@ -188,13 +198,16 @@ app.MapPost("/api/uploads/sessions/{sessionId}/complete", async (
     }
     catch (InvalidOperationException ex)
     {
-        return Results.BadRequest(new { error = ex.Message });
+        return LocalizedBadRequestForException(request, languageService, localizer, ex);
     }
 });
 
 app.MapDelete("/api/uploads/sessions/{sessionId}", async (
     string sessionId,
     UploadSessionStore uploadSessionStore,
+    HttpRequest request,
+    LanguageService languageService,
+    JsonLocalizationService localizer,
     CancellationToken cancellationToken) =>
 {
     try
@@ -204,11 +217,17 @@ app.MapDelete("/api/uploads/sessions/{sessionId}", async (
     }
     catch (InvalidOperationException ex)
     {
-        return Results.BadRequest(new { error = ex.Message });
+        return LocalizedBadRequestForException(request, languageService, localizer, ex);
     }
 });
 
-app.MapPost("/api/jobs", async (CreateJobCommand command, RunStore runStore, CancellationToken cancellationToken) =>
+app.MapPost("/api/jobs", async (
+    CreateJobCommand command,
+    RunStore runStore,
+    HttpRequest request,
+    LanguageService languageService,
+    JsonLocalizationService localizer,
+    CancellationToken cancellationToken) =>
 {
     try
     {
@@ -217,7 +236,7 @@ app.MapPost("/api/jobs", async (CreateJobCommand command, RunStore runStore, Can
     }
     catch (InvalidOperationException ex)
     {
-        return Results.BadRequest(new { error = ex.Message });
+        return LocalizedBadRequestForException(request, languageService, localizer, ex);
     }
 });
 
@@ -227,7 +246,14 @@ app.MapGet("/api/jobs/{id}", async (string id, RunStore runStore, CancellationTo
     return status is null ? Results.NotFound() : Results.Ok(status);
 });
 
-app.MapGet("/jobs/{id}/download", async (string id, string? artifact, RunStore runStore, CancellationToken cancellationToken) =>
+app.MapGet("/jobs/{id}/download", async (
+    string id,
+    string? artifact,
+    RunStore runStore,
+    HttpRequest request,
+    LanguageService languageService,
+    JsonLocalizationService localizer,
+    CancellationToken cancellationToken) =>
 {
     try
     {
@@ -238,12 +264,40 @@ app.MapGet("/jobs/{id}/download", async (string id, string? artifact, RunStore r
     }
     catch (InvalidOperationException ex)
     {
-        return Results.BadRequest(new { error = ex.Message });
+        return LocalizedBadRequestForException(request, languageService, localizer, ex);
     }
+});
+
+app.MapGet("/jobs/{jobId}/{mediaId}/markdown", async (
+    string jobId,
+    string mediaId,
+    string? artifact,
+    RunStore runStore,
+    CancellationToken cancellationToken) =>
+{
+    var artifactPath = await runStore.GetArtifactPathAsync(jobId, mediaId, artifact, cancellationToken);
+    return artifactPath is null
+        ? Results.NotFound()
+        : Results.File(artifactPath, "text/markdown; charset=utf-8", Path.GetFileName(artifactPath));
+});
+
+app.MapGet("/jobs/{id}/conversion-info/markdown", async (
+    string id,
+    RunStore runStore,
+    CancellationToken cancellationToken) =>
+{
+    var conversionInfoPath = await runStore.GetConversionInfoPathAsync(id, cancellationToken);
+    return conversionInfoPath is null
+        ? Results.NotFound()
+        : Results.File(conversionInfoPath, "text/markdown; charset=utf-8", Path.GetFileName(conversionInfoPath));
 });
 
 app.MapGet("/runs/{id}/download", (string id) => Results.Redirect(JobUrls.Download(id)));
 app.MapGet("/runs/{jobId}/{mediaId}", (string jobId, string mediaId) => Results.Redirect(JobUrls.Media(jobId, mediaId)));
+app.MapGet("/runs/{jobId}/{mediaId}/markdown", (string jobId, string mediaId, string? artifact) =>
+    Results.Redirect(JobUrls.MediaMarkdown(jobId, mediaId, artifact)));
+app.MapGet("/runs/{id}/conversion-info/markdown", (string id) =>
+    Results.Redirect(JobUrls.ConversionInfoMarkdown(id)));
 app.MapGet("/runs/{id}", (string id) => Results.Redirect(JobUrls.Details(id)));
 
 app.MapPost("/api/settings/huggingface", async (HuggingFaceSaveRequest request, SettingsStore settingsStore, HuggingFaceAccessService accessService, CancellationToken cancellationToken) =>
@@ -270,14 +324,15 @@ app.MapGet("/api/app/version", (AppInstanceService appInstanceService) =>
 
 app.Run();
 
-static bool IsAllowedBeforeLanguageSelection(PathString path) =>
-    path.StartsWithSegments("/language", StringComparison.OrdinalIgnoreCase) ||
-    path.StartsWithSegments("/Error", StringComparison.OrdinalIgnoreCase);
-
-static bool IsAllowedWithoutSetup(PathString path) =>
-    path.StartsWithSegments("/settings", StringComparison.OrdinalIgnoreCase) ||
+static bool IsAllowedDuringSetup(PathString path) =>
+    path.StartsWithSegments("/setup", StringComparison.OrdinalIgnoreCase) ||
     path.StartsWithSegments("/api/settings", StringComparison.OrdinalIgnoreCase) ||
     path.StartsWithSegments("/Error", StringComparison.OrdinalIgnoreCase);
+
+static bool IsExistingJobPath(PathString path) =>
+    (path.StartsWithSegments("/jobs", StringComparison.OrdinalIgnoreCase) &&
+     !path.StartsWithSegments("/jobs/new", StringComparison.OrdinalIgnoreCase)) ||
+    path.StartsWithSegments("/runs", StringComparison.OrdinalIgnoreCase);
 
 static bool IsStaticAssetRequest(PathString path) =>
     Path.HasExtension(path.Value) ||
@@ -285,3 +340,25 @@ static bool IsStaticAssetRequest(PathString path) =>
     path.StartsWithSegments("/js", StringComparison.OrdinalIgnoreCase) ||
     path.StartsWithSegments("/lib", StringComparison.OrdinalIgnoreCase) ||
     path.StartsWithSegments("/images", StringComparison.OrdinalIgnoreCase);
+
+static IResult LocalizedBadRequest(
+    HttpRequest request,
+    LanguageService languageService,
+    JsonLocalizationService localizer,
+    string key) =>
+    Results.BadRequest(new
+    {
+        error = localizer.Get(languageService.Resolve(request), key),
+    });
+
+static IResult LocalizedBadRequestForException(
+    HttpRequest request,
+    LanguageService languageService,
+    JsonLocalizationService localizer,
+    InvalidOperationException exception) =>
+    Results.BadRequest(new
+    {
+        error = KnownMessageLocalizer.Localize(
+            exception.Message,
+            key => localizer.Get(languageService.Resolve(request), key)),
+    });

@@ -12,6 +12,8 @@ public sealed class SetupStateService(SettingsStore settingsStore, RunStore runS
         return new SetupState
         {
             HasSelectedLanguage = settings.LanguageSelected,
+            HasSelectedComputeMode = settings.SetupComputeModeSelected ||
+                (settings.LanguageSelected && hasToken && settings.HuggingfaceTermsConfirmed),
             HasToken = hasToken,
             TermsConfirmed = settings.HuggingfaceTermsConfirmed,
             HasJobs = hasJobs,

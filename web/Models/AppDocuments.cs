@@ -49,6 +49,9 @@ public sealed class AppSettingsDocument
 
     [JsonPropertyName("languageSelected")]
     public bool LanguageSelected { get; set; }
+
+    [JsonPropertyName("setupComputeModeSelected")]
+    public bool SetupComputeModeSelected { get; set; }
 }
 
 public sealed class UploadedFileReference
@@ -154,6 +157,9 @@ public sealed class CreateJobCommand
 
     [JsonPropertyName("supplementalContextText")]
     public string? SupplementalContextText { get; set; }
+
+    [JsonPropertyName("readableTextEnabled")]
+    public bool ReadableTextEnabled { get; set; } = true;
 }
 
 public sealed class HuggingFaceSaveRequest
@@ -214,6 +220,9 @@ public sealed class GatedModelStatusItem
 
     [JsonPropertyName("cachedLocally")]
     public bool CachedLocally { get; set; }
+
+    [JsonPropertyName("savedSizeBytes")]
+    public long SavedSizeBytes { get; set; }
 }
 
 public sealed class WorkerCapabilitySnapshot
@@ -266,9 +275,11 @@ public sealed class SetupState
 
     public bool HasSelectedLanguage { get; set; }
 
+    public bool HasSelectedComputeMode { get; set; }
+
     public bool HasJobs { get; set; }
 
-    public bool IsReady => HasSelectedLanguage;
+    public bool IsReady => HasSelectedLanguage && HasSelectedComputeMode && HasToken && TermsConfirmed;
 }
 
 public sealed class ScannedAudioItem
@@ -366,6 +377,9 @@ public sealed class JobRequestDocument
 
     [JsonPropertyName("supplemental_context_text")]
     public string? SupplementalContextText { get; set; }
+
+    [JsonPropertyName("readable_text_enabled")]
+    public bool ReadableTextEnabled { get; set; } = true;
 
     [JsonPropertyName("language_hint")]
     public string? LanguageHint { get; set; }

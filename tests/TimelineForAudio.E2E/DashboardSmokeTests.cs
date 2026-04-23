@@ -66,6 +66,50 @@ public sealed class DashboardSmokeTests : PageTest
     }
 
     [TestMethod]
+    public async Task Settings_ChangeToken_CanBeCancelled()
+    {
+        await Page.GotoAsync($"{_fixture.BaseUrl}/settings");
+
+        var previewPanel = Page.Locator("#token-preview-panel");
+        var tokenInput = Page.GetByLabel("Hugging Face Token");
+
+        await Expect(previewPanel).ToBeVisibleAsync();
+        await Expect(tokenInput).ToBeHiddenAsync();
+
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Change" }).ClickAsync();
+        await Expect(previewPanel).ToBeHiddenAsync();
+        await Expect(tokenInput).ToBeVisibleAsync();
+
+        await tokenInput.FillAsync("hf_new_token_value");
+        await Page.Locator("#token-cancel-button").ClickAsync();
+
+        await Expect(previewPanel).ToBeVisibleAsync();
+        await Expect(tokenInput).ToBeHiddenAsync();
+
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Change" }).ClickAsync();
+        await Expect(tokenInput).ToHaveValueAsync(string.Empty);
+    }
+
+    [TestMethod]
+    public async Task Settings_DeleteAllJobs_RequiresExactDeleteConfirmation()
+    {
+        await Page.GotoAsync($"{_fixture.BaseUrl}/settings");
+
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Delete All Jobs" }).ClickAsync();
+        await Expect(Page.Locator("#settings-confirm-modal")).ToBeVisibleAsync();
+
+        await Page.Locator("#settings-confirm-modal-input").FillAsync("delete");
+        await Page.Locator("#settings-confirm-modal-submit").ClickAsync();
+
+        await Expect(Page.Locator("#settings-confirm-modal-error")).ToHaveTextAsync("Type DELETE exactly to continue.");
+        await Expect(Page.Locator("#settings-confirm-modal")).ToBeVisibleAsync();
+        await Expect(Page).ToHaveURLAsync(new Regex(".*/settings$"));
+
+        await Page.Locator("#settings-confirm-modal-cancel").ClickAsync();
+        await Expect(Page.Locator("#settings-confirm-modal")).ToBeHiddenAsync();
+    }
+
+    [TestMethod]
     public async Task Settings_Localizes_Current_Sections_In_Japanese()
     {
         await Page.GotoAsync($"{_fixture.BaseUrl}/settings?lang=ja");
@@ -91,6 +135,19 @@ public sealed class DashboardSmokeTests : PageTest
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Choose Audio Files First" })).ToBeVisibleAsync();
         await Page.GetByRole(AriaRole.Button, new() { Name = "OK" }).ClickAsync();
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Choose Audio Files First" })).ToHaveCountAsync(0);
+    }
+
+    [TestMethod]
+    public async Task NewJob_ShowsSupplementalNotesGuidance_InJapanese()
+    {
+        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/new?lang=ja");
+
+        await Expect(Page.Locator("html")).ToHaveAttributeAsync("lang", "ja");
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "補足テキスト" })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("固有名詞や既知の表記があるときだけ入力します。")).ToBeVisibleAsync();
+        await Expect(Page.GetByText("書き方の例")).ToBeVisibleAsync();
+        await Expect(Page.GetByText("補足: 固有名詞や同音異義語の取り違えを減らしたい")).ToBeVisibleAsync();
+        await Expect(Page.GetByText("plain text のみです。固有名詞や同音異義語の取り違えを減らす補足に使います。")).ToBeVisibleAsync();
     }
 
     [TestMethod]

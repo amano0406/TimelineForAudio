@@ -1,5 +1,6 @@
 @page "/settings"
 @model TimelineForAudio.Web.Pages.SettingsModel
+@using TimelineForAudio.Web.Infrastructure
 @inject TimelineForAudio.Web.Services.LanguageService LanguageService
 @inject TimelineForAudio.Web.Services.JsonLocalizationService Localizer
 @{
@@ -54,6 +55,11 @@
         };
     }
 
+    string ModelSavedSizeLabel(TimelineForAudio.Web.Models.GatedModelStatusItem model) =>
+        model.SavedSizeBytes > 0
+            ? DisplayFormatters.FormatFileSize(model.SavedSizeBytes, L)
+            : L("settings.cache.empty_short");
+
     var accessState = (Model.Snapshot.AccessState ?? string.Empty).Trim().ToLowerInvariant();
     var gpuReady = Model.WorkerCapability.GpuAvailable && Model.WorkerCapability.DeviceNames.Count > 0;
     var detectedGpuLabel = gpuReady
@@ -98,6 +104,12 @@
         };
     var showTokenAction = tokenState is "missing" or "invalid" or "unknown";
     var showApprovalAction = accessState == "approval_required" && !modelCachedLocally;
+    var activeTokenPreview = !string.IsNullOrWhiteSpace(Model.Token)
+        ? Model.DraftTokenPreview
+        : Model.TokenPreview;
+    var tokenActionLabel = !string.IsNullOrWhiteSpace(activeTokenPreview)
+        ? L("settings.token_change")
+        : L("settings.token_enter");
     ViewData["Title"] = L("settings.page_title");
 }
 
@@ -206,28 +218,26 @@
 
             <div class="space-y-2">
                 <div class="flex items-center justify-between gap-3">
-                    <label class="text-sm font-medium text-slate-900" for="token-input">@L("settings.token")</label>
-                    @if (Model.HasSavedTokenConfigured)
-                    {
-                        <span class="text-xs font-medium text-slate-500">@L("settings.saved")</span>
-                    }
+                    <div class="text-sm font-medium text-slate-900">@L("settings.token")</div>
+                    <span id="token-status-label"
+                          class="text-xs font-medium text-slate-500 @((Model.HasSavedTokenConfigured && string.IsNullOrWhiteSpace(Model.Token)) ? string.Empty : "hidden")">@L("settings.saved")</span>
                 </div>
-                @if (Model.HasSavedTokenConfigured && !Model.ShowTokenEditor)
-                {
-                    <div id="token-preview-panel" class="flex flex-wrap items-center gap-3 rounded-[18px] border border-slate-200 bg-white/70 px-4 py-4">
-                        <code class="text-sm font-medium text-slate-900">@Model.TokenPreview</code>
-                        <button id="token-change-button" type="button" class="btn-secondary">@L("settings.token_change")</button>
-                    </div>
-                }
-                <div id="token-editor-panel" class="@(Model.HasSavedTokenConfigured && !Model.ShowTokenEditor ? "hidden" : string.Empty)">
-                    <input id="token-input"
-                           name="Token"
-                           type="text"
-                           value="@Model.Token"
-                           placeholder="hf_..."
-                           class="form-input token-input"
-                           spellcheck="false"
-                           autocomplete="off" />
+                <input id="token-input"
+                       name="Token"
+                       type="hidden"
+                       value="@Model.Token"
+                       data-saved-preview="@Model.TokenPreview"
+                       data-has-saved-token="@(Model.HasSavedTokenConfigured ? "true" : "false")"
+                       data-saved-label="@L("settings.saved")"
+                       data-not-saved-label="@L("settings.not_saved")"
+                       data-change-label="@L("settings.token_change")"
+                       data-enter-label="@L("settings.token_enter")" />
+                <div id="token-preview-panel" class="flex flex-wrap items-center gap-3 rounded-[18px] border border-slate-200 bg-white/70 px-4 py-4">
+                    <code id="token-preview-value"
+                          class="text-sm font-medium text-slate-900 @(string.IsNullOrWhiteSpace(activeTokenPreview) ? "hidden" : string.Empty)">@activeTokenPreview</code>
+                    <span id="token-preview-empty"
+                          class="text-sm text-slate-500 @(!string.IsNullOrWhiteSpace(activeTokenPreview) ? "hidden" : string.Empty)">@L("settings.connection.token_state.missing")</span>
+                    <button id="token-change-button" type="button" class="btn-secondary">@tokenActionLabel</button>
                 </div>
             </div>
 
@@ -270,8 +280,8 @@
                         <tr>
                             <th>@L("settings.models.model")</th>
                             <th>@L("settings.models.purpose")</th>
+                            <th>@L("settings.models.saved_size")</th>
                             <th>@L("settings.models.access")</th>
-                            <th>@L("common.actions")</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -291,23 +301,20 @@
                                     }
                                 </td>
                                 <td>@gatedModel.Purpose</td>
+                                <td>@ModelSavedSizeLabel(gatedModel)</td>
                                 <td>
-                                    <span class="@AccessBadgeClass(gatedModel.AccessState)">@AccessLabel(gatedModel.AccessState)</span>
-                                </td>
-                                <td>
-                                    @if (gatedModel.RequiresApproval &&
-                                         !gatedModel.CachedLocally &&
-                                         !string.IsNullOrWhiteSpace(gatedModel.ApprovalUrl) &&
-                                         string.Equals(gatedModel.AccessState, "approval_required", StringComparison.OrdinalIgnoreCase))
-                                    {
-                                        <a class="btn-table" href="@gatedModel.ApprovalUrl" target="_blank" rel="noreferrer">
-                                            @L("settings.models.open")
-                                        </a>
-                                    }
-                                    else
-                                    {
-                                        <span class="text-sm text-slate-500">@L("settings.models.no_action")</span>
-                                    }
+                                    <div class="flex flex-col items-start gap-2">
+                                        <span class="@AccessBadgeClass(gatedModel.AccessState)">@AccessLabel(gatedModel.AccessState)</span>
+                                        @if (gatedModel.RequiresApproval &&
+                                             !gatedModel.CachedLocally &&
+                                             !string.IsNullOrWhiteSpace(gatedModel.ApprovalUrl) &&
+                                             string.Equals(gatedModel.AccessState, "approval_required", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <a class="btn-table" href="@gatedModel.ApprovalUrl" target="_blank" rel="noreferrer">
+                                                @L("settings.models.open")
+                                            </a>
+                                        }
+                                    </div>
                                 </td>
                             </tr>
                         }
@@ -324,7 +331,7 @@
     <section class="panel space-y-4">
         <h2 class="section-title">@L("settings.maintenance.title")</h2>
 
-        <div class="grid gap-4 lg:grid-cols-2">
+        <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <div class="panel subtle-panel space-y-4">
                 <div class="font-medium text-slate-900">@L("settings.maintenance.cache_title")</div>
                 <p class="text-sm leading-7 text-slate-600">@L("settings.maintenance.cache_description")</p>
@@ -345,6 +352,30 @@
 
             <div class="panel subtle-panel space-y-4">
                 <div>
+                    <div class="font-medium text-slate-900">@L("settings.maintenance.jobs_title")</div>
+                    <p class="mt-2 text-sm leading-7 text-slate-600">@L("settings.maintenance.jobs_description")</p>
+                </div>
+                <dl class="grid gap-2 text-sm text-slate-700">
+                    <div>
+                        <dt class="text-slate-500">@L("settings.maintenance.jobs_count")</dt>
+                        <dd>@Model.TotalRunCount</dd>
+                    </div>
+                </dl>
+                <form method="post"
+                      asp-page-handler="DeleteAllJobs"
+                      data-confirm-title="@L("settings.maintenance.jobs_title")"
+                      data-confirm-message="@L("settings.maintenance.jobs_confirm")"
+                      data-confirm-submit-label="@L("settings.maintenance.jobs_action")"
+                      data-confirm-requires-text="true"
+                      data-confirm-expected="DELETE"
+                      data-confirm-invalid="@L("jobs.list.delete_all_invalid")">
+                    <input type="hidden" name="confirmation" />
+                    <button class="btn-table-danger" type="submit">@L("settings.maintenance.jobs_action")</button>
+                </form>
+            </div>
+
+            <div class="panel subtle-panel space-y-4">
+                <div>
                     <div class="font-medium text-slate-900">@L("settings.maintenance.reset_title")</div>
                     <p class="mt-2 text-sm leading-7 text-slate-600">@L("settings.maintenance.reset_description_short")</p>
                 </div>
@@ -352,13 +383,44 @@
                       asp-page-handler="ResetApp"
                       data-confirm-title="@L("settings.maintenance.reset_title")"
                       data-confirm-message="@L("settings.maintenance.reset_confirm")"
-                      data-confirm-submit-label="@L("settings.maintenance.reset_action")">
+                      data-confirm-submit-label="@L("settings.maintenance.reset_action")"
+                      data-confirm-requires-text="true"
+                      data-confirm-expected="DELETE"
+                      data-confirm-invalid="@L("jobs.list.delete_all_invalid")">
+                    <input type="hidden" name="confirmation" />
                     <button class="btn-table-danger" type="submit">@L("settings.maintenance.reset_action")</button>
                 </form>
             </div>
         </div>
     </section>
 </section>
+
+<div id="settings-token-modal"
+     class="modal-shell @(Model.ShowTokenEditor ? string.Empty : "hidden")"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="settings-token-modal-title">
+    <div class="modal-backdrop" data-token-modal-close="true"></div>
+    <div class="modal-card">
+        <div class="space-y-4">
+            <h2 class="section-title" id="settings-token-modal-title">@L("settings.token")</h2>
+            <div class="space-y-2">
+                <label class="metric-label" for="settings-token-modal-input">@L("settings.token")</label>
+                <input id="settings-token-modal-input"
+                       type="text"
+                       value="@Model.Token"
+                       placeholder="hf_..."
+                       class="form-input"
+                       spellcheck="false"
+                       autocomplete="off" />
+            </div>
+        </div>
+        <div class="mt-6 flex flex-wrap justify-end gap-3">
+            <button type="button" class="btn-secondary" id="settings-token-modal-cancel">@L("common.cancel")</button>
+            <button type="button" class="btn-primary" id="settings-token-modal-submit">@L("settings.token_apply")</button>
+        </div>
+    </div>
+</div>
 
 <div id="settings-confirm-modal"
      class="modal-shell hidden"
@@ -370,6 +432,15 @@
         <div class="space-y-4">
             <h2 class="section-title" id="settings-confirm-modal-title"></h2>
             <p class="page-description !mt-0" id="settings-confirm-modal-message"></p>
+            <div id="settings-confirm-modal-input-wrap" class="hidden space-y-2">
+                <label class="metric-label" for="settings-confirm-modal-input">@L("common.confirm_text")</label>
+                <input id="settings-confirm-modal-input"
+                       type="text"
+                       class="form-input"
+                       autocomplete="off"
+                       spellcheck="false" />
+                <p id="settings-confirm-modal-error" class="text-sm text-rose-700 hidden"></p>
+            </div>
         </div>
         <div class="mt-6 flex flex-wrap justify-end gap-3">
             <button type="button" class="btn-secondary" id="settings-confirm-modal-cancel">@L("common.cancel")</button>
@@ -382,30 +453,135 @@
 {
     <script>
         (() => {
-            const input = document.getElementById("token-input");
-            const previewPanel = document.getElementById("token-preview-panel");
-            const editorPanel = document.getElementById("token-editor-panel");
-            const changeButton = document.getElementById("token-change-button");
+            const tokenHiddenInput = document.getElementById("token-input");
+            const tokenPreviewValue = document.getElementById("token-preview-value");
+            const tokenPreviewEmpty = document.getElementById("token-preview-empty");
+            const tokenChangeButton = document.getElementById("token-change-button");
+            const tokenStatusLabel = document.getElementById("token-status-label");
+            const tokenModal = document.getElementById("settings-token-modal");
+            const tokenModalInput = document.getElementById("settings-token-modal-input");
+            const tokenModalCancel = document.getElementById("settings-token-modal-cancel");
+            const tokenModalSubmit = document.getElementById("settings-token-modal-submit");
             const confirmModal = document.getElementById("settings-confirm-modal");
             const confirmModalTitle = document.getElementById("settings-confirm-modal-title");
             const confirmModalMessage = document.getElementById("settings-confirm-modal-message");
+            const confirmModalInputWrap = document.getElementById("settings-confirm-modal-input-wrap");
+            const confirmModalInput = document.getElementById("settings-confirm-modal-input");
+            const confirmModalError = document.getElementById("settings-confirm-modal-error");
             const confirmModalCancel = document.getElementById("settings-confirm-modal-cancel");
             const confirmModalSubmit = document.getElementById("settings-confirm-modal-submit");
 
             let activeForm = null;
+            let activeExpected = null;
+            let activeInvalidMessage = null;
             let lastFocusedElement = null;
+            let tokenLastFocusedElement = null;
 
-            if (input && previewPanel && editorPanel && changeButton) {
-                changeButton.addEventListener("click", () => {
-                    previewPanel.classList.add("hidden");
-                    editorPanel.classList.remove("hidden");
-                    window.requestAnimationFrame(() => input.focus());
-                });
+            const hasSavedTokenConfigured = tokenHiddenInput?.dataset.hasSavedToken === "true";
+            const savedTokenPreview = tokenHiddenInput?.dataset.savedPreview || "";
+            const savedTokenLabel = tokenHiddenInput?.dataset.savedLabel || "";
+            const notSavedTokenLabel = tokenHiddenInput?.dataset.notSavedLabel || "";
+            const tokenChangeLabel = tokenHiddenInput?.dataset.changeLabel || "";
+            const tokenEnterLabel = tokenHiddenInput?.dataset.enterLabel || "";
+
+            const maskTokenPreview = (value) => {
+                const trimmed = (value || "").trim();
+                if (!trimmed) {
+                    return "";
+                }
+
+                if (trimmed.length <= 8) {
+                    const visibleLength = Math.min(2, trimmed.length);
+                    return `${trimmed.slice(0, visibleLength)}••••••••${trimmed.slice(trimmed.length - visibleLength)}`;
+                }
+
+                return `${trimmed.slice(0, 4)}••••••••${trimmed.slice(-4)}`;
+            };
+
+            const syncTokenSummary = () => {
+                if (!tokenHiddenInput || !tokenPreviewValue || !tokenPreviewEmpty || !tokenChangeButton) {
+                    return;
+                }
+
+                const draftValue = tokenHiddenInput.value.trim();
+                const preview = draftValue
+                    ? maskTokenPreview(draftValue)
+                    : (hasSavedTokenConfigured ? savedTokenPreview : "");
+                const hasPreview = preview.length > 0;
+
+                tokenPreviewValue.textContent = preview;
+                tokenPreviewValue.classList.toggle("hidden", !hasPreview);
+                tokenPreviewEmpty.classList.toggle("hidden", hasPreview);
+                tokenChangeButton.textContent = hasPreview ? tokenChangeLabel : tokenEnterLabel;
+
+                if (tokenStatusLabel) {
+                    if (draftValue) {
+                        tokenStatusLabel.textContent = notSavedTokenLabel;
+                        tokenStatusLabel.classList.remove("hidden");
+                    } else if (hasSavedTokenConfigured) {
+                        tokenStatusLabel.textContent = savedTokenLabel;
+                        tokenStatusLabel.classList.remove("hidden");
+                    } else {
+                        tokenStatusLabel.classList.add("hidden");
+                    }
+                }
+            };
+
+            const closeTokenModal = () => {
+                tokenModal?.classList.add("hidden");
+                if (tokenModalInput && tokenHiddenInput) {
+                    tokenModalInput.value = tokenHiddenInput.value;
+                }
+                if (tokenLastFocusedElement instanceof HTMLElement) {
+                    tokenLastFocusedElement.focus();
+                }
+                tokenLastFocusedElement = null;
+            };
+
+            const openTokenModal = (trigger) => {
+                if (!tokenModal || !tokenModalInput) {
+                    return;
+                }
+
+                tokenLastFocusedElement = trigger;
+                tokenModalInput.value = tokenHiddenInput?.value || "";
+                tokenModal.classList.remove("hidden");
+                window.setTimeout(() => tokenModalInput.focus(), 0);
+            };
+
+            tokenChangeButton?.addEventListener("click", () => openTokenModal(tokenChangeButton));
+            tokenModalCancel?.addEventListener("click", closeTokenModal);
+            tokenModal?.querySelectorAll("[data-token-modal-close='true']").forEach((element) => {
+                element.addEventListener("click", closeTokenModal);
+            });
+            tokenModalSubmit?.addEventListener("click", () => {
+                if (!tokenHiddenInput || !tokenModalInput) {
+                    closeTokenModal();
+                    return;
+                }
+
+                tokenHiddenInput.value = tokenModalInput.value.trim();
+                syncTokenSummary();
+                closeTokenModal();
+            });
+            syncTokenSummary();
+            if (tokenModal && !tokenModal.classList.contains("hidden")) {
+                window.setTimeout(() => tokenModalInput?.focus(), 0);
             }
 
             const closeModal = () => {
                 confirmModal?.classList.add("hidden");
+                confirmModalInputWrap?.classList.add("hidden");
+                confirmModalError?.classList.add("hidden");
+                if (confirmModalInput) {
+                    confirmModalInput.value = "";
+                }
+                if (confirmModalError) {
+                    confirmModalError.textContent = "";
+                }
                 activeForm = null;
+                activeExpected = null;
+                activeInvalidMessage = null;
                 if (lastFocusedElement instanceof HTMLElement) {
                     lastFocusedElement.focus();
                 }
@@ -419,12 +595,27 @@
                 }
 
                 activeForm = form;
+                activeExpected = form.getAttribute("data-confirm-expected");
+                activeInvalidMessage = form.getAttribute("data-confirm-invalid") || "";
                 lastFocusedElement = trigger;
                 confirmModalTitle.textContent = form.getAttribute("data-confirm-title") || "";
                 confirmModalMessage.textContent = form.getAttribute("data-confirm-message") || "";
                 confirmModalSubmit.textContent = form.getAttribute("data-confirm-submit-label") || @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("common.confirm")));
+                const needsText = form.getAttribute("data-confirm-requires-text") === "true";
+                confirmModalInputWrap?.classList.toggle("hidden", !needsText);
+                confirmModalError?.classList.add("hidden");
+                if (confirmModalInput) {
+                    confirmModalInput.value = "";
+                }
                 confirmModal.classList.remove("hidden");
-                window.setTimeout(() => confirmModalSubmit.focus(), 0);
+                window.setTimeout(() => {
+                    if (needsText) {
+                        confirmModalInput?.focus();
+                        return;
+                    }
+
+                    confirmModalSubmit.focus();
+                }, 0);
             };
 
             document.querySelectorAll("form[data-confirm-title] button[type='submit']").forEach((button) => {
@@ -445,6 +636,11 @@
             });
 
             document.addEventListener("keydown", (event) => {
+                if (event.key === "Escape" && tokenModal && !tokenModal.classList.contains("hidden")) {
+                    closeTokenModal();
+                    return;
+                }
+
                 if (event.key === "Escape" && confirmModal && !confirmModal.classList.contains("hidden")) {
                     closeModal();
                 }
@@ -454,6 +650,23 @@
                 if (!activeForm) {
                     closeModal();
                     return;
+                }
+
+                if (activeExpected) {
+                    const typed = (confirmModalInput?.value || "").trim();
+                    if (typed !== activeExpected) {
+                        if (confirmModalError) {
+                            confirmModalError.textContent = activeInvalidMessage || "";
+                            confirmModalError.classList.remove("hidden");
+                        }
+                        confirmModalInput?.focus();
+                        return;
+                    }
+
+                    const confirmationInput = activeForm.querySelector("input[name='confirmation']");
+                    if (confirmationInput instanceof HTMLInputElement) {
+                        confirmationInput.value = typed;
+                    }
                 }
 
                 const targetForm = activeForm;

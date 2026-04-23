@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using TimelineForAudio.Web.Infrastructure;
 using TimelineForAudio.Web.Models;
 using TimelineForAudio.Web.Services;
 
@@ -19,6 +20,9 @@ public sealed class NewModel(
 
     [BindProperty]
     public string SupplementalContextText { get; set; } = "";
+
+    [BindProperty]
+    public bool ReadableTextEnabled { get; set; } = true;
 
     [TempData]
     public string? StatusMessage { get; set; }
@@ -66,16 +70,25 @@ public sealed class NewModel(
             return Page();
         }
 
-        var uploaded = await runStore.SaveUploadsAsync(files, cancellationToken);
-        var created = await runStore.CreateJobAsync(
-            new CreateJobCommand
-            {
-                UploadedFiles = uploaded.ToList(),
-                SupplementalContextText = SupplementalContextText,
-            },
-            cancellationToken);
+        try
+        {
+            var uploaded = await runStore.SaveUploadsAsync(files, cancellationToken);
+            var created = await runStore.CreateJobAsync(
+                new CreateJobCommand
+                {
+                    UploadedFiles = uploaded.ToList(),
+                    SupplementalContextText = SupplementalContextText,
+                    ReadableTextEnabled = ReadableTextEnabled,
+                },
+                cancellationToken);
 
-        return RedirectToPage("/Runs/Details", new { id = created.JobId });
+            return RedirectToPage("/Runs/Details", new { id = created.JobId });
+        }
+        catch (InvalidOperationException ex)
+        {
+            ModelState.AddModelError(string.Empty, KnownMessageLocalizer.Localize(ex.Message, L));
+            return Page();
+        }
     }
 
     private string L(string key) => localizer.Get(languageService.Resolve(Request), key);

@@ -6,9 +6,9 @@ namespace TimelineForAudio.Web.Services;
 
 public sealed class HuggingFaceAccessService(
     HttpClient httpClient,
+    ModelCacheService modelCacheService,
     SettingsStore settingsStore,
-    IConfiguration configuration,
-    AppPaths paths)
+    IConfiguration configuration)
 {
     private const string PyannoteModelId = "pyannote/speaker-diarization-community-1";
     private const string PyannoteDisplayName = "pyannote speaker diarization";
@@ -17,7 +17,12 @@ public sealed class HuggingFaceAccessService(
     private const string PyannoteResolveUrl =
         "https://huggingface.co/pyannote/speaker-diarization-community-1/resolve/main/config.yaml";
     private const string FasterWhisperMediumModelId = "medium";
+    private const string FasterWhisperMediumCacheModelId = "Systran/faster-whisper-medium";
     private const string FasterWhisperMediumModelUrl = "https://huggingface.co/Systran/faster-whisper-medium";
+    private const string ReconstructionModelId = "Respair/Japanese_Phoneme_to_Grapheme_LLM";
+    private const string ReconstructionDisplayName = "Japanese phoneme to grapheme";
+    private const string ReconstructionPurpose = "Readable text reconstruction";
+    private const string ReconstructionModelUrl = "https://huggingface.co/Respair/Japanese_Phoneme_to_Grapheme_LLM";
 
     private readonly string? _overrideState = configuration["TIMELINE_FOR_AUDIO_HF_ACCESS_OVERRIDE"];
 
@@ -25,7 +30,13 @@ public sealed class HuggingFaceAccessService(
     {
         var settings = await settingsStore.LoadAsync(cancellationToken);
         var hasToken = await settingsStore.HasTokenAsync(cancellationToken);
-        var pyannoteCachedLocally = IsModelCachedLocally(paths.HuggingFaceCacheRoot, PyannoteModelId);
+        var pyannoteSavedSizeBytes = await modelCacheService.GetHuggingFaceModelSizeBytesAsync(PyannoteModelId, cancellationToken);
+        var fasterWhisperSavedSizeBytes = await modelCacheService.GetHuggingFaceModelSizeBytesAsync(
+            FasterWhisperMediumCacheModelId,
+            cancellationToken);
+        var reconstructionSavedSizeBytes = await modelCacheService.GetHuggingFaceModelSizeBytesAsync(
+            ReconstructionModelId,
+            cancellationToken);
         var snapshot = new HuggingFaceAccessSnapshot
         {
             HasToken = hasToken,
@@ -42,13 +53,21 @@ public sealed class HuggingFaceAccessService(
                     RequiresApproval = true,
                     TokenConfigured = hasToken,
                     TermsConfirmed = settings.HuggingfaceTermsConfirmed,
-                    CachedLocally = pyannoteCachedLocally,
+                    CachedLocally = pyannoteSavedSizeBytes > 0,
+                    SavedSizeBytes = pyannoteSavedSizeBytes,
                 },
                 CreateUngatedModel(
                     FasterWhisperMediumModelId,
                     "faster-whisper medium",
                     "Speech transcription",
-                    FasterWhisperMediumModelUrl),
+                    FasterWhisperMediumModelUrl,
+                    fasterWhisperSavedSizeBytes),
+                CreateUngatedModel(
+                    ReconstructionModelId,
+                    ReconstructionDisplayName,
+                    ReconstructionPurpose,
+                    ReconstructionModelUrl,
+                    reconstructionSavedSizeBytes),
             ],
         };
 
@@ -124,7 +143,12 @@ public sealed class HuggingFaceAccessService(
         return snapshot;
     }
 
-    private static GatedModelStatusItem CreateUngatedModel(string modelId, string displayName, string purpose, string modelUrl) =>
+    private static GatedModelStatusItem CreateUngatedModel(
+        string modelId,
+        string displayName,
+        string purpose,
+        string modelUrl,
+        long savedSizeBytes) =>
         new()
         {
             ModelId = modelId,
@@ -136,40 +160,7 @@ public sealed class HuggingFaceAccessService(
             TokenConfigured = false,
             TermsConfirmed = true,
             AccessState = "available",
+            CachedLocally = savedSizeBytes > 0,
+            SavedSizeBytes = savedSizeBytes,
         };
-
-    private static bool IsModelCachedLocally(string huggingFaceCacheRoot, string modelId)
-    {
-        try
-        {
-            var normalized = $"models--{modelId.Replace("/", "--", StringComparison.Ordinal)}";
-            var candidates = new[]
-            {
-                Path.Combine(huggingFaceCacheRoot, normalized),
-                Path.Combine(huggingFaceCacheRoot, "hub", normalized),
-            };
-
-            foreach (var candidate in candidates)
-            {
-                var snapshotsRoot = Path.Combine(candidate, "snapshots");
-                if (!Directory.Exists(snapshotsRoot))
-                {
-                    continue;
-                }
-
-                if (Directory.EnumerateFiles(snapshotsRoot, "*", SearchOption.AllDirectories).Any())
-                {
-                    return true;
-                }
-            }
-        }
-        catch (IOException)
-        {
-        }
-        catch (UnauthorizedAccessException)
-        {
-        }
-
-        return false;
-    }
 }

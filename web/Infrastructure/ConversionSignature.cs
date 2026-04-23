@@ -29,21 +29,39 @@ public static class ConversionSignature
         bool diarizationEnabled,
         string? languageHint = null,
         string? supplementalContextText = null,
-        string? contextBuilderVersion = null)
+        string? contextBuilderVersion = null,
+        bool readableTextEnabled = true)
         => BuildGenerationSignature(
             computeMode,
             diarizationEnabled,
             languageHint,
             supplementalContextText,
-            contextBuilderVersion);
+            contextBuilderVersion,
+            readableTextEnabled);
 
     public static string BuildGenerationSignature(
         string? computeMode,
         bool diarizationEnabled,
         string? languageHint = null,
         string? supplementalContextText = null,
-        string? contextBuilderVersion = null)
+        string? contextBuilderVersion = null,
+        bool readableTextEnabled = true)
     {
+        var reconstructionPayload = readableTextEnabled
+            ? new Dictionary<string, object?>
+            {
+                ["backend"] = ResolveReconstructionBackend(languageHint, computeMode),
+                ["model_id"] = ResolveReconstructionModelId(languageHint, computeMode),
+                ["prompt_version"] = ResolveReconstructionPromptVersion(languageHint, computeMode),
+                ["decoding"] = BuildReconstructionDecoding(languageHint, computeMode),
+                ["language_hint"] = NormalizeLanguageHint(languageHint),
+                ["readable_text_schema"] = ReadableTextMarkdownSchema,
+            }
+            : new Dictionary<string, object?>
+            {
+                ["enabled"] = false,
+            };
+
         var payload = new Dictionary<string, object?>
         {
             ["pipeline"] = "TimelineForAudio",
@@ -55,15 +73,7 @@ public static class ConversionSignature
                 ["model_id"] = ResolveTranscriptionModelId(),
                 ["language"] = "ja",
             },
-            ["reconstruction"] = new Dictionary<string, object?>
-            {
-                ["backend"] = ResolveReconstructionBackend(languageHint, computeMode),
-                ["model_id"] = ResolveReconstructionModelId(languageHint, computeMode),
-                ["prompt_version"] = ResolveReconstructionPromptVersion(languageHint, computeMode),
-                ["decoding"] = BuildReconstructionDecoding(languageHint, computeMode),
-                ["language_hint"] = NormalizeLanguageHint(languageHint),
-                ["readable_text_schema"] = ReadableTextMarkdownSchema,
-            },
+            ["reconstruction"] = reconstructionPayload,
             ["ipa"] = new Dictionary<string, object?>
             {
                 ["backend"] = IpaBackend,

@@ -1,0 +1,33 @@
+@inject TimelineForAudio.Web.Services.LanguageService LanguageService
+@inject TimelineForAudio.Web.Services.JsonLocalizationService Localizer
+@{
+    var lang = LanguageService.Resolve(Context.Request);
+}
+<!DOCTYPE html>
+<html lang="@lang" data-app-theme="workbench">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - TimelineForAudio</title>
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="icon" type="image/svg+xml" href="~/favicon.svg" asp-append-version="true" />
+    <link rel="icon" type="image/x-icon" href="~/favicon.ico" asp-append-version="true" />
+    <link rel="apple-touch-icon" href="~/apple-touch-icon.png" asp-append-version="true" />
+    <link rel="manifest" href="~/manifest.webmanifest" asp-append-version="true" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body class="app-body">
+    <main class="setup-shell">
+        <div class="setup-brand">
+            <a href="/" class="brand-link brand-wordmark brand-wordmark--setup" aria-label="Timeline For Audio">
+                <span class="brand-wordmark-main">Timeline</span>
+                <span class="brand-wordmark-sub">For Audio</span>
+            </a>
+        </div>
+        @RenderBody()
+    </main>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

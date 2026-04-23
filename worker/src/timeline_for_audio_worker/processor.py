@@ -475,6 +475,7 @@ def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
             "# Conversion Info",
             "",
             f"- Audio to IPA base: `{request.transcription_backend}` with `{request.transcription_model_id}`, compute `{request.compute_mode}`",
+            f"- Readable text: `{'enabled' if request.readable_text_enabled else 'disabled'}`",
             f"- Readable text reconstruction: `{request.reconstruction_backend or ''}` / `{request.reconstruction_model_id or ''}`",
             f"- Reconstruction prompt version: `{request.reconstruction_prompt_version or ''}`",
             f"- Language hint: `{request.language_hint or ''}`",
@@ -486,9 +487,9 @@ def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
             f"- Pipeline version: `{request.pipeline_version}`",
             f"- Generation signature: `{request.generation_signature}`",
             "- Notes:",
-            "  - `Readable Text` is reconstructed from `IPA` by the configured local backend when supported.",
+            "  - `Readable Text` is reconstructed from `IPA` by the configured local backend when enabled and supported.",
             "  - Explicitly unsupported language hints currently fall back to deterministic aligned text during the migration.",
-            "  - `IPA.md`, `Readable Text.md`, and `CONVERSION_INFO.md` are the primary user-facing outputs.",
+            "  - `IPA.md` and `CONVERSION_INFO.md` are always user-facing outputs. `Readable Text.md` is included when enabled for the job.",
             "  - The current app display language is used as the reconstruction language hint for new jobs.",
             "  - Audio files are not included in the export packages.",
             "  - Optional audio analysis does not fail the main transcription job.",
@@ -589,7 +590,7 @@ def _process_one_item(
     transcript_dir = ensure_dir(media_dir / "transcript")
     analysis_dir = ensure_dir(media_dir / "analysis")
     ipa_dir = ensure_dir(media_dir / "ipa")
-    readable_text_dir = ensure_dir(media_dir / "readable-text")
+    readable_text_dir = media_dir / "readable-text"
 
     source_info = {
         "job_id": request.job_id,
@@ -618,6 +619,7 @@ def _process_one_item(
         "language_hint": request.language_hint,
         "supplemental_context_configured": bool(request.supplemental_context_text),
         "ipa_cleanup_rules_version": request.context_builder_version or CONTEXT_BUILDER_VERSION,
+        "readable_text_enabled": request.readable_text_enabled,
         "reconstruction_backend": request.reconstruction_backend,
         "reconstruction_model_id": request.reconstruction_model_id,
         "reconstruction_prompt_version": request.reconstruction_prompt_version,
@@ -743,7 +745,12 @@ def _process_one_item(
         "optional_voice_feature_summary", {}
     )
     if on_stage:
-        on_stage("generate_artifacts", "Writing IPA and readable text artifacts.")
+        on_stage(
+            "generate_artifacts",
+            "Writing IPA and readable text artifacts."
+            if request.readable_text_enabled
+            else "Writing IPA artifacts.",
+        )
     ipa_result = generate_ipa_turns(transcript_payload=turns_source_payload)
     ipa_path = ipa_dir / "IPA.md"
     render_ipa(
@@ -765,71 +772,86 @@ def _process_one_item(
             for turn in ipa_result.turns
         ],
     )
-    readable_text_result = reconstruct_readable_text(
-        transcript_payload=turns_source_payload,
-        ipa_result=ipa_result,
-        language_hint=request.language_hint,
-        supplemental_context_text=request.supplemental_context_text,
-        compute_mode=request.compute_mode,
-    )
-    write_json_atomic(
-        readable_text_dir / "reconstruction.json",
-        {
-            "backend": readable_text_result.backend_name,
-            "status": readable_text_result.status,
-            "model_id": readable_text_result.model_id,
-            "prompt_version": readable_text_result.prompt_version,
-            "requested_compute_mode": readable_text_result.requested_compute_mode,
-            "effective_device": readable_text_result.effective_device,
-            "decoding": readable_text_result.decoding,
-            "warning_count": len(readable_text_result.warnings),
-            "warnings": readable_text_result.warnings,
-            "turn_count": len(readable_text_result.turns),
-        },
-    )
+    readable_text_turn_count = 0
+    readable_text_warnings: list[str] = []
+    readable_text_status = "disabled"
     readable_text_path = readable_text_dir / "Readable Text.md"
-    render_readable_text(
-        output_path=readable_text_path,
-        source_info=source_info,
-        turns=[
+    if request.readable_text_enabled:
+        readable_text_dir = ensure_dir(readable_text_dir)
+        readable_text_result = reconstruct_readable_text(
+            transcript_payload=turns_source_payload,
+            ipa_result=ipa_result,
+            language_hint=request.language_hint,
+            supplemental_context_text=request.supplemental_context_text,
+            compute_mode=request.compute_mode,
+        )
+        readable_text_status = readable_text_result.status
+        readable_text_warnings = list(readable_text_result.warnings)
+        readable_text_turn_count = len(readable_text_result.turns)
+        write_json_atomic(
+            readable_text_dir / "reconstruction.json",
             {
-                "start": turn.start,
-                "end": turn.end,
-                "speaker": turn.speaker,
-                "text": turn.text,
-            }
-            for turn in readable_text_result.turns
-        ],
-        warnings=readable_text_result.warnings,
-        speaker_count=manifest_item.speaker_count,
-        speaker_count_status=manifest_item.speaker_count_status,
-        speaker_count_note=manifest_item.speaker_count_note,
-    )
+                "backend": readable_text_result.backend_name,
+                "status": readable_text_result.status,
+                "model_id": readable_text_result.model_id,
+                "prompt_version": readable_text_result.prompt_version,
+                "requested_compute_mode": readable_text_result.requested_compute_mode,
+                "effective_device": readable_text_result.effective_device,
+                "decoding": readable_text_result.decoding,
+                "warning_count": len(readable_text_result.warnings),
+                "warnings": readable_text_result.warnings,
+                "turn_count": len(readable_text_result.turns),
+            },
+        )
+        render_readable_text(
+            output_path=readable_text_path,
+            source_info=source_info,
+            turns=[
+                {
+                    "start": turn.start,
+                    "end": turn.end,
+                    "speaker": turn.speaker,
+                    "text": turn.text,
+                }
+                for turn in readable_text_result.turns
+            ],
+            warnings=readable_text_result.warnings,
+            speaker_count=manifest_item.speaker_count,
+            speaker_count_status=manifest_item.speaker_count_status,
+            speaker_count_note=manifest_item.speaker_count_note,
+        )
     artifacts: list[dict[str, Any]] = []
-    for artifact in [
-        register_artifact(
-            media_dir=media_dir,
-            kind="ipa",
-            title="IPA",
-            display_name="IPA",
-            role="secondary" if readable_text_result.turns and ipa_result.turns else "primary" if ipa_result.turns else "pending",
-            path=ipa_path,
-        ),
-        register_artifact(
+    ipa_artifact = register_artifact(
+        media_dir=media_dir,
+        kind="ipa",
+        title="IPA",
+        display_name="IPA",
+        role="secondary"
+        if request.readable_text_enabled and readable_text_turn_count > 0 and ipa_result.turns
+        else "primary"
+        if ipa_result.turns
+        else "pending",
+        path=ipa_path,
+    )
+    if ipa_artifact is not None:
+        artifacts.append(ipa_artifact)
+    if request.readable_text_enabled:
+        readable_text_artifact = register_artifact(
             media_dir=media_dir,
             kind="readable_text",
             title="Readable Text",
             display_name="可読テキスト",
-            role="primary" if readable_text_result.turns else "pending",
+            role="primary" if readable_text_turn_count > 0 else "pending",
             path=readable_text_path,
-        ),
-    ]:
-        if artifact is not None:
-            artifacts.append(artifact)
+        )
+        if readable_text_artifact is not None:
+            artifacts.append(readable_text_artifact)
     write_media_artifacts_index(
         media_dir=media_dir,
         media_id=str(manifest_item.media_id),
-        primary_artifact_kind="readable_text" if readable_text_result.turns else "ipa",
+        primary_artifact_kind="readable_text"
+        if request.readable_text_enabled and readable_text_turn_count > 0
+        else "ipa",
         artifacts=artifacts,
     )
     if ensure_not_delete_requested:
@@ -846,8 +868,8 @@ def _process_one_item(
         warnings.append("prepare_cleanup_context: merged context was truncated before turn alignment.")
     if ipa_result.status != "unavailable":
         warnings.extend(ipa_result.warnings)
-    if readable_text_result.status != "unavailable":
-        warnings.extend(readable_text_result.warnings)
+    if request.readable_text_enabled and readable_text_status != "unavailable":
+        warnings.extend(readable_text_warnings)
     return warnings
 
 

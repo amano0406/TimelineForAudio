@@ -7,6 +7,7 @@
 @inject TimelineForAudio.Web.Services.JsonLocalizationService Localizer
 @{
     var run = Model.Run!;
+    var conversionInfo = Model.ConversionInfoPreview;
     var status = run.Status;
     var lang = LanguageService.Resolve(ViewContext.HttpContext.Request);
     string L(string key) => Localizer.Get(lang, key);
@@ -56,6 +57,13 @@
         return label == key ? value ?? "-" : label;
     }
 
+    string? SpeakerStatusHint(string? value)
+    {
+        return string.Equals(value, "estimated", StringComparison.OrdinalIgnoreCase)
+            ? SpeakerStatusLabel(value)
+            : null;
+    }
+
     string StateBadgeClass(string? value) => (value ?? string.Empty).ToLowerInvariant() switch
     {
         "running" => "status-badge status-badge-info",
@@ -82,6 +90,9 @@
     string PercentLabel(double value) => $"{Math.Round(value, 1):0.0}%";
     string FormatDurationFriendly(double? seconds) => DisplayFormatters.FormatDurationFriendly(seconds, L);
     string FormatDurationOrDash(double? seconds) => seconds.HasValue ? FormatDurationFriendly(seconds) : "-";
+    string StatusMessageLabel(string? value) => string.IsNullOrWhiteSpace(value)
+        ? "-"
+        : KnownMessageLocalizer.Localize(value, L);
     string ItemStatusLabel(string? value)
     {
         var normalized = (value ?? string.Empty).ToLowerInvariant();
@@ -113,6 +124,7 @@
         ? "-"
         : FormatDurationFriendly(status?.CurrentMediaElapsedSec);
     var headerStageLabel = SecondaryStageLabel(status?.State, status?.CurrentStage);
+    var hasConversionInfoMarkdown = !string.IsNullOrWhiteSpace(run.ConversionInfoText);
     var skippedItems = run.Manifest?.Items
         .Where(item => string.Equals(item.Status, "skipped_invalid", StringComparison.OrdinalIgnoreCase) ||
                        string.Equals(item.Status, "skipped_too_short", StringComparison.OrdinalIgnoreCase))
@@ -128,29 +140,7 @@
     }
 
     <div class="panel page-header">
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div class="space-y-2">
-                <h1 class="page-title">@run.JobId</h1>
-                <div class="flex flex-wrap items-center gap-3 text-sm text-slate-600">
-                    <span class="@StateBadgeClass(status?.State)">@StateLabel(status?.State)</span>
-                    @if (!string.IsNullOrWhiteSpace(headerStageLabel))
-                    {
-                        <span>@headerStageLabel</span>
-                    }
-                </div>
-            </div>
-            @if (hasDownloadableArchive)
-            {
-                <button type="button"
-                        class="btn-secondary"
-                        id="details-download-button"
-                        data-download-job-id="@run.JobId"
-                        data-download-readable="@(canDownloadReadableTextArchive ? JobUrls.Download(run.JobId, "readable-text") : "")"
-                        data-download-ipa="@(canDownloadIpaArchive ? JobUrls.Download(run.JobId, "ipa") : "")">
-                    @L("details.download_zip")
-                </button>
-            }
-        </div>
+        <h1 class="page-title">@run.JobId</h1>
     </div>
 
     <section class="grid gap-4 lg:grid-cols-4">
@@ -173,24 +163,42 @@
             </div>
         </div>
         <div class="metric-card">
-            <div class="metric-label">@L("details.current_file")</div>
-            <div class="metric-value">@(string.IsNullOrWhiteSpace(status?.CurrentMedia) ? "-" : status?.CurrentMedia)</div>
-            <div class="metric-subtle">@currentFileElapsed</div>
+            @if (isActive)
+            {
+                <div class="metric-label">@L("details.current_file")</div>
+                <div class="metric-value">@(string.IsNullOrWhiteSpace(status?.CurrentMedia) ? "-" : status?.CurrentMedia)</div>
+                <div class="metric-subtle">@currentFileElapsed</div>
+            }
+            else
+            {
+                <div class="metric-label">@L("details.total_duration")</div>
+                <div class="metric-value">@FormatDurationFriendly(status?.TotalDurationSec)</div>
+            }
         </div>
         <div class="metric-card">
             <div class="metric-label">@L("details.elapsed_time")</div>
             <div class="metric-value">@FormatDurationOrDash(run.ElapsedWallSec)</div>
-            <div class="metric-subtle">@FormatDurationFriendly(status?.TotalDurationSec)</div>
         </div>
     </section>
 
     <section class="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <div class="panel">
             <div class="mb-4 flex items-center justify-between gap-3">
-                <div>
+                <div class="flex items-center gap-3">
                     <h2 class="section-title">@L("details.generated_timeline")</h2>
+                    <span class="badge-chip">@run.ArtifactItems.Count</span>
                 </div>
-                <span class="badge-chip">@run.ArtifactItems.Count</span>
+                @if (hasDownloadableArchive)
+                {
+                    <button type="button"
+                            class="btn-secondary"
+                            id="details-download-button"
+                            data-download-job-id="@run.JobId"
+                            data-download-readable="@(canDownloadReadableTextArchive ? JobUrls.Download(run.JobId, "readable-text") : "")"
+                            data-download-ipa="@(canDownloadIpaArchive ? JobUrls.Download(run.JobId, "ipa") : "")">
+                        @L("details.download_zip")
+                    </button>
+                }
             </div>
             <div class="table-shell">
                 <table class="app-table">
@@ -233,9 +241,9 @@
                                     </td>
                                     <td class="text-slate-600">
                                         <div class="font-medium text-slate-900">@(item.SpeakerCount?.ToString() ?? "-")</div>
-                                        @if (!string.IsNullOrWhiteSpace(item.SpeakerCountStatus))
+                                        @if (!string.IsNullOrWhiteSpace(SpeakerStatusHint(item.SpeakerCountStatus)))
                                         {
-                                            <div class="mt-1 text-xs text-slate-500">@SpeakerStatusLabel(item.SpeakerCountStatus)</div>
+                                            <div class="mt-1 text-xs text-slate-500">@SpeakerStatusHint(item.SpeakerCountStatus)</div>
                                         }
                                     </td>
                                     <td>
@@ -274,7 +282,7 @@
                         </div>
                         <div>
                             <dt class="text-slate-500">@L("details.message")</dt>
-                            <dd>@(string.IsNullOrWhiteSpace(status?.Message) ? "-" : status?.Message)</dd>
+                            <dd>@StatusMessageLabel(status?.Message)</dd>
                         </div>
                         <div>
                             <dt class="text-slate-500">@L("details.processed_duration")</dt>
@@ -288,15 +296,96 @@
                 </div>
             }
 
-            <div class="panel timeline-shell">
-                <h2 class="section-title">@L("details.conversion_info")</h2>
-                @if (string.IsNullOrWhiteSpace(run.ConversionInfoText))
+            <div class="panel">
+                <div class="flex items-center justify-between gap-3">
+                    <h2 class="section-title">@L("details.conversion_info")</h2>
+                    @if (hasConversionInfoMarkdown)
+                    {
+                        <details class="action-menu" data-action-menu>
+                            <summary class="action-menu-summary"
+                                     aria-label="@L("common.more_actions")"
+                                     title="@L("common.more_actions")">
+                                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                    <circle cx="12" cy="5" r="1.8"></circle>
+                                    <circle cx="12" cy="12" r="1.8"></circle>
+                                    <circle cx="12" cy="19" r="1.8"></circle>
+                                </svg>
+                            </summary>
+                            <div class="action-menu-panel" role="menu">
+                                <button type="button"
+                                        class="action-menu-item"
+                                        data-copy-source="conversion-info-markdown"
+                                        data-copy-label="@L("common.copy_markdown")"
+                                        data-copy-done="@L("common.copy_done")"
+                                        data-copy-failed="@L("common.copy_failed")"
+                                        aria-label="@L("common.copy_markdown")"
+                                        title="@L("common.copy_markdown")">
+                                    <span class="copy-icon copy-icon-default" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                            <rect x="9" y="9" width="11" height="11" rx="2"></rect>
+                                            <path d="M7 15H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v1"></path>
+                                        </svg>
+                                    </span>
+                                    <span class="copy-icon copy-icon-success" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M20 6 9 17l-5-5"></path>
+                                        </svg>
+                                    </span>
+                                    <span>@L("common.copy_markdown")</span>
+                                    <span class="sr-only" data-copy-feedback aria-live="polite"></span>
+                                </button>
+                                <a class="action-menu-item"
+                                   data-menu-close="true"
+                                   href="@JobUrls.ConversionInfoMarkdown(run.JobId)"
+                                   download>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <path d="M12 3v12"></path>
+                                        <path d="m7 10 5 5 5-5"></path>
+                                        <path d="M5 21h14"></path>
+                                    </svg>
+                                    <span>@L("common.download_markdown")</span>
+                                </a>
+                            </div>
+                        </details>
+                    }
+                </div>
+                @if (conversionInfo is null)
                 {
                     <div class="selection-empty mt-4">@L("details.conversion_info_empty")</div>
                 }
                 else
                 {
-                    <pre class="mt-4 text-sm leading-7 text-slate-100">@run.ConversionInfoText</pre>
+                    @if (conversionInfo.Fields.Count > 0)
+                    {
+                        <div class="table-shell mt-4">
+                            <table class="app-table conversion-info-table">
+                                <tbody>
+                                    @foreach (var field in conversionInfo.Fields)
+                                    {
+                                        <tr>
+                                            <th scope="row">@field.Label</th>
+                                            <td>@(string.IsNullOrWhiteSpace(field.Value) ? "-" : field.Value)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+
+                    @if (conversionInfo.Paragraphs.Count > 0)
+                    {
+                        <div class="conversion-info-paragraphs mt-4">
+                            @foreach (var paragraph in conversionInfo.Paragraphs)
+                            {
+                                <p>@paragraph</p>
+                            }
+                        </div>
+                    }
+
+                }
+                @if (hasConversionInfoMarkdown)
+                {
+                    <pre id="conversion-info-markdown" class="sr-only" hidden>@run.ConversionInfoText</pre>
                 }
             </div>
 

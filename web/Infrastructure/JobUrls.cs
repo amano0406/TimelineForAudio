@@ -7,6 +7,17 @@ public static class JobUrls
     public static string Media(string jobId, string mediaId) =>
         $"{Details(jobId)}/{Uri.EscapeDataString(mediaId)}";
 
+    public static string MediaMarkdown(string jobId, string mediaId, string? artifactKind = null)
+    {
+        var path = $"{Media(jobId, mediaId)}/markdown";
+        return string.IsNullOrWhiteSpace(artifactKind)
+            ? path
+            : $"{path}?artifact={Uri.EscapeDataString(artifactKind)}";
+    }
+
+    public static string ConversionInfoMarkdown(string jobId) =>
+        $"{Details(jobId)}/conversion-info/markdown";
+
     public static string Download(string jobId, string? artifactKind = null)
     {
         var path = $"{Details(jobId)}/download";
