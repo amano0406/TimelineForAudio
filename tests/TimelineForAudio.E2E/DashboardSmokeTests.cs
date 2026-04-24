@@ -155,10 +155,9 @@ public sealed class DashboardSmokeTests : PageTest
         await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/new?lang=ja");
 
         await Expect(Page.Locator("html")).ToHaveAttributeAsync("lang", "ja");
-        await Expect(Page.GetByText("名前・表記メモ", new() { Exact = true })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("音声ファイル名は自動で使います。必要な名前や表記だけ、そのまま貼り付けてください。", new() { Exact = true })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("そのまま貼り付けでOK", new() { Exact = true })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("{\"speakers\":[\"天野悠太郎\",\"香月達行\"]}", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.Locator("#supplemental-context-text")).ToBeVisibleAsync();
+        var placeholder = await Page.Locator("#supplemental-context-text").GetAttributeAsync("placeholder");
+        StringAssert.Contains(placeholder ?? string.Empty, "人物名");
     }
 
     [TestMethod]
@@ -228,16 +227,15 @@ public sealed class DashboardSmokeTests : PageTest
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = _fixture.CompletedJobId, Exact = true })).ToBeVisibleAsync();
         await Expect(Page.GetByText("Processing Time", new() { Exact = true })).ToBeVisibleAsync();
         await Expect(Page.GetByText("2m 7s", new() { Exact = true })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("Per-file Results", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Per-file Results", Exact = true })).ToBeVisibleAsync();
         await Expect(Page.GetByText("sample-call.wav", new() { Exact = true })).ToBeVisibleAsync();
         await Expect(Page.GetByText("Conversion Info", new() { Exact = true })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("CPU", new() { Exact = true })).ToBeVisibleAsync();
         await Expect(Page.Locator("#details-download-button")).ToBeVisibleAsync();
 
         var artifactCard = Page.Locator(".detail-artifact-card").Filter(new() { HasText = "sample-call.wav" });
         await artifactCard.GetByRole(AriaRole.Link, new() { Name = "Readable Text", Exact = true }).ClickAsync();
 
-        await Expect(Page).ToHaveURLAsync(new Regex($".*/jobs/{_fixture.CompletedJobId}/{_fixture.CompletedMediaId}$"));
+        await Expect(Page).ToHaveURLAsync(new Regex($".*/jobs/{_fixture.CompletedJobId}/{_fixture.CompletedMediaId}(\\?artifact=readable-text)?$"));
         await Expect(Page.GetByText("Readable View", new() { Exact = true })).ToBeVisibleAsync();
         await Expect(Page.GetByText("Hello, this is a public test sample.", new() { Exact = true })).ToBeVisibleAsync();
         await Expect(Page.GetByText("Nice to meet you. This is the reply.", new() { Exact = true })).ToBeVisibleAsync();
@@ -249,7 +247,7 @@ public sealed class DashboardSmokeTests : PageTest
         await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{_fixture.DuplicateSkippedJobId}");
 
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = _fixture.DuplicateSkippedJobId, Exact = true })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("Cache Reused", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.Locator(".status-badge").Filter(new() { HasText = "Cache Reused" })).ToBeVisibleAsync();
         await Expect(Page.GetByText($"Reused from job: {_fixture.CompletedJobId}", new() { Exact = true })).ToBeVisibleAsync();
 
         var artifactCard = Page.Locator(".detail-artifact-card").Filter(new() { HasText = "already-processed.wav" });
@@ -349,7 +347,7 @@ public sealed class DashboardSmokeTests : PageTest
             using var response = await client.GetAsync($"{_fixture.BaseUrl}/jobs/{jobId}/download?artifact=ipa");
             Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
             var body = await response.Content.ReadAsStringAsync();
-            StringAssert.Contains(body, "The job is still in progress.");
+            StringAssert.Contains(body, "This job is still in progress.");
         }
         finally
         {

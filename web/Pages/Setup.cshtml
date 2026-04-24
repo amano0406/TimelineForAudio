@@ -123,7 +123,16 @@
                 <div class="setup-header-row">
                     <div class="setup-section-header">
                         <p class="setup-eyebrow">@L("setup.step_label") 2</p>
-                        <h2 class="section-title">@L("setup.compute.title")</h2>
+                        <div class="flex items-center gap-2">
+                            <h2 class="section-title">@L("setup.compute.title")</h2>
+                            <button type="button"
+                                    class="btn-table"
+                                    id="setup-gpu-help-open"
+                                    aria-label="@L("settings.compute_mode.help_label")"
+                                    title="@L("settings.compute_mode.help_label")">
+                                @L("common.help")
+                            </button>
+                        </div>
                     </div>
                     <span class="badge-chip">@string.Format(L("settings.compute_mode.recommended"), recommendedComputeLabel)</span>
                 </div>
@@ -304,3 +313,56 @@
         }
     </section>
 </section>
+
+<div id="setup-gpu-help-modal"
+     class="modal-shell hidden"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="setup-gpu-help-modal-title">
+    <div class="modal-backdrop" data-setup-gpu-help-close="true"></div>
+    <div class="modal-card">
+        <div class="space-y-4">
+            <h2 class="section-title" id="setup-gpu-help-modal-title">@L("settings.compute_mode.help_title")</h2>
+            <p class="page-description !mt-0">@L("settings.compute_mode.help_intro")</p>
+            <ul class="space-y-2 text-sm text-slate-600 dark:text-slate-300">
+                <li class="modal-list-item">@L("settings.compute_mode.help_req_nvidia")</li>
+                <li class="modal-list-item">@L("settings.compute_mode.help_req_docker")</li>
+                <li class="modal-list-item">@L("settings.compute_mode.help_req_high")</li>
+            </ul>
+        </div>
+        <div class="mt-6 flex flex-wrap justify-end gap-3">
+            <button type="button" class="btn-secondary" id="setup-gpu-help-close">@L("common.cancel")</button>
+        </div>
+    </div>
+</div>
+
+@section Scripts
+{
+    <script>
+        (() => {
+            const gpuHelpOpen = document.getElementById("setup-gpu-help-open");
+            const gpuHelpModal = document.getElementById("setup-gpu-help-modal");
+            const gpuHelpClose = document.getElementById("setup-gpu-help-close");
+            if (!gpuHelpModal) {
+                return;
+            }
+
+            const closeGpuHelpModal = () => {
+                gpuHelpModal.classList.add("hidden");
+            };
+
+            gpuHelpOpen?.addEventListener("click", () => {
+                gpuHelpModal.classList.remove("hidden");
+            });
+            gpuHelpClose?.addEventListener("click", closeGpuHelpModal);
+            gpuHelpModal.querySelectorAll("[data-setup-gpu-help-close='true']").forEach((element) => {
+                element.addEventListener("click", closeGpuHelpModal);
+            });
+            document.addEventListener("keydown", (event) => {
+                if (event.key === "Escape" && !gpuHelpModal.classList.contains("hidden")) {
+                    closeGpuHelpModal();
+                }
+            });
+        })();
+    </script>
+}

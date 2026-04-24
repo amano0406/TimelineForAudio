@@ -2,11 +2,11 @@
 
 Turn local audio files into IPA-first markdown packages that are easier to review locally and easier to hand to ChatGPT or other LLM tools.
 
-[Japanese README](README.ja.md) | [Sample Timeline](docs/examples/sample-timeline.en.md) | [Third-Party Notices](THIRD_PARTY_NOTICES.md) | [Model and Runtime Notes](MODEL_AND_RUNTIME_NOTES.md) | [Security And Safety](docs/SECURITY_AND_SAFETY.md) | [Release Checklist](docs/PUBLIC_RELEASE_CHECKLIST.md) | [License](LICENSE)
+[Japanese README](README.ja.md) | [Sample Artifacts](docs/examples/sample-timeline.en.md) | [Third-Party Notices](THIRD_PARTY_NOTICES.md) | [Model and Runtime Notes](MODEL_AND_RUNTIME_NOTES.md) | [Security And Safety](docs/SECURITY_AND_SAFETY.md) | [Release Checklist](docs/PUBLIC_RELEASE_CHECKLIST.md) | [License](LICENSE)
 
 ## Public Release Status
 
-The current public release line is `TimelineForAudio v0.4.0 Tech Preview`.
+The current public release line is `TimelineForAudio v0.4.1 Tech Preview`.
 
 Current public contract:
 
@@ -141,7 +141,7 @@ Windows:
 .\start.bat
 ```
 
-This is the primary supported path for the `v0.4.0` public release line.
+This is the primary supported path for the `v0.4.1` public release line.
 
 The web UI now builds Tailwind CSS and TW Elements assets locally inside Docker. It no longer depends on the Tailwind CDN at runtime.
 
@@ -151,7 +151,7 @@ macOS:
 ./start.command
 ```
 
-This path is available as an experimental source-based setup in `v0.4.0`. It is not the baseline support contract for the current public release line.
+This path is available as an experimental source-based setup in `v0.4.1`. It is not the baseline support contract for the current public release line.
 
 Then:
 

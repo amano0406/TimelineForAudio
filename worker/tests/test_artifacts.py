@@ -16,6 +16,7 @@ class ArtifactsTests(unittest.TestCase):
             rendered = render_readable_text(
                 output_path=output_path,
                 source_info={
+                    "original_path": r"C:\Users\amano\Videos\2026-04-01 12-55-07.wav",
                     "display_name": "2026-04-01 12-55-07.wav",
                     "language_hint": "ja,en",
                 },
@@ -41,6 +42,7 @@ class ArtifactsTests(unittest.TestCase):
             self.assertTrue(output_path.exists())
             self.assertIn("# Readable Text", rendered)
             self.assertIn("- File: `2026-04-01 12-55-07`", rendered)
+            self.assertIn("- Source File: `2026-04-01 12-55-07.wav`", rendered)
             self.assertIn("- Speakers: `2`", rendered)
             self.assertIn("- Language Hint: `ja,en`", rendered)
             self.assertNotIn("Speaker Count Status", rendered)
@@ -83,6 +85,7 @@ class ArtifactsTests(unittest.TestCase):
             rendered = render_ipa(
                 output_path=output_path,
                 source_info={
+                    "original_path": r"C:\Users\amano\Videos\2026-04-01 12-55-07.wav",
                     "display_name": "2026-04-01 12-55-07.wav",
                     "language_hint": "ja,en",
                 },
@@ -103,6 +106,7 @@ class ArtifactsTests(unittest.TestCase):
             self.assertTrue(output_path.exists())
             self.assertIn("# IPA", rendered)
             self.assertIn("- File: `2026-04-01 12-55-07`", rendered)
+            self.assertIn("- Source File: `2026-04-01 12-55-07.wav`", rendered)
             self.assertIn("- Speakers: `1`", rendered)
             self.assertIn("- Language Hint: `ja,en`", rendered)
             self.assertNotIn("- Backend:", rendered)

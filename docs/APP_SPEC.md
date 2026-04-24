@@ -4,6 +4,8 @@
 
 `TimelineForAudio` converts local audio files into IPA-first outputs that can be reviewed locally or handed to ChatGPT or another LLM.
 
+The current product persona is tracked separately in `docs/PERSONA.ja.md`.
+
 The system prioritizes:
 
 - simple input selection for the user

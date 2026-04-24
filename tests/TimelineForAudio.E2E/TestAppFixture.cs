@@ -420,6 +420,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
             Path.Combine(mediaRoot, "readable-text", "Readable Text.md"),
             BuildReadableTextMarkdown(
                 "2026-03-24 09-00-00",
+                fileName,
                 2,
                 "en",
                 ("00:00:11.179 - 00:00:26.000", "SPEAKER_00", "Hello, this is a public test sample."),
@@ -429,6 +430,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
             Path.Combine(mediaRoot, "ipa", "IPA.md"),
             BuildIpaMarkdown(
                 "2026-03-24 09-00-00",
+                fileName,
                 2,
                 "en",
                 ("00:00:11.179 - 00:00:26.000", "SPEAKER_00", "/həˈloʊ ðɪs ɪz ə ˈpʌblɪk tɛst ˈsæmpəl/"),
@@ -660,6 +662,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
             Path.Combine(mediaRoot, "readable-text", "Readable Text.md"),
             BuildReadableTextMarkdown(
                 "2026-03-24 10-00-00",
+                "good-call.wav",
                 1,
                 "en",
                 ("00:00:05.000 - 00:01:10.000", "SPEAKER_00", "This is the successful part of a partially failed run."),
@@ -668,6 +671,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
             Path.Combine(mediaRoot, "ipa", "IPA.md"),
             BuildIpaMarkdown(
                 "2026-03-24 10-00-00",
+                "good-call.wav",
                 1,
                 "en",
                 ("00:00:05.000 - 00:01:10.000", "SPEAKER_00", "/ðɪs ɪz ðə səkˈsɛsfəl pɑːrt əv ə ˈpɑːrʃəli feɪld rʌn/"),
@@ -1265,6 +1269,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
 
     private static string BuildReadableTextMarkdown(
         string fileLabel,
+        string sourceFileName,
         int speakers,
         string languageHint,
         params (string Time, string Speaker, string Text)[] turns)
@@ -1273,6 +1278,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
         builder.AppendLine("# Readable Text");
         builder.AppendLine();
         builder.AppendLine($"- File: `{fileLabel}`");
+        builder.AppendLine($"- Source File: `{sourceFileName}`");
         builder.AppendLine($"- Speakers: `{speakers}`");
         builder.AppendLine($"- Language Hint: `{languageHint}`");
         builder.AppendLine();
@@ -1292,6 +1298,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
 
     private static string BuildIpaMarkdown(
         string fileLabel,
+        string sourceFileName,
         int speakers,
         string languageHint,
         params (string Time, string Speaker, string Ipa)[] turns)
@@ -1300,6 +1307,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
         builder.AppendLine("# IPA");
         builder.AppendLine();
         builder.AppendLine($"- File: `{fileLabel}`");
+        builder.AppendLine($"- Source File: `{sourceFileName}`");
         builder.AppendLine($"- Speakers: `{speakers}`");
         builder.AppendLine($"- Language Hint: `{languageHint}`");
         builder.AppendLine();

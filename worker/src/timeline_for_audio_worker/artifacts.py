@@ -68,6 +68,25 @@ def _source_file_label(source_info: dict[str, Any]) -> str:
     return "audio"
 
 
+def _original_source_file_name(source_info: dict[str, Any]) -> str | None:
+    candidates = [
+        source_info.get("original_path"),
+        source_info.get("file_name"),
+        source_info.get("display_name"),
+    ]
+    for candidate in candidates:
+        text = str(candidate or "").strip()
+        if not text:
+            continue
+        normalized = text.replace("\\", "/").rstrip("/")
+        if not normalized:
+            continue
+        name = normalized.rsplit("/", 1)[-1].strip()
+        if name:
+            return name
+    return None
+
+
 def _language_hint(source_info: dict[str, Any], transcript_payload: dict[str, Any]) -> str:
     return (
         str(source_info.get("language_hint") or "").strip()
@@ -95,10 +114,12 @@ def render_readable_text(
     speaker_count_status: str | None = None,
     speaker_count_note: str | None = None,
 ) -> str:
+    source_file_name = _original_source_file_name(source_info)
     lines = [
         "# Readable Text",
         "",
         f"- File: `{_source_file_label(source_info)}`",
+        *([f"- Source File: `{source_file_name}`"] if source_file_name else []),
         f"- Speakers: `{speaker_count if speaker_count is not None else _speaker_count(turns)}`",
         f"- Language Hint: `{str(source_info.get('language_hint') or 'und').strip() or 'und'}`",
         "",
@@ -142,10 +163,12 @@ def render_ipa(
     speaker_count_status: str | None = None,
     speaker_count_note: str | None = None,
 ) -> str:
+    source_file_name = _original_source_file_name(source_info)
     lines = [
         "# IPA",
         "",
         f"- File: `{_source_file_label(source_info)}`",
+        *([f"- Source File: `{source_file_name}`"] if source_file_name else []),
         f"- Speakers: `{speaker_count if speaker_count is not None else _speaker_count(turns)}`",
         f"- Language Hint: `{str(source_info.get('language_hint') or 'und').strip() or 'und'}`",
         "",

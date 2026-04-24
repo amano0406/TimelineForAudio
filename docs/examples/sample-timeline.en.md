@@ -1,51 +1,49 @@
-# Public Sample Timeline
+# Public Sample Artifacts
 
-This sample is based on a real generated timeline, with names, organizations, and potentially sensitive content replaced by placeholders.
+This sample is based on real generated artifacts, with names, organizations, and potentially sensitive content replaced by placeholders.
 
 ```md
-# Audio Timeline
+# IPA
 
-- Source: `/shared/inputs/example/customer-followup-call.wav`
-- Audio ID: `2026-03-09-12-15-56-example`
-- Duration: `70.417s`
-- Model: `medium`
-- Transcript source: `pass2`
-- Supplemental context configured: `true`
-- Diarization used: `true`
-
-## Summary
-
+- File: `2026-03-09 12-15-56`
+- Source File: `customer-followup-call.wav`
 - Speakers: `2`
-- Silence seconds: `3.284`
-- Loudness LUFS: `-18.7`
-- Estimated units/min: `169.2`
-- Median pitch Hz: `188.4`
-- Overlap segments: `1`
-- Interruptions: `0`
-- Speaker confidence mean ratio: `0.91`
-- Diarization quality: `good`
+- Language Hint: `en`
 
-## 00:00:11.179 - 00:00:57.194
+## Turn 001
 
-- Speaker: `Speaker A`
-- Text: Hello, this is [PERSON_A]. I am following up about the return request for [ITEM_GROUP_A]. I would like to confirm why the expected materials were missing from the package.
-- Pause before: `0.000s`
-- Overlap with previous: `0.000s`
-- Estimated units/min: `161.0`
+Time: `00:00:11.179 - 00:00:57.194`
+Speaker: `SPEAKER_00`
+IPA: `/həˈloʊ ðɪs ɪz .../`
 
-## 00:00:57.174 - 00:01:03.400
+## Turn 002
 
-- Speaker: `Speaker B`
-- Text: Understood. Sorry about that.
-- Pause before: `0.000s`
-- Overlap with previous: `0.020s`
-- Estimated units/min: `38.5`
+Time: `00:00:57.174 - 00:01:03.400`
+Speaker: `SPEAKER_01`
+IPA: `/ˌʌndɚˈstʊd .../`
+```
+
+```md
+# Readable Text
+
+- File: `2026-03-09 12-15-56`
+- Source File: `customer-followup-call.wav`
+- Speakers: `2`
+- Language Hint: `en`
+
+### Turn 001
+Time: `00:00:11.179 - 00:00:57.194`
+Speaker: `SPEAKER_00`
+Text: Hello, this is [PERSON_A]. I am following up about the return request for [ITEM_GROUP_A]. I would like to confirm why the expected materials were missing from the package.
+
+### Turn 002
+Time: `00:00:57.174 - 00:01:03.400`
+Speaker: `SPEAKER_01`
+Text: Understood. Sorry about that.
 ```
 
 Notes:
 
-- `timelines/*.md` keeps the timestamped timeline view.
-- `pass1-transcripts/*.md` preserves the first ASR pass.
-- `pass2-transcripts/*.md` is the final transcript used by the timeline.
-- `context-docs/*.txt` keeps the merged plain-text context injected into pass2.
-- `audio-feature-summaries/*.md` carries pause, loudness, pitch, overlap, and related summaries.
+- IPA ZIP contains `README.html`, `CONVERSION_INFO.md`, and `ipa/<captured-datetime>.md`.
+- Readable Text ZIP contains `README.html`, `CONVERSION_INFO.md`, and `readable-text/<captured-datetime>.md`.
+- The artifact markdown keeps the original source file name in `Source File`.
