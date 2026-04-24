@@ -666,6 +666,48 @@ code {
   gap: 0.65rem;
 }
 
+.artifact-switch-list {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.artifact-switch-item {
+  display: grid;
+  gap: 0.9rem;
+  border: 1px solid var(--app-border);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.74);
+  padding: 1rem;
+}
+
+.artifact-switch-item-current {
+  border-color: rgba(59, 113, 202, 0.32);
+  background: rgba(235, 243, 255, 0.72);
+}
+
+.artifact-switch-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.artifact-switch-title {
+  overflow-wrap: anywhere;
+  color: var(--app-primary-strong);
+  font-size: 0.96rem;
+  font-weight: 650;
+}
+
+.artifact-switch-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.7rem;
+  margin-top: 0.45rem;
+  color: var(--app-text-muted);
+  font-size: 0.82rem;
+}
+
 .empty-state {
   border: 1px dashed rgba(148, 163, 184, 0.45);
   border-radius: 20px;
@@ -1064,6 +1106,7 @@ code {
   .job-list-header,
   .job-card-header,
   .detail-artifact-header,
+  .artifact-switch-header,
   .job-card-progress-header,
   .job-card-fact {
     align-items: flex-start;

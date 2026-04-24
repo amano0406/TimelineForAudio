@@ -18,6 +18,8 @@ public sealed class MediaModel(RunStore runStore) : PageModel
     public int? SpeakerCount { get; private set; }
     public string? SpeakerCountStatus { get; private set; }
     public string? SpeakerCountNote { get; private set; }
+    public int PreviewGroupCount { get; private set; }
+    public IReadOnlyList<MediaArtifactListItem> JobArtifacts { get; private set; } = [];
     public IReadOnlyList<ArtifactConversationBlock> PreviewBlocks { get; private set; } = [];
 
     public async Task<IActionResult> OnGetAsync(
@@ -26,7 +28,14 @@ public sealed class MediaModel(RunStore runStore) : PageModel
         string? artifact,
         CancellationToken cancellationToken)
     {
-        var mediaItem = await runStore.GetMediaArtifactItemAsync(jobId, mediaId, cancellationToken);
+        var run = await runStore.GetRunDetailsAsync(jobId, cancellationToken);
+        if (run is null)
+        {
+            return NotFound();
+        }
+
+        var mediaItem = run.ArtifactItems.FirstOrDefault(item =>
+            string.Equals(item.MediaId, mediaId, StringComparison.OrdinalIgnoreCase));
         if (mediaItem is null)
         {
             return NotFound();
@@ -51,6 +60,19 @@ public sealed class MediaModel(RunStore runStore) : PageModel
         SpeakerCountStatus = mediaItem.SpeakerCountStatus;
         SpeakerCountNote = mediaItem.SpeakerCountNote;
         PreviewBlocks = BuildPreviewBlocks(artifactText, selectedArtifact);
+        PreviewGroupCount = PreviewBlocks.Count;
+        JobArtifacts = run.ArtifactItems
+            .Select(item => new MediaArtifactListItem
+            {
+                MediaId = item.MediaId,
+                FileName = string.IsNullOrWhiteSpace(item.FileName) ? item.MediaId : item.FileName,
+                Status = item.Status,
+                SpeakerCount = item.SpeakerCount,
+                HasIpaArtifact = !string.IsNullOrWhiteSpace(item.IpaPath),
+                HasReadableTextArtifact = !string.IsNullOrWhiteSpace(item.ReadableTextPath),
+                IsCurrent = string.Equals(item.MediaId, mediaId, StringComparison.OrdinalIgnoreCase),
+            })
+            .ToList();
         return Page();
     }
 
@@ -220,6 +242,17 @@ public sealed class MediaModel(RunStore runStore) : PageModel
         public string Content { get; set; } = "";
         public string Alignment { get; set; } = "left";
         public bool IsIpa { get; set; }
+    }
+
+    public sealed class MediaArtifactListItem
+    {
+        public string MediaId { get; set; } = "";
+        public string FileName { get; set; } = "";
+        public string Status { get; set; } = "";
+        public int? SpeakerCount { get; set; }
+        public bool HasIpaArtifact { get; set; }
+        public bool HasReadableTextArtifact { get; set; }
+        public bool IsCurrent { get; set; }
     }
 
     private sealed class ParsedArtifactTurn
