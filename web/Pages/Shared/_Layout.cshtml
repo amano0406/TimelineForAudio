@@ -4,6 +4,9 @@
 @using TimelineForAudio.Web.Models
 @{
     var lang = LanguageService.Resolve(Context.Request);
+    var currentLanguage = LanguageService.GetSupportedLanguages()
+        .FirstOrDefault(item => string.Equals(item.Code, lang, StringComparison.OrdinalIgnoreCase))?.NativeName
+        ?? lang;
     var setupState = Context.Items["SetupState"] as SetupState;
     var settingsReady = setupState?.IsReady ?? false;
     var hasJobs = setupState?.HasJobs ?? false;
@@ -52,6 +55,23 @@
                         <span class="brand-wordmark-main">Timeline</span>
                         <span class="brand-wordmark-sub">For Audio</span>
                     </a>
+                    <section class="sidebar-status-card">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="@(settingsReady ? "status-pill status-pill-ready" : "status-pill status-pill-blocked")">
+                                @(settingsReady ? L("layout.ready") : L("layout.setup_required"))
+                            </span>
+                        </div>
+                        <dl class="sidebar-status-meta">
+                            <div class="sidebar-status-row">
+                                <dt>@L("layout.language")</dt>
+                                <dd>@currentLanguage</dd>
+                            </div>
+                            <div class="sidebar-status-row">
+                                <dt>@L("layout.jobs")</dt>
+                                <dd>@(hasJobs ? L("layout.ready") : "-")</dd>
+                            </div>
+                        </dl>
+                    </section>
                 </div>
 
                 <nav class="space-y-2">

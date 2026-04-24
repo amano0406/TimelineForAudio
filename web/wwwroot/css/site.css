@@ -121,6 +121,42 @@ code {
   align-items: flex-start;
 }
 
+.sidebar-status-card {
+  display: grid;
+  gap: 0.9rem;
+  border: 1px solid var(--app-border);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 1rem;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+}
+
+.sidebar-status-meta {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+}
+
+.sidebar-status-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.sidebar-status-row dt {
+  color: var(--app-text-muted);
+  font-size: 0.8rem;
+}
+
+.sidebar-status-row dd {
+  margin: 0;
+  color: var(--app-primary-strong);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: right;
+}
+
 .app-content {
   min-width: 0;
 }
