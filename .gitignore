@@ -6,6 +6,7 @@ __pycache__/
 .pytest_cache/
 /runs/
 .env
+node_modules/
 app-data/
 uploads/
 web/bin/

@@ -143,6 +143,8 @@ Windows:
 
 This is the primary supported path for the `v0.4.0` public release line.
 
+The web UI now builds Tailwind CSS and TW Elements assets locally inside Docker. It no longer depends on the Tailwind CDN at runtime.
+
 macOS:
 
 ```bash
