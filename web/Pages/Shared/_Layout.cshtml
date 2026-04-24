@@ -9,9 +9,6 @@
     var currentSettings = await SettingsStore.LoadAsync(Context.RequestAborted);
     var themeMode = ThemeModes.Normalize(currentSettings.ThemeMode);
     var themeRootClass = themeMode == ThemeModes.Dark ? "dark" : string.Empty;
-    var currentLanguage = LanguageService.GetSupportedLanguages()
-        .FirstOrDefault(item => string.Equals(item.Code, lang, StringComparison.OrdinalIgnoreCase))?.NativeName
-        ?? lang;
     var setupState = Context.Items["SetupState"] as SetupState;
     var settingsReady = setupState?.IsReady ?? false;
     var hasJobs = setupState?.HasJobs ?? false;
@@ -88,23 +85,6 @@
                         <span class="brand-wordmark-main">Timeline</span>
                         <span class="brand-wordmark-sub">For Audio</span>
                     </a>
-                    <section class="side-section">
-                        <div class="flex flex-wrap items-center gap-2">
-                            <span class="@(settingsReady ? "status-pill status-pill-ready" : "status-pill status-pill-blocked")">
-                                @(settingsReady ? L("layout.ready") : L("layout.setup_required"))
-                            </span>
-                        </div>
-                        <div class="sidebar-meta-strip" aria-label="@L("layout.settings")">
-                            <span class="sidebar-meta-item">
-                                <span class="sidebar-meta-label">@L("layout.language")</span>
-                                <span class="sidebar-meta-value">@currentLanguage</span>
-                            </span>
-                            <span class="sidebar-meta-item">
-                                <span class="sidebar-meta-label">@L("layout.jobs")</span>
-                                <span class="sidebar-meta-value">@(hasJobs ? L("layout.ready") : "-")</span>
-                            </span>
-                        </div>
-                    </section>
                 </div>
 
                 <nav class="sidebar-nav">
