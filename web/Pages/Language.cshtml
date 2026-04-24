@@ -32,14 +32,14 @@
     <section class="panel max-w-xl space-y-5">
         <form method="post" class="space-y-5">
             <div class="space-y-2">
-                <label class="text-sm font-medium text-slate-900" for="language-select">@L("language.form.label")</label>
+                <label class="text-sm font-medium text-slate-900 dark:text-slate-100" for="language-select">@L("language.form.label")</label>
                 <select id="language-select" asp-for="UiLanguage" class="form-input w-full">
                     @foreach (var item in languages)
                     {
                         <option value="@item.Code">@item.NativeName</option>
                     }
                 </select>
-                <p class="text-xs text-slate-500">@L("language.form.hint")</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400">@L("language.form.hint")</p>
             </div>
 
             <div class="flex flex-wrap items-center gap-3">

@@ -263,25 +263,25 @@
             {
                 <div class="surface-block surface-block-muted">
                     <h2 class="section-title">@L("details.current_processing")</h2>
-                    <dl class="mt-4 grid gap-4 text-sm text-slate-700">
+                    <dl class="mt-4 grid gap-4 text-sm text-slate-700 dark:text-slate-300">
                         <div>
-                            <dt class="text-slate-500">@L("details.current_file")</dt>
+                            <dt class="text-slate-500 dark:text-slate-400">@L("details.current_file")</dt>
                             <dd>@(string.IsNullOrWhiteSpace(status?.CurrentMedia) ? "-" : status?.CurrentMedia)</dd>
                         </div>
                         <div>
-                            <dt class="text-slate-500">@L("details.current_file_elapsed")</dt>
+                            <dt class="text-slate-500 dark:text-slate-400">@L("details.current_file_elapsed")</dt>
                             <dd>@currentFileElapsed</dd>
                         </div>
                         <div>
-                            <dt class="text-slate-500">@L("details.message")</dt>
+                            <dt class="text-slate-500 dark:text-slate-400">@L("details.message")</dt>
                             <dd>@StatusMessageLabel(status?.Message)</dd>
                         </div>
                         <div>
-                            <dt class="text-slate-500">@L("details.processed_duration")</dt>
+                            <dt class="text-slate-500 dark:text-slate-400">@L("details.processed_duration")</dt>
                             <dd>@FormatDurationFriendly(status?.ProcessedDurationSec)</dd>
                         </div>
                         <div>
-                            <dt class="text-slate-500">@L("details.total_duration")</dt>
+                            <dt class="text-slate-500 dark:text-slate-400">@L("details.total_duration")</dt>
                             <dd>@FormatDurationFriendly(status?.TotalDurationSec)</dd>
                         </div>
                     </dl>

@@ -128,8 +128,8 @@
                     <span class="badge-chip">@string.Format(L("settings.compute_mode.recommended"), recommendedComputeLabel)</span>
                 </div>
 
-                <div class="surface-block surface-block-muted text-sm text-slate-700">
-                    <div class="font-medium text-slate-900">
+                <div class="surface-block surface-block-muted text-sm text-slate-700 dark:text-slate-300">
+                    <div class="font-medium text-slate-900 dark:text-slate-100">
                         @(gpuReady
                             ? string.Format(L("settings.compute_mode.gpu_ready"), detectedGpuLabel)
                             : L("settings.compute_mode.gpu_unavailable_note"))
@@ -141,10 +141,10 @@
                         <input asp-for="ComputeMode"
                                type="radio"
                                value="cpu"
-                               class="mt-1 h-4 w-4 border-slate-300 text-slate-900" />
+                               class="mt-1 h-4 w-4 border-slate-300 text-slate-900 dark:border-slate-600 dark:text-slate-100" />
                         <span>
-                            <span class="block font-medium text-slate-900">@L("settings.compute_mode.cpu")</span>
-                            <span class="block text-xs text-slate-500">@L("settings.compute_mode.cpu_note")</span>
+                            <span class="block font-medium text-slate-900 dark:text-slate-100">@L("settings.compute_mode.cpu")</span>
+                            <span class="block text-xs text-slate-500 dark:text-slate-400">@L("settings.compute_mode.cpu_note")</span>
                         </span>
                     </label>
                     <label class="setup-choice @(!gpuReady ? "opacity-60 cursor-not-allowed" : "")">
@@ -152,10 +152,10 @@
                                type="radio"
                                value="gpu"
                                disabled="@(!gpuReady)"
-                               class="mt-1 h-4 w-4 border-slate-300 text-slate-900" />
+                               class="mt-1 h-4 w-4 border-slate-300 text-slate-900 dark:border-slate-600 dark:text-slate-100" />
                         <span>
-                            <span class="block font-medium text-slate-900">@L("settings.compute_mode.gpu")</span>
-                            <span class="block text-xs text-slate-500">@L("settings.compute_mode.gpu_note")</span>
+                            <span class="block font-medium text-slate-900 dark:text-slate-100">@L("settings.compute_mode.gpu")</span>
+                            <span class="block text-xs text-slate-500 dark:text-slate-400">@L("settings.compute_mode.gpu_note")</span>
                         </span>
                     </label>
                 </div>
@@ -173,17 +173,17 @@
                 <div class="setup-section-header">
                     <p class="setup-eyebrow">@L("setup.step_label") 3</p>
                     <h2 class="section-title">@L("setup.account.title")</h2>
-                    <p class="text-sm leading-7 text-slate-600">@L("setup.account.description")</p>
+                    <p class="text-sm leading-7 text-slate-600 dark:text-slate-300">@L("setup.account.description")</p>
                 </div>
 
                 <div class="grid gap-3 md:grid-cols-2">
                     <button class="setup-choice-button" type="submit" name="answer" value="yes">
                         <span class="block font-medium">@L("setup.account.yes")</span>
-                        <span class="block text-xs text-slate-500">@L("setup.account.yes_note")</span>
+                        <span class="block text-xs text-slate-500 dark:text-slate-400">@L("setup.account.yes_note")</span>
                     </button>
                     <button class="setup-choice-button" type="submit" name="answer" value="no">
                         <span class="block font-medium">@L("setup.account.no")</span>
-                        <span class="block text-xs text-slate-500">@L("setup.account.no_note")</span>
+                        <span class="block text-xs text-slate-500 dark:text-slate-400">@L("setup.account.no_note")</span>
                     </button>
                 </div>
 
@@ -199,7 +199,7 @@
                 <div class="setup-section-header">
                     <p class="setup-eyebrow">@L("setup.step_label") 3</p>
                     <h2 class="section-title">@L("setup.register.title")</h2>
-                    <p class="text-sm leading-7 text-slate-600">@L("setup.register.description")</p>
+                    <p class="text-sm leading-7 text-slate-600 dark:text-slate-300">@L("setup.register.description")</p>
                 </div>
 
                 <a class="btn-primary w-fit"
@@ -222,7 +222,7 @@
                 <div class="setup-section-header">
                     <p class="setup-eyebrow">@L("setup.step_label") 4</p>
                     <h2 class="section-title">@L("setup.token.title")</h2>
-                    <p class="text-sm leading-7 text-slate-600">@L("setup.token.description")</p>
+                    <p class="text-sm leading-7 text-slate-600 dark:text-slate-300">@L("setup.token.description")</p>
                 </div>
 
                 <ol class="setup-guide-list">
@@ -267,7 +267,7 @@
                 <div class="setup-section-header">
                     <p class="setup-eyebrow">@L("setup.step_label") 5</p>
                     <h2 class="section-title">@L("setup.approval.title")</h2>
-                    <p class="text-sm leading-7 text-slate-600">@L("setup.approval.description")</p>
+                    <p class="text-sm leading-7 text-slate-600 dark:text-slate-300">@L("setup.approval.description")</p>
                 </div>
 
                 <a class="btn-primary w-fit"
@@ -290,7 +290,7 @@
                 <div class="setup-section-header">
                     <p class="setup-eyebrow">@L("setup.complete.eyebrow")</p>
                     <h2 class="section-title">@L("setup.complete.title")</h2>
-                    <p class="text-sm leading-7 text-slate-600">@L("setup.complete.description")</p>
+                    <p class="text-sm leading-7 text-slate-600 dark:text-slate-300">@L("setup.complete.description")</p>
                 </div>
 
                 <div class="surface-block setup-success-note">

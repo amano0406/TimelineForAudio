@@ -277,7 +277,7 @@
                             <div class="flex items-center justify-between gap-3">
                                 <div class="settings-label">@L("settings.token")</div>
                                 <span id="token-status-label"
-                                      class="text-xs font-medium text-slate-500 @((Model.HasSavedTokenConfigured && string.IsNullOrWhiteSpace(Model.Token)) ? string.Empty : "hidden")">@L("settings.saved")</span>
+                                      class="text-xs font-medium text-slate-500 dark:text-slate-400 @((Model.HasSavedTokenConfigured && string.IsNullOrWhiteSpace(Model.Token)) ? string.Empty : "hidden")">@L("settings.saved")</span>
                             </div>
                             <input id="token-input"
                                    name="Token"
@@ -291,9 +291,9 @@
                                    data-enter-label="@L("settings.token_enter")" />
                             <div id="token-preview-panel" class="settings-token-summary">
                                 <code id="token-preview-value"
-                                      class="text-sm font-medium text-slate-900 @(string.IsNullOrWhiteSpace(activeTokenPreview) ? "hidden" : string.Empty)">@activeTokenPreview</code>
+                                      class="text-sm font-medium text-slate-900 dark:text-slate-100 @(string.IsNullOrWhiteSpace(activeTokenPreview) ? "hidden" : string.Empty)">@activeTokenPreview</code>
                                 <span id="token-preview-empty"
-                                      class="text-sm text-slate-500 @(!string.IsNullOrWhiteSpace(activeTokenPreview) ? "hidden" : string.Empty)">@L("settings.connection.token_state.missing")</span>
+                                      class="text-sm text-slate-500 dark:text-slate-400 @(!string.IsNullOrWhiteSpace(activeTokenPreview) ? "hidden" : string.Empty)">@L("settings.connection.token_state.missing")</span>
                                 <button id="token-change-button" type="button" class="btn-secondary">@tokenActionLabel</button>
                             </div>
                         </div>
@@ -331,8 +331,8 @@
                         <h2 class="section-title">@L("settings.models.details_title")</h2>
                         <p class="page-description compact">@L("settings.models.details_description")</p>
                     </div>
-                    <span class="text-sm text-slate-500 group-open:hidden">@L("settings.models.show")</span>
-                    <span class="text-sm text-slate-500 hidden group-open:inline">@L("settings.models.hide")</span>
+                    <span class="text-sm text-slate-500 dark:text-slate-400 group-open:hidden">@L("settings.models.show")</span>
+                    <span class="text-sm text-slate-500 dark:text-slate-400 hidden group-open:inline">@L("settings.models.hide")</span>
                 </summary>
                 <div class="settings-row-detail">
                     <div class="table-shell">
@@ -349,7 +349,7 @@
                                 @foreach (var gatedModel in Model.ModelStatuses)
                                 {
                                     <tr>
-                                        <td class="font-medium text-slate-900">
+                                        <td class="font-medium text-slate-900 dark:text-slate-100">
                                             @if (!string.IsNullOrWhiteSpace(gatedModel.ModelUrl))
                                             {
                                                 <a class="hover:underline" href="@gatedModel.ModelUrl" target="_blank" rel="noreferrer">
@@ -505,7 +505,7 @@
                        class="form-input"
                        autocomplete="off"
                        spellcheck="false" />
-                <p id="settings-confirm-modal-error" class="text-sm text-rose-700 hidden"></p>
+                <p id="settings-confirm-modal-error" class="text-sm text-rose-700 dark:text-rose-300 hidden"></p>
             </div>
         </div>
         <div class="mt-6 flex flex-wrap justify-end gap-3">

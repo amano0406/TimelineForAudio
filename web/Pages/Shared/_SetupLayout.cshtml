@@ -6,10 +6,11 @@
     var lang = LanguageService.Resolve(Context.Request);
     var currentSettings = await SettingsStore.LoadAsync(Context.RequestAborted);
     var themeMode = ThemeModes.Normalize(currentSettings.ThemeMode);
+    var themeRootClass = themeMode == ThemeModes.Dark ? "dark" : string.Empty;
     var themeColor = themeMode == ThemeModes.Dark ? "#0f172a" : "#ffffff";
 }
 <!DOCTYPE html>
-<html lang="@lang" data-app-theme="@themeMode">
+<html lang="@lang" data-app-theme="@themeMode" class="@themeRootClass">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -19,6 +20,33 @@
     <link rel="icon" type="image/x-icon" href="~/favicon.ico" asp-append-version="true" />
     <link rel="apple-touch-icon" href="~/apple-touch-icon.png" asp-append-version="true" />
     <link rel="manifest" href="~/manifest.webmanifest" asp-append-version="true" />
+    <script>
+        (() => {
+            const root = document.documentElement;
+            const mode = root.dataset.appTheme || "system";
+            const apply = (isDark) => root.classList.toggle("dark", isDark);
+
+            if (mode === "dark") {
+                apply(true);
+                return;
+            }
+
+            if (mode === "light") {
+                apply(false);
+                return;
+            }
+
+            const media = window.matchMedia("(prefers-color-scheme: dark)");
+            const sync = () => apply(media.matches);
+            sync();
+
+            if (typeof media.addEventListener === "function") {
+                media.addEventListener("change", sync);
+            } else if (typeof media.addListener === "function") {
+                media.addListener(sync);
+            }
+        })();
+    </script>
     <link rel="stylesheet" href="~/css/tailwind.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>

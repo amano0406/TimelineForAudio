@@ -199,7 +199,7 @@
             </div>
             @if (Model.TotalPages > 1)
             {
-                <div class="text-sm text-slate-500">
+                <div class="text-sm text-slate-500 dark:text-slate-400">
                     @string.Format(System.Globalization.CultureInfo.CurrentCulture, L("jobs.list.pagination_summary"), Model.PageNumber, Model.TotalPages)
                 </div>
             }
@@ -327,7 +327,7 @@
                        class="form-input"
                        autocomplete="off"
                        spellcheck="false" />
-                <p id="confirm-modal-error" class="text-sm text-rose-700 hidden"></p>
+                <p id="confirm-modal-error" class="text-sm text-rose-700 dark:text-rose-300 hidden"></p>
             </div>
         </div>
         <div class="mt-6 flex items-center justify-end gap-3">
