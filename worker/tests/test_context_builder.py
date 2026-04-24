@@ -15,6 +15,7 @@ class ContextBuilderTests(unittest.TestCase):
             report = build_context_documents(
                 transcript_dir=transcript_dir,
                 transcript_payload={
+                    "source_name": "ファーマライズ薬局 富士店.m4a",
                     "segments": [
                         {"text": "OpenAI Codex で TimelineForAudio を確認する", "start": 0.0, "end": 3.0},
                         {"text": "Issue CASE-0001 と build 8765 の確認", "start": 3.0, "end": 6.0},
@@ -29,9 +30,12 @@ class ContextBuilderTests(unittest.TestCase):
             self.assertTrue((transcript_dir / "context_merged.txt").exists())
             self.assertTrue((transcript_dir / "context_report.json").exists())
             merged = (transcript_dir / "context_merged.txt").read_text(encoding="utf-8")
+            self.assertIn("source file name", merged)
+            self.assertIn("ファーマライズ薬局 富士店", merged)
             self.assertIn("TimelineForAudio", merged)
             self.assertIn("Known code: 8765", merged)
             self.assertEqual(len(merged), report["merged_context_length"])
+            self.assertTrue(report["source_name_context_configured"])
 
     def test_build_context_documents_truncates_merged_context_and_reports_it(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -62,3 +66,4 @@ class ContextBuilderTests(unittest.TestCase):
             self.assertEqual("", (transcript_dir / "context_merged.txt").read_text(encoding="utf-8"))
             loaded = json.loads((transcript_dir / "context_report.json").read_text(encoding="utf-8"))
             self.assertEqual(report, loaded)
+            self.assertFalse(report["source_name_context_configured"])

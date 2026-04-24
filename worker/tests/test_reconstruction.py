@@ -12,6 +12,7 @@ from timeline_for_audio_worker.reconstruction import (
     resolve_reconstruction_backend,
     resolve_reconstruction_model_id,
     resolve_reconstruction_prompt_version,
+    _build_turn_prompt,
 )
 
 
@@ -310,7 +311,7 @@ class ReconstructionTests(unittest.TestCase):
             resolve_reconstruction_model_id("ja", "gpu"),
         )
         self.assertEqual(
-            "ipa-turn-reconstruction-ja-v2",
+            "ipa-turn-reconstruction-ja-v3",
             resolve_reconstruction_prompt_version("ja", "gpu"),
         )
         self.assertEqual(
@@ -331,6 +332,17 @@ class ReconstructionTests(unittest.TestCase):
         self.assertIsNone(resolve_reconstruction_prompt_version("ja", "cpu"))
         self.assertIsNone(build_reconstruction_decoding("en", "gpu"))
         self.assertIsNone(build_reconstruction_decoding("ja", "cpu"))
+
+    def test_build_turn_prompt_includes_source_file_name_hint(self) -> None:
+        prompt = _build_turn_prompt(
+            turn=SimpleNamespace(ipa="/fɯdʑi ten/"),
+            language_hint="ja",
+            supplemental_context_text="Known spelling: ファーマライズ",
+            source_name="ファーマライズ薬局 富士店.m4a",
+        )
+
+        self.assertIn("source file name hint: ファーマライズ薬局 富士店", prompt)
+        self.assertIn("known context: Known spelling: ファーマライズ", prompt)
 
 
 if __name__ == "__main__":

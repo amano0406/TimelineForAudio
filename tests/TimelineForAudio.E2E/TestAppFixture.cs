@@ -1327,7 +1327,8 @@ internal sealed class TestAppFixture : IAsyncDisposable
             "- READABLE TEXT RECONSTRUCTION: `" + (readableTextEnabled ? "enabled" : "disabled") + "`",
             "- LANGUAGE HINT: `" + languageHint + "`",
             "- SUPPLEMENTAL CONTEXT CONFIGURED: `False`",
-            "- IPA CLEANUP RULES VERSION: `context-builder-v1`",
+            "- SOURCE FILENAME CONTEXT: `automatic`",
+            "- IPA CLEANUP RULES VERSION: `context-builder-v2`",
         };
 
         return string.Join(Environment.NewLine, lines) + Environment.NewLine;
@@ -1370,4 +1371,3 @@ internal sealed class TestAppFixture : IAsyncDisposable
         }
     }
 }
-

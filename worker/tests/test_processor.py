@@ -33,7 +33,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 transcription_backend="faster-whisper",
                 transcription_model_id="medium",
                 supplemental_context_text=None,
-                context_builder_version="context-builder-v1",
+                context_builder_version="context-builder-v2",
                 diarization_enabled=False,
                 diarization_model_id=None,
                 vad_backend="faster-whisper",
@@ -96,7 +96,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 transcription_backend="faster-whisper",
                 transcription_model_id="medium",
                 supplemental_context_text=None,
-                context_builder_version="context-builder-v1",
+                context_builder_version="context-builder-v2",
                 diarization_enabled=False,
                 diarization_model_id=None,
                 vad_backend="faster-whisper",
@@ -215,7 +215,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 transcription_backend="faster-whisper",
                 transcription_model_id="medium",
                 supplemental_context_text=None,
-                context_builder_version="context-builder-v1",
+                context_builder_version="context-builder-v2",
                 diarization_enabled=False,
                 diarization_model_id=None,
                 vad_backend="faster-whisper",
@@ -324,7 +324,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 transcription_backend="faster-whisper",
                 transcription_model_id="medium",
                 supplemental_context_text=None,
-                context_builder_version="context-builder-v1",
+                context_builder_version="context-builder-v2",
                 diarization_enabled=False,
                 diarization_model_id=None,
                 vad_backend="faster-whisper",
@@ -439,7 +439,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 transcription_backend="faster-whisper",
                 transcription_model_id="medium",
                 supplemental_context_text=None,
-                context_builder_version="context-builder-v1",
+                context_builder_version="context-builder-v2",
                 diarization_enabled=False,
                 diarization_model_id=None,
                 vad_backend="faster-whisper",
@@ -564,7 +564,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 transcription_backend="faster-whisper",
                 transcription_model_id="medium",
                 supplemental_context_text=None,
-                context_builder_version="context-builder-v1",
+                context_builder_version="context-builder-v2",
                 diarization_enabled=False,
                 diarization_model_id=None,
                 vad_backend="faster-whisper",
@@ -676,7 +676,7 @@ class ProcessorQueueTests(unittest.TestCase):
                     transcription_backend="faster-whisper",
                     transcription_model_id="medium",
                     supplemental_context_text=None,
-                    context_builder_version="context-builder-v1",
+                    context_builder_version="context-builder-v2",
                     diarization_enabled=False,
                     diarization_model_id=None,
                     vad_backend="faster-whisper",
@@ -794,7 +794,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 transcription_backend="faster-whisper",
                 transcription_model_id="medium",
                 supplemental_context_text=None,
-                context_builder_version="context-builder-v1",
+                context_builder_version="context-builder-v2",
                 diarization_enabled=False,
                 diarization_model_id=None,
                 vad_backend="faster-whisper",
@@ -896,7 +896,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 transcription_backend="faster-whisper",
                 transcription_model_id="medium",
                 supplemental_context_text="Known spelling: TimelineForAudio",
-                context_builder_version="context-builder-v1",
+                context_builder_version="context-builder-v2",
                 diarization_enabled=True,
                 diarization_model_id="pyannote/speaker-diarization-community-1",
                 vad_backend="silero-vad",
@@ -942,6 +942,7 @@ class ProcessorQueueTests(unittest.TestCase):
                     return {
                         "artifact_stem": "cleanup-source",
                         "transcript_label": "cleanup_source",
+                        "source_name": kwargs["source_name"],
                         "diarization_used": False,
                         "segments": [
                             {
@@ -957,6 +958,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 return {
                     "artifact_stem": "turns-source",
                     "transcript_label": "turns_source",
+                    "source_name": kwargs["source_name"],
                     "diarization_used": True,
                     "segments": [
                         {
@@ -977,7 +979,7 @@ class ProcessorQueueTests(unittest.TestCase):
                     "timeline_for_audio_worker.processor.build_context_documents",
                     create=True,
                     return_value={
-                        "builder_version": "context-builder-v1",
+                        "builder_version": "context-builder-v2",
                         "merged_context_length": 12,
                         "merged_context_truncated": False,
                     },
@@ -1084,6 +1086,10 @@ class ProcessorQueueTests(unittest.TestCase):
             )
             self.assertEqual("Known spelling: TimelineForAudio", build_context_documents.call_args.kwargs["supplemental_context_text"])
             self.assertEqual(
+                "sample.wav",
+                build_context_documents.call_args.kwargs["transcript_payload"]["source_name"],
+            )
+            self.assertEqual(
                 "cleanup_source",
                 write_transcript_delta.call_args.kwargs["cleanup_source_payload"]["transcript_label"],
             )
@@ -1106,6 +1112,10 @@ class ProcessorQueueTests(unittest.TestCase):
             self.assertEqual(
                 "turns_source",
                 reconstruct_readable_text.call_args.kwargs["transcript_payload"]["transcript_label"],
+            )
+            self.assertEqual(
+                "sample.wav",
+                reconstruct_readable_text.call_args.kwargs["transcript_payload"]["source_name"],
             )
             self.assertEqual(1, manifest_item.speaker_count)
             self.assertEqual("confirmed", manifest_item.speaker_count_status)

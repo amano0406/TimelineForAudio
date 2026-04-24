@@ -11,10 +11,10 @@ public static class ConversionSignature
     public const string DiarizationModelId = "pyannote/speaker-diarization-community-1";
     public const string VadBackend = "faster-whisper-builtin";
     public const string VadModelId = "faster-whisper-default";
-    public const string ContextBuilderVersion = "context-builder-v1";
+    public const string ContextBuilderVersion = "context-builder-v2";
     public const string LocalLlmReconstructionBackend = "local-transformers-japanese-p2g-v1";
     public const string LocalLlmModelId = "Respair/Japanese_Phoneme_to_Grapheme_LLM";
-    public const string LocalLlmPromptVersion = "ipa-turn-reconstruction-ja-v2";
+    public const string LocalLlmPromptVersion = "ipa-turn-reconstruction-ja-v3";
     public const string ReadableTextMarkdownSchema = "turn-markdown-v2";
     public const string IpaBackend = "sudachi-reading-ipa-v1";
     public const string IpaReadingBackend = "sudachipy-core";

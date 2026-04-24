@@ -7,7 +7,7 @@
     ".flac"
   ],
   "themeMode": "system",
-  "contextBuilderVersion": "context-builder-v1",
+  "contextBuilderVersion": "context-builder-v2",
   "inputRoots": [
     {
       "id": "uploads",

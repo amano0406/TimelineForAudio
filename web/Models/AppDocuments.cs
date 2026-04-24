@@ -401,7 +401,7 @@ public sealed class JobRequestDocument
     public bool? LegacySecondPassEnabled { get; set; }
 
     [JsonPropertyName("context_builder_version")]
-    public string ContextBuilderVersion { get; set; } = "context-builder-v1";
+    public string ContextBuilderVersion { get; set; } = "context-builder-v2";
 
     [JsonPropertyName("diarization_enabled")]
     public bool DiarizationEnabled { get; set; }

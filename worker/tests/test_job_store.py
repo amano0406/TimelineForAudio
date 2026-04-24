@@ -96,7 +96,7 @@ class JobStoreTests(unittest.TestCase):
                 self.assertEqual("gpu", request["compute_mode"])
                 self.assertEqual(request["conversion_signature"], request["generation_signature"])
                 self.assertEqual("en", request["language_hint"])
-                self.assertEqual("context-builder-v1", request["context_builder_version"])
+                self.assertEqual("context-builder-v2", request["context_builder_version"])
 
     def test_list_runs_returns_created_job(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

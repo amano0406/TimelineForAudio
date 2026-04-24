@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 import gc
+from pathlib import Path
 import re
 from typing import Any
 
@@ -20,7 +21,7 @@ _LOW_DIVERSITY_REPEAT_RE = re.compile(r"(.{2,6})\1{3,}")
 
 LOCAL_LLM_RECONSTRUCTION_BACKEND = "local-transformers-japanese-p2g-v1"
 LOCAL_LLM_MODEL_ID = "Respair/Japanese_Phoneme_to_Grapheme_LLM"
-LOCAL_LLM_PROMPT_VERSION = "ipa-turn-reconstruction-ja-v2"
+LOCAL_LLM_PROMPT_VERSION = "ipa-turn-reconstruction-ja-v3"
 LOCAL_LLM_MAX_NEW_TOKENS = 128
 LOCAL_LLM_REPETITION_PENALTY = 1.02
 FALLBACK_RECONSTRUCTION_BACKEND = "ipa-aligned-text-fallback-v1"
@@ -85,6 +86,14 @@ def _normalize_multiline_text(value: str | None) -> str:
     normalized = str(value).replace("\r\n", "\n").replace("\r", "\n")
     normalized = "\n".join(line.rstrip() for line in normalized.split("\n")).strip()
     return normalized
+
+
+def _normalize_source_name_hint(value: str | None) -> str:
+    normalized = _normalize_multiline_text(value)
+    if not normalized:
+        return ""
+    stem = _normalize_multiline_text(Path(normalized).stem)
+    return stem or normalized
 
 
 def _normalize_language_tags(value: str | None) -> list[str]:
@@ -365,9 +374,13 @@ def _build_turn_prompt(
     turn: Any,
     language_hint: str | None,
     supplemental_context_text: str | None,
+    source_name: str | None,
 ) -> str:
     ipa_text = _normalize_multiline_text(str(turn.ipa or "")).strip().strip("/")
     sections = [f"convert this pronunciation back to normal japanese: {ipa_text}"]
+    source_name_hint = _normalize_source_name_hint(source_name)
+    if source_name_hint:
+        sections.append(f"source file name hint: {source_name_hint[:160]}")
     supplemental_context = _normalize_multiline_text(supplemental_context_text)
     if supplemental_context:
         sections.append(f"known context: {supplemental_context[:240]}")
@@ -402,6 +415,7 @@ def _generate_turn_text_with_local_llm(
     turn: Any,
     language_hint: str | None,
     supplemental_context_text: str | None,
+    source_name: str | None,
 ) -> tuple[str, bool]:
     tokenizer = loaded_backend.tokenizer
     model = loaded_backend.model
@@ -410,6 +424,7 @@ def _generate_turn_text_with_local_llm(
         turn=turn,
         language_hint=language_hint,
         supplemental_context_text=supplemental_context_text,
+        source_name=source_name,
     )
     rendered_prompt = _render_chat_prompt(tokenizer, prompt)
     tokenized = tokenizer([rendered_prompt], return_tensors="pt")
@@ -500,6 +515,7 @@ def _reconstruct_with_local_llm(
     suspicious_llm_turns = 0
     direct_segment_turns = 0
     requested_compute_mode = str(compute_mode or "cpu").strip().lower() or "cpu"
+    source_name = _normalize_multiline_text(str(transcript_payload.get("source_name") or ""))
 
     for turn in ipa_result.turns:
         segment = _match_segment(
@@ -524,6 +540,7 @@ def _reconstruct_with_local_llm(
                     turn=turn,
                     language_hint=language_hint,
                     supplemental_context_text=supplemental_context_text,
+                    source_name=source_name,
                 )
             except Exception:
                 raise

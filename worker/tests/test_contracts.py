@@ -20,7 +20,7 @@ class ContractsTests(unittest.TestCase):
             transcription_backend="faster-whisper",
             transcription_model_id="medium",
             supplemental_context_text="Known names: TimelineForAudio, WhisperX",
-            context_builder_version="context-builder-v1",
+            context_builder_version="context-builder-v2",
             diarization_enabled=True,
             diarization_model_id="pyannote/speaker-diarization-community-1",
             vad_backend="silero-vad",
@@ -55,13 +55,13 @@ class ContractsTests(unittest.TestCase):
             "Respair/Japanese_Phoneme_to_Grapheme_LLM",
             restored.reconstruction_model_id,
         )
-        self.assertEqual("ipa-turn-reconstruction-ja-v2", restored.reconstruction_prompt_version)
+        self.assertEqual("ipa-turn-reconstruction-ja-v3", restored.reconstruction_prompt_version)
         self.assertTrue(restored.readable_text_enabled)
         self.assertEqual(
             "Known names: TimelineForAudio, WhisperX",
             restored.supplemental_context_text,
         )
-        self.assertEqual("context-builder-v1", restored.context_builder_version)
+        self.assertEqual("context-builder-v2", restored.context_builder_version)
         self.assertTrue(restored.diarization_enabled)
         self.assertEqual(1, len(restored.input_items))
         self.assertEqual("example.wav", restored.input_items[0].display_name)
@@ -83,7 +83,7 @@ class ContractsTests(unittest.TestCase):
                 "transcription_model_id": "medium",
                 "supplemental_context_text": "prior terms",
                 "second_pass_enabled": True,
-                "context_builder_version": "context-builder-v1",
+                "context_builder_version": "context-builder-v2",
                 "diarization_enabled": False,
                 "vad_backend": "silero-vad",
                 "vad_model_id": "faster-whisper-default",
@@ -101,7 +101,7 @@ class ContractsTests(unittest.TestCase):
         self.assertEqual("ja,en", restored.language_hint)
         self.assertEqual("ipa-aligned-text-fallback-v1", restored.reconstruction_backend)
         self.assertEqual("prior terms", restored.supplemental_context_text)
-        self.assertEqual("context-builder-v1", restored.context_builder_version)
+        self.assertEqual("context-builder-v2", restored.context_builder_version)
 
     def test_job_request_from_dict_can_disable_readable_text(self) -> None:
         restored = JobRequest.from_dict(
@@ -117,7 +117,7 @@ class ContractsTests(unittest.TestCase):
                 "generation_signature": "sig-ipa-only",
                 "transcription_backend": "faster-whisper",
                 "transcription_model_id": "medium",
-                "context_builder_version": "context-builder-v1",
+                "context_builder_version": "context-builder-v2",
                 "diarization_enabled": True,
                 "vad_backend": "faster-whisper-builtin",
                 "vad_model_id": "faster-whisper-default",

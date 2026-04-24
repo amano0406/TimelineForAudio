@@ -110,7 +110,7 @@ class JobRequest:
                 else None
             ),
             context_builder_version=str(
-                payload.get("context_builder_version") or "context-builder-v1"
+                payload.get("context_builder_version") or "context-builder-v2"
             ),
             diarization_enabled=bool(payload.get("diarization_enabled", False)),
             diarization_model_id=(

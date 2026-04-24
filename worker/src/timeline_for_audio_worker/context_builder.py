@@ -8,7 +8,7 @@ from typing import Any
 
 from .fs_utils import write_text
 
-CONTEXT_BUILDER_VERSION = "context-builder-v1"
+CONTEXT_BUILDER_VERSION = "context-builder-v2"
 DEFAULT_MAX_MERGED_LENGTH = 1600
 
 _LATIN_TERM_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{1,}")
@@ -107,6 +107,15 @@ def _extract_identifiers(segments: list[dict[str, Any]], limit: int = 12) -> lis
 def _build_primary_context(transcript_payload: dict[str, Any]) -> tuple[str, int, int]:
     segments = transcript_payload.get("segments", []) or []
     lines: list[str] = []
+    source_name = _normalize_text(transcript_payload.get("source_name"))
+    source_stem = _normalize_text(Path(source_name).stem) if source_name else ""
+
+    if source_name:
+        lines.append("source file name")
+        lines.append(source_name)
+        if source_stem and source_stem.lower() != source_name.lower():
+            lines.append(f"source file hint: {source_stem}")
+        lines.append("")
 
     cue_lines = _segment_cue_lines(segments)
     if cue_lines:
@@ -164,6 +173,9 @@ def build_context_documents(
 
     report = {
         "builder_version": CONTEXT_BUILDER_VERSION,
+        "source_name_context_configured": bool(
+            _normalize_text(transcript_payload.get("source_name"))
+        ),
         "primary_context_length": len(primary_context),
         "secondary_context_length": len(secondary_context),
         "merged_context_length": len(merged_context),
