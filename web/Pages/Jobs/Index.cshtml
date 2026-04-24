@@ -51,9 +51,6 @@
     string FormatCreatedAt(string? value) => DisplayFormatters.FormatCreatedAt(value);
     int CompletedCount(int done, int skipped, int failed) => done + skipped + failed;
 
-    string ProgressCounter(int done, int skipped, int failed, int total) =>
-        $"{CompletedCount(done, skipped, failed)} / {total}";
-
     double Percent(double raw, int completed, int total)
     {
         if (raw > 0)
@@ -74,14 +71,53 @@
         "canceled" => "status-badge status-badge-neutral",
         _ => "status-badge status-badge-neutral",
     };
+    string OutputLabel(TimelineForAudio.Web.Models.RunSummary run)
+    {
+        if (run.HasIpaArchive && run.HasReadableTextArchive)
+        {
+            return $"{L("artifact.ipa")} + {L("artifact.readable_text")}";
+        }
+
+        if (run.HasReadableTextArchive)
+        {
+            return L("artifact.readable_text");
+        }
+
+        if (run.HasIpaArchive)
+        {
+            return L("artifact.ipa");
+        }
+
+        return "-";
+    }
     ViewData["Title"] = L("jobs.list.page_title");
 }
 
 <section class="app-page space-y-6" id="jobs-page" data-has-active="@(Model.ActiveRun is not null ? "true" : "false")">
     <header class="panel page-header">
         <div>
+            <p class="eyebrow">@L("jobs.list.eyebrow")</p>
             <h1 class="page-title">@L("jobs.list.page_title")</h1>
             <p class="page-description">@L("jobs.list.description")</p>
+        </div>
+        <div class="flex flex-wrap items-center justify-end gap-3">
+            <a class="btn-secondary" href="/jobs/new">@L("layout.new_job")</a>
+            @if (Model.TotalRuns > 0)
+            {
+                <form method="post" asp-page-handler="DeleteAll" id="delete-all-form">
+                    <input type="hidden" name="confirmation" id="delete-all-confirmation" />
+                    <button type="submit"
+                            class="btn-table-danger"
+                            data-confirm-kind="delete-all"
+                            data-confirm-title="@L("jobs.list.delete_all")"
+                            data-confirm-message="@L("jobs.list.delete_all_confirm")"
+                            data-confirm-requires-text="true"
+                            data-confirm-expected="DELETE"
+                            data-confirm-invalid="@L("jobs.list.delete_all_invalid")">
+                        @L("jobs.list.delete_all")
+                    </button>
+                </form>
+            }
         </div>
     </header>
 
@@ -92,6 +128,25 @@
         </section>
     }
 
+    <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div class="metric-card">
+            <div class="metric-label">@L("jobs.list.summary_total")</div>
+            <div class="metric-value">@Model.TotalRuns</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">@L("jobs.list.summary_active")</div>
+            <div class="metric-value">@Model.ActiveRuns</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">@L("jobs.list.summary_completed")</div>
+            <div class="metric-value">@Model.CompletedRuns</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">@L("jobs.list.summary_attention")</div>
+            <div class="metric-value">@Model.AttentionRuns</div>
+        </div>
+    </section>
+
     @if (Model.ActiveRun is not null)
     {
         var activePercent = Percent(
@@ -99,170 +154,168 @@
             CompletedCount(Model.ActiveRun.VideosDone, Model.ActiveRun.VideosSkipped, Model.ActiveRun.VideosFailed),
             Model.ActiveRun.VideosTotal);
         var activeStageLabel = SecondaryStageLabel(Model.ActiveRun.State, Model.ActiveRun.CurrentStage);
-        <section class="panel">
-            <div class="mb-4 flex items-center justify-between gap-3">
+        <section class="panel accent-panel">
+            <div class="job-highlight-header">
                 <div>
+                    <p class="eyebrow">@L("jobs.active.title")</p>
                     <h2 class="section-title">@L("jobs.active.heading")</h2>
+                </div>
+                <a class="btn-primary" href="@JobUrls.Details(Model.ActiveRun.JobId)">@L("jobs.active.open_details")</a>
+            </div>
+
+            <div class="job-card-progress mt-5">
+                <div class="job-card-progress-header">
+                    <div class="job-card-title-row">
+                        <a class="job-card-title" href="@JobUrls.Details(Model.ActiveRun.JobId)">@Model.ActiveRun.JobId</a>
+                        <span class="@StateBadgeClass(Model.ActiveRun.State)">@StateLabel(Model.ActiveRun.State)</span>
+                    </div>
+                    <div class="job-card-progress-value">@PercentLabel(activePercent)</div>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(activeStageLabel))
+                {
+                    <div class="job-card-meta mt-2">
+                        <span>@activeStageLabel</span>
+                    </div>
+                }
+                <div class="progress-track mt-3">
+                    <div class="progress-fill" style="width:@(activePercent.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
                 </div>
             </div>
 
-            <div class="grid gap-4 xl:grid-cols-5">
-                <div class="metric-card xl:col-span-2">
-                    <div class="metric-label">@L("common.job")</div>
-                    <div class="metric-value">@Model.ActiveRun.JobId</div>
-                    <div class="metric-subtle">
-                        <span class="@StateBadgeClass(Model.ActiveRun.State)">@StateLabel(Model.ActiveRun.State)</span>
-                        @if (!string.IsNullOrWhiteSpace(activeStageLabel))
-                        {
-                            <span class="ml-2">@activeStageLabel</span>
-                        }
-                    </div>
+            <dl class="job-card-facts mt-5">
+                <div class="job-card-fact">
+                    <dt>@L("common.total_size")</dt>
+                    <dd>@FormatSize(Model.ActiveRun.TotalSizeBytes)</dd>
                 </div>
-                <div class="metric-card">
-                    <div class="metric-label">@L("common.progress")</div>
-                    <div class="metric-value">@PercentLabel(activePercent)</div>
-                    <div class="metric-subtle">@ProgressCounter(Model.ActiveRun.VideosDone, Model.ActiveRun.VideosSkipped, Model.ActiveRun.VideosFailed, Model.ActiveRun.VideosTotal)</div>
-                    <div class="progress-track mt-3">
-                        <div class="progress-fill" style="width:@(activePercent.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
-                    </div>
+                <div class="job-card-fact">
+                    <dt>@L("common.total_duration")</dt>
+                    <dd>@FormatDuration(Model.ActiveRun.TotalDurationSec)</dd>
                 </div>
-                <div class="metric-card">
-                    <div class="metric-label">@L("common.total_size")</div>
-                    <div class="metric-value">@FormatSize(Model.ActiveRun.TotalSizeBytes)</div>
+                <div class="job-card-fact">
+                    <dt>@L("common.elapsed")</dt>
+                    <dd>@FormatDurationOrDash(Model.ActiveRun.ElapsedWallSec)</dd>
                 </div>
-                <div class="metric-card">
-                    <div class="metric-label">@L("common.total_duration")</div>
-                    <div class="metric-value">@FormatDuration(Model.ActiveRun.TotalDurationSec)</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">@L("common.elapsed")</div>
-                    <div class="metric-value">@FormatDurationOrDash(Model.ActiveRun.ElapsedWallSec)</div>
-                </div>
-            </div>
-            <div class="mt-4">
-                <a class="btn-secondary" href="@JobUrls.Details(Model.ActiveRun.JobId)">@L("jobs.active.open_details")</a>
-            </div>
+            </dl>
         </section>
     }
 
     <section class="panel">
-        <div class="mb-4 flex justify-end">
-            <form method="post" asp-page-handler="DeleteAll" id="delete-all-form">
-                <input type="hidden" name="confirmation" id="delete-all-confirmation" />
-                <button type="submit"
-                        class="btn-table-danger"
-                        data-confirm-kind="delete-all"
-                        data-confirm-title="@L("jobs.list.delete_all")"
-                        data-confirm-message="@L("jobs.list.delete_all_confirm")"
-                        data-confirm-requires-text="true"
-                        data-confirm-expected="DELETE"
-                        data-confirm-invalid="@L("jobs.list.delete_all_invalid")">
-                    @L("jobs.list.delete_all")
-                </button>
-            </form>
-        </div>
-
-        <div class="table-shell">
-            <table class="app-table">
-                <thead>
-                    <tr>
-                        <th>@L("common.job")</th>
-                        <th>@L("common.state")</th>
-                        <th>@L("common.progress")</th>
-                        <th>@L("common.total_size")</th>
-                        <th>@L("common.total_duration")</th>
-                        <th>@L("common.elapsed")</th>
-                        <th>@L("common.created")</th>
-                        <th>@L("common.actions")</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @if (Model.RecentRuns.Count == 0)
-                    {
-                        <tr>
-                            <td colspan="8" class="px-4 py-8 text-center text-sm text-slate-500">@L("common.no_items")</td>
-                        </tr>
-                    }
-                    else
-                    {
-                        @foreach (var run in Model.RecentRuns)
-                        {
-                            var percent = Percent(
-                                run.ProgressPercent,
-                                CompletedCount(run.VideosDone, run.VideosSkipped, run.VideosFailed),
-                                run.VideosTotal);
-                            var stageLabel = SecondaryStageLabel(run.State, run.CurrentStage);
-                            <tr>
-                                <td>
-                                    <a class="table-link" href="@JobUrls.Details(run.JobId)">@run.JobId</a>
-                                </td>
-                                <td>
-                                    <span class="@StateBadgeClass(run.State)">@StateLabel(run.State)</span>
-                                    @if (!string.IsNullOrWhiteSpace(stageLabel))
-                                    {
-                                        <div class="mt-2 text-xs text-slate-500">@stageLabel</div>
-                                    }
-                                </td>
-                                <td>
-                                    <div class="font-medium text-slate-900">@PercentLabel(percent)</div>
-                                    <div class="mt-1 text-xs text-slate-500">@ProgressCounter(run.VideosDone, run.VideosSkipped, run.VideosFailed, run.VideosTotal)</div>
-                                    <div class="progress-track mt-2">
-                                        <div class="progress-fill" style="width:@(percent.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
-                                    </div>
-                                </td>
-                                <td>@FormatSize(run.TotalSizeBytes)</td>
-                                <td>@FormatDuration(run.TotalDurationSec)</td>
-                                <td>@FormatDurationOrDash(run.ElapsedWallSec)</td>
-                                <td>@FormatCreatedAt(run.CreatedAt)</td>
-                                <td>
-                                    <div class="flex flex-wrap gap-2">
-                                        <a class="btn-table" href="@JobUrls.Details(run.JobId)">@L("common.details")</a>
-                                        @if (run.HasDownloadableArchive && !string.Equals(run.State, "pending", StringComparison.OrdinalIgnoreCase) && !string.Equals(run.State, "running", StringComparison.OrdinalIgnoreCase))
-                                        {
-                                            <button type="button"
-                                                    class="btn-table-success"
-                                                    data-download-job-id="@run.JobId"
-                                                    data-download-readable="@(run.HasReadableTextArchive ? JobUrls.Download(run.JobId, "readable-text") : "")"
-                                                    data-download-ipa="@(run.HasIpaArchive ? JobUrls.Download(run.JobId, "ipa") : "")">
-                                                @L("details.download_zip")
-                                            </button>
-                                        }
-                                        <form method="post" asp-page-handler="Delete" class="inline">
-                                            <input type="hidden" name="jobId" value="@run.JobId" />
-                                            <button class="btn-table-danger"
-                                                    type="submit"
-                                                    data-confirm-kind="delete-one"
-                                                    data-confirm-title="@L("common.delete")"
-                                                    data-confirm-message="@string.Format(System.Globalization.CultureInfo.CurrentCulture, L("jobs.list.delete_one_confirm"), run.JobId)"
-                                                    data-confirm-requires-text="false">
-                                                @L("common.delete")
-                                            </button>
-                                        </form>
-                                    </div>
-                                </td>
-                            </tr>
-                        }
-                    }
-                </tbody>
-            </table>
-        </div>
-
-        @if (Model.TotalPages > 1)
-        {
-            <div class="mt-4 flex items-center justify-between gap-3">
+        <div class="job-list-header">
+            <div>
+                <p class="eyebrow">@L("jobs.list.history_eyebrow")</p>
+                <h2 class="section-title">@L("jobs.list.history_title")</h2>
+            </div>
+            @if (Model.TotalPages > 1)
+            {
                 <div class="text-sm text-slate-500">
                     @string.Format(System.Globalization.CultureInfo.CurrentCulture, L("jobs.list.pagination_summary"), Model.PageNumber, Model.TotalPages)
                 </div>
-                <div class="flex items-center gap-2">
-                    @if (Model.PageNumber > 1)
-                    {
-                        <a class="btn-table" href="/jobs?pageNumber=@(Model.PageNumber - 1)">@L("common.previous")</a>
-                    }
-                    @if (Model.PageNumber < Model.TotalPages)
-                    {
-                        <a class="btn-table" href="/jobs?pageNumber=@(Model.PageNumber + 1)">@L("common.next")</a>
-                    }
-                </div>
+            }
+        </div>
+
+        @if (Model.RecentRuns.Count == 0)
+        {
+            <div class="empty-state mt-5">
+                <div>@L("jobs.list.empty")</div>
+            </div>
+        }
+        else
+        {
+            <div class="job-list-grid mt-5">
+                @foreach (var run in Model.RecentRuns)
+                {
+                    var percent = Percent(
+                        run.ProgressPercent,
+                        CompletedCount(run.VideosDone, run.VideosSkipped, run.VideosFailed),
+                        run.VideosTotal);
+                    var stageLabel = SecondaryStageLabel(run.State, run.CurrentStage);
+                    var showDownload = run.HasDownloadableArchive &&
+                        !string.Equals(run.State, "pending", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(run.State, "running", StringComparison.OrdinalIgnoreCase);
+                    <article class="job-card">
+                        <div class="job-card-header">
+                            <div class="min-w-0">
+                                <a class="job-card-title" href="@JobUrls.Details(run.JobId)">@run.JobId</a>
+                                <div class="job-card-meta">
+                                    <span>@FormatCreatedAt(run.CreatedAt)</span>
+                                    <span aria-hidden="true">•</span>
+                                    <span>@OutputLabel(run)</span>
+                                </div>
+                            </div>
+                            <div class="job-card-status">
+                                <span class="@StateBadgeClass(run.State)">@StateLabel(run.State)</span>
+                                @if (!string.IsNullOrWhiteSpace(stageLabel))
+                                {
+                                    <div class="job-card-stage">@stageLabel</div>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="job-card-progress">
+                            <div class="job-card-progress-header">
+                                <span class="metric-label">@L("common.progress")</span>
+                                <span class="job-card-progress-value">@PercentLabel(percent)</span>
+                            </div>
+                            <div class="progress-track mt-3">
+                                <div class="progress-fill" style="width:@(percent.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+                            </div>
+                        </div>
+
+                        <dl class="job-card-facts">
+                            <div class="job-card-fact">
+                                <dt>@L("common.total_size")</dt>
+                                <dd>@FormatSize(run.TotalSizeBytes)</dd>
+                            </div>
+                            <div class="job-card-fact">
+                                <dt>@L("common.total_duration")</dt>
+                                <dd>@FormatDuration(run.TotalDurationSec)</dd>
+                            </div>
+                            <div class="job-card-fact">
+                                <dt>@L("common.elapsed")</dt>
+                                <dd>@FormatDurationOrDash(run.ElapsedWallSec)</dd>
+                            </div>
+                        </dl>
+
+                        <div class="job-card-actions">
+                            <a class="btn-table" href="@JobUrls.Details(run.JobId)">@L("common.details")</a>
+                            @if (showDownload)
+                            {
+                                <button type="button"
+                                        class="btn-table-success"
+                                        data-download-job-id="@run.JobId"
+                                        data-download-readable="@(run.HasReadableTextArchive ? JobUrls.Download(run.JobId, "readable-text") : "")"
+                                        data-download-ipa="@(run.HasIpaArchive ? JobUrls.Download(run.JobId, "ipa") : "")">
+                                    @L("details.download_zip")
+                                </button>
+                            }
+                            <form method="post" asp-page-handler="Delete" class="inline">
+                                <input type="hidden" name="jobId" value="@run.JobId" />
+                                <button class="btn-table-danger"
+                                        type="submit"
+                                        data-confirm-kind="delete-one"
+                                        data-confirm-title="@L("common.delete")"
+                                        data-confirm-message="@string.Format(System.Globalization.CultureInfo.CurrentCulture, L("jobs.list.delete_one_confirm"), run.JobId)"
+                                        data-confirm-requires-text="false">
+                                    @L("common.delete")
+                                </button>
+                            </form>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+
+        @if (Model.TotalPages > 1)
+        {
+            <div class="mt-5 flex items-center justify-end gap-2">
+                @if (Model.PageNumber > 1)
+                {
+                    <a class="btn-table" href="/jobs?pageNumber=@(Model.PageNumber - 1)">@L("common.previous")</a>
+                }
+                @if (Model.PageNumber < Model.TotalPages)
+                {
+                    <a class="btn-table" href="/jobs?pageNumber=@(Model.PageNumber + 1)">@L("common.next")</a>
+                }
             </div>
         }
     </section>

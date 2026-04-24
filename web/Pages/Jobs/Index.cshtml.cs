@@ -22,6 +22,10 @@ public sealed class IndexModel(
     public int PageNumber { get; set; } = 1;
 
     public int TotalPages { get; private set; }
+    public int TotalRuns { get; private set; }
+    public int ActiveRuns { get; private set; }
+    public int CompletedRuns { get; private set; }
+    public int AttentionRuns { get; private set; }
 
     [TempData]
     public string? StatusMessage { get; set; }
@@ -68,6 +72,16 @@ public sealed class IndexModel(
                        string.Equals(run.State, "running", StringComparison.OrdinalIgnoreCase))
                    ?? runs.FirstOrDefault(static run =>
                        string.Equals(run.State, "pending", StringComparison.OrdinalIgnoreCase));
+
+        TotalRuns = runs.Count;
+        ActiveRuns = runs.Count(static run =>
+            string.Equals(run.State, "running", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(run.State, "pending", StringComparison.OrdinalIgnoreCase));
+        CompletedRuns = runs.Count(static run =>
+            string.Equals(run.State, "completed", StringComparison.OrdinalIgnoreCase));
+        AttentionRuns = runs.Count(static run =>
+            string.Equals(run.State, "failed", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(run.State, "canceled", StringComparison.OrdinalIgnoreCase));
 
         var totalCount = runs.Count;
         TotalPages = Math.Max(1, (int)Math.Ceiling(totalCount / (double)PageSize));

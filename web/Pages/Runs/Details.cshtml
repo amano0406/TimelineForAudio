@@ -129,6 +129,7 @@
         .Where(item => string.Equals(item.Status, "skipped_invalid", StringComparison.OrdinalIgnoreCase) ||
                        string.Equals(item.Status, "skipped_too_short", StringComparison.OrdinalIgnoreCase))
         .ToList() ?? [];
+    var totalInputCount = status?.VideosTotal ?? (run.ArtifactItems.Count + skippedItems.Count);
 }
 
 <section class="app-page space-y-6" data-active="@(isActive ? "true" : "false")" id="job-details">
@@ -140,27 +141,32 @@
     }
 
     <div class="panel page-header">
-        <h1 class="page-title">@run.JobId</h1>
+        <div>
+            <p class="eyebrow">@L("common.job")</p>
+            <h1 class="page-title">@run.JobId</h1>
+            <div class="mt-4 flex flex-wrap gap-2">
+                <span class="@StateBadgeClass(status?.State)">@StateLabel(status?.State)</span>
+                @if (!string.IsNullOrWhiteSpace(headerStageLabel))
+                {
+                    <span class="badge-chip">@headerStageLabel</span>
+                }
+            </div>
+        </div>
     </div>
 
-    <section class="grid gap-4 lg:grid-cols-4">
-        <div class="metric-card">
-            <div class="metric-label">@L("common.state")</div>
-            <div class="metric-value">
-                <span class="@StateBadgeClass(status?.State)">@StateLabel(status?.State)</span>
-            </div>
-            @if (!string.IsNullOrWhiteSpace(headerStageLabel))
-            {
-                <div class="metric-subtle">@headerStageLabel</div>
-            }
-        </div>
+    <section class="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
         <div class="metric-card">
             <div class="metric-label">@L("common.progress")</div>
             <div class="metric-value">@PercentLabel(progressPercent)</div>
-            <div class="metric-subtle">@($"{CompletedCount(status)} / {status?.VideosTotal ?? 0}")</div>
+            <div class="metric-subtle">@($"{CompletedCount(status)} / {totalInputCount}")</div>
             <div class="progress-track mt-3">
                 <div class="progress-fill" style="width:@(progressPercent.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
             </div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">@L("details.audio_files")</div>
+            <div class="metric-value">@($"{run.ArtifactItems.Count} / {totalInputCount}")</div>
+            <div class="metric-subtle">@L("details.generated_timeline")</div>
         </div>
         <div class="metric-card">
             @if (isActive)
@@ -181,9 +187,9 @@
         </div>
     </section>
 
-    <section class="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+    <section class="grid gap-6 xl:grid-cols-[minmax(0,1.28fr)_minmax(320px,0.72fr)]">
         <div class="panel">
-            <div class="mb-4 flex items-center justify-between gap-3">
+            <div class="job-list-header">
                 <div class="flex items-center gap-3">
                     <h2 class="section-title">@L("details.generated_timeline")</h2>
                     <span class="badge-chip">@run.ArtifactItems.Count</span>
@@ -200,70 +206,54 @@
                     </button>
                 }
             </div>
-            <div class="table-shell">
-                <table class="app-table">
-                    <thead>
-                        <tr>
-                            <th>@L("common.source")</th>
-                            <th>@L("common.status")</th>
-                            <th>@L("details.speakers")</th>
-                            <th>@L("common.actions")</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @if (run.ArtifactItems.Count == 0)
-                        {
-                            <tr>
-                                <td colspan="4" class="px-4 py-8 text-center text-sm text-slate-500">@L("details.generated_timeline_empty")</td>
-                            </tr>
-                        }
-                        else
-                        {
-                            @foreach (var item in run.ArtifactItems)
-                            {
-                                <tr>
-                                    <td class="text-slate-700">
-                                        <div class="font-medium text-slate-900">@DisplayFileName(item)</div>
-                                    </td>
-                                    <td class="text-slate-700">
-                                        <div class="font-medium text-slate-900">@ItemStatusLabel(item.Status)</div>
+            @if (run.ArtifactItems.Count == 0)
+            {
+                <div class="empty-state mt-5">@L("details.generated_timeline_empty")</div>
+            }
+            else
+            {
+                <div class="detail-artifact-grid mt-5">
+                    @foreach (var item in run.ArtifactItems)
+                    {
+                        <article class="detail-artifact-card">
+                            <div class="detail-artifact-header">
+                                <div class="min-w-0">
+                                    <h3 class="detail-artifact-title">@DisplayFileName(item)</h3>
+                                    <div class="detail-artifact-meta">
+                                        <span class="@StateBadgeClass(item.Status)">@ItemStatusLabel(item.Status)</span>
                                         @if (item.IsCacheReused)
                                         {
-                                            <div class="mt-1 text-xs text-slate-500">@L("details.cache_reused")</div>
+                                            <span class="badge-chip">@L("details.cache_reused")</span>
                                         }
-                                        @if (item.IsReferencedDuplicate && !string.IsNullOrWhiteSpace(item.ReferencedJobId))
-                                        {
-                                            <div class="mt-1 text-xs text-slate-500">
-                                                @($"{L("details.reused_from_job")}:")
-                                                <a class="text-sky-700 hover:text-sky-500" href="@JobUrls.Details(item.ReferencedJobId!)">@item.ReferencedJobId</a>
-                                            </div>
-                                        }
-                                    </td>
-                                    <td class="text-slate-600">
-                                        <div class="font-medium text-slate-900">@(item.SpeakerCount?.ToString() ?? "-")</div>
-                                        @if (!string.IsNullOrWhiteSpace(SpeakerStatusHint(item.SpeakerCountStatus)))
-                                        {
-                                            <div class="mt-1 text-xs text-slate-500">@SpeakerStatusHint(item.SpeakerCountStatus)</div>
-                                        }
-                                    </td>
-                                    <td>
-                                        <div class="flex flex-wrap gap-2">
-                                            @if (!string.IsNullOrWhiteSpace(item.ReadableTextPath))
-                                            {
-                                                <a class="btn-table" href="@ArtifactUrl(item, "readable-text")">@L("artifact.readable_text")</a>
-                                            }
-                                            @if (!string.IsNullOrWhiteSpace(item.IpaPath))
-                                            {
-                                                <a class="btn-table" href="@ArtifactUrl(item, "ipa")">@L("artifact.ipa")</a>
-                                            }
+                                        <span class="badge-chip">@($"{L("details.speakers")}: {(item.SpeakerCount?.ToString() ?? "-")}")</span>
+                                    </div>
+                                    @if (!string.IsNullOrWhiteSpace(SpeakerStatusHint(item.SpeakerCountStatus)))
+                                    {
+                                        <div class="detail-artifact-note">@SpeakerStatusHint(item.SpeakerCountStatus)</div>
+                                    }
+                                    @if (item.IsReferencedDuplicate && !string.IsNullOrWhiteSpace(item.ReferencedJobId))
+                                    {
+                                        <div class="detail-artifact-note">
+                                            @($"{L("details.reused_from_job")}:")
+                                            <a class="text-sky-700 hover:text-sky-500" href="@JobUrls.Details(item.ReferencedJobId!)">@item.ReferencedJobId</a>
                                         </div>
-                                    </td>
-                                </tr>
-                            }
-                        }
-                    </tbody>
-                </table>
-            </div>
+                                    }
+                                </div>
+                            </div>
+                            <div class="job-card-actions">
+                                @if (!string.IsNullOrWhiteSpace(item.ReadableTextPath))
+                                {
+                                    <a class="btn-table" href="@ArtifactUrl(item, "readable-text")">@L("artifact.readable_text")</a>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(item.IpaPath))
+                                {
+                                    <a class="btn-table" href="@ArtifactUrl(item, "ipa")">@L("artifact.ipa")</a>
+                                }
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
         </div>
 
         <div class="space-y-6">
@@ -380,6 +370,18 @@
                                 <p>@paragraph</p>
                             }
                         </div>
+                    }
+                    @if (conversionInfo.Notes.Count > 0)
+                    {
+                        <section class="conversion-info-notes mt-4">
+                            <h3 class="conversion-info-heading">@conversionInfo.NotesHeading</h3>
+                            <ul class="conversion-info-note-list">
+                                @foreach (var note in conversionInfo.Notes)
+                                {
+                                    <li>@note</li>
+                                }
+                            </ul>
+                        </section>
                     }
 
                 }
