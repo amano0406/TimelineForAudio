@@ -155,11 +155,10 @@ public sealed class DashboardSmokeTests : PageTest
         await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/new?lang=ja");
 
         await Expect(Page.Locator("html")).ToHaveAttributeAsync("lang", "ja");
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "補足テキスト", Exact = true })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("音声ファイル名は自動で使います。ここには追加で伝えたい固有名詞や既知の表記だけを書きます。", new() { Exact = true })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("書き方の例", new() { Exact = true })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("補足: 固有名詞や同音異義語の取り違えを減らしたい", new() { Exact = true })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("plain text のみです。音声ファイル名は自動で補助文脈に含まれます。ここには追加の固有名詞や既知の表記だけを書きます。", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("名前・表記メモ", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("音声ファイル名は自動で使います。必要な名前や表記だけ、そのまま貼り付けてください。", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("そのまま貼り付けでOK", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("{\"speakers\":[\"天野悠太郎\",\"香月達行\"]}", new() { Exact = true })).ToBeVisibleAsync();
     }
 
     [TestMethod]
