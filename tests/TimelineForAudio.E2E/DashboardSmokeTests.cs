@@ -1,6 +1,6 @@
+using System.IO.Compression;
 using System.Net;
 using System.Text.RegularExpressions;
-using System.IO.Compression;
 using Microsoft.Playwright;
 
 namespace TimelineForAudio.E2E;
@@ -25,15 +25,37 @@ public sealed class DashboardSmokeTests : PageTest
         }
     }
 
+    private ILocator JobCard(string jobId) =>
+        Page.Locator("article.job-card").Filter(new() { HasText = jobId });
+
     [TestMethod]
-    public async Task Root_Redirects_To_NewJob()
+    public async Task Root_Redirects_To_NewJob_When_Setup_IsReady()
     {
         await Page.GotoAsync($"{_fixture.BaseUrl}/");
 
-        await Expect(Page).ToHaveURLAsync(new Regex(".*/jobs$"));
+        await Expect(Page).ToHaveURLAsync(new Regex(".*/jobs/new$"));
         await Expect(Page.Locator("html")).ToHaveAttributeAsync("lang", "en");
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Jobs", Exact = true })).ToBeVisibleAsync();
-        await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "Jobs" })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "New Job", Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "Jobs", Exact = true })).ToBeVisibleAsync();
+    }
+
+    [TestMethod]
+    public async Task Root_Redirects_To_Setup_When_Token_IsMissing()
+    {
+        try
+        {
+            await _fixture.SetTokenAsync(null);
+
+            await Page.GotoAsync($"{_fixture.BaseUrl}/");
+
+            StringAssert.Contains(Page.Url, "/setup", StringComparison.Ordinal);
+            await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "First-Time Setup", Exact = true })).ToBeVisibleAsync();
+            await Expect(Page.GetByText("Hugging Face", new() { Exact = true })).ToBeVisibleAsync();
+        }
+        finally
+        {
+            await _fixture.SetTokenAsync("hf_test_token_value");
+        }
     }
 
     [TestMethod]
@@ -42,13 +64,12 @@ public sealed class DashboardSmokeTests : PageTest
         await Page.GotoAsync($"{_fixture.BaseUrl}/settings");
 
         await Expect(Page.Locator("html")).ToHaveAttributeAsync("lang", "en");
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Settings" })).ToBeVisibleAsync();
-        await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "Save Settings" })).ToBeVisibleAsync();
-        await Expect(Page.GetByLabel("Language")).ToBeVisibleAsync();
-        await Expect(Page.GetByText("Processing Mode")).ToBeVisibleAsync();
-        await Expect(Page.GetByText("Hugging Face Connection")).ToBeVisibleAsync();
-        await Expect(Page.GetByText("App Language")).ToBeVisibleAsync();
-        await Expect(Page.GetByText("Next Step", new() { Exact = true })).ToHaveCountAsync(0);
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Settings", Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "Save Settings", Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByLabel("Language", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Processing Mode", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Hugging Face Connection", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("App Language", new() { Exact = true })).ToBeVisibleAsync();
     }
 
     [TestMethod]
@@ -56,13 +77,16 @@ public sealed class DashboardSmokeTests : PageTest
     {
         await Page.GotoAsync($"{_fixture.BaseUrl}/settings");
 
-        await Expect(Page.GetByText("hf_t...alue")).ToBeVisibleAsync();
-        await Expect(Page.GetByLabel("Hugging Face Token")).ToBeHiddenAsync();
-        await Page.GetByRole(AriaRole.Button, new() { Name = "Change" }).ClickAsync();
-        await Expect(Page.GetByLabel("Hugging Face Token")).ToBeVisibleAsync();
-        await Expect(Page.GetByLabel("Hugging Face Token")).ToHaveValueAsync(string.Empty);
+        var preview = await Page.Locator("#token-preview-value").InnerTextAsync();
+        StringAssert.StartsWith(preview, "hf_t", StringComparison.Ordinal);
+        StringAssert.EndsWith(preview, "alue", StringComparison.Ordinal);
+
         var html = await Page.ContentAsync();
         Assert.IsFalse(html.Contains("hf_test_token_value", StringComparison.Ordinal));
+
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Change", Exact = true }).ClickAsync();
+        await Expect(Page.Locator("#settings-token-modal")).ToBeVisibleAsync();
+        await Expect(Page.Locator("#settings-token-modal-input")).ToHaveValueAsync(string.Empty);
     }
 
     [TestMethod]
@@ -70,23 +94,16 @@ public sealed class DashboardSmokeTests : PageTest
     {
         await Page.GotoAsync($"{_fixture.BaseUrl}/settings");
 
-        var previewPanel = Page.Locator("#token-preview-panel");
-        var tokenInput = Page.GetByLabel("Hugging Face Token");
+        await Expect(Page.Locator("#settings-token-modal")).ToBeHiddenAsync();
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Change", Exact = true }).ClickAsync();
+        await Expect(Page.Locator("#settings-token-modal")).ToBeVisibleAsync();
 
-        await Expect(previewPanel).ToBeVisibleAsync();
-        await Expect(tokenInput).ToBeHiddenAsync();
-
-        await Page.GetByRole(AriaRole.Button, new() { Name = "Change" }).ClickAsync();
-        await Expect(previewPanel).ToBeHiddenAsync();
-        await Expect(tokenInput).ToBeVisibleAsync();
-
+        var tokenInput = Page.Locator("#settings-token-modal-input");
         await tokenInput.FillAsync("hf_new_token_value");
-        await Page.Locator("#token-cancel-button").ClickAsync();
+        await Page.Locator("#settings-token-modal-cancel").ClickAsync();
+        await Expect(Page.Locator("#settings-token-modal")).ToBeHiddenAsync();
 
-        await Expect(previewPanel).ToBeVisibleAsync();
-        await Expect(tokenInput).ToBeHiddenAsync();
-
-        await Page.GetByRole(AriaRole.Button, new() { Name = "Change" }).ClickAsync();
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Change", Exact = true }).ClickAsync();
         await Expect(tokenInput).ToHaveValueAsync(string.Empty);
     }
 
@@ -95,7 +112,7 @@ public sealed class DashboardSmokeTests : PageTest
     {
         await Page.GotoAsync($"{_fixture.BaseUrl}/settings");
 
-        await Page.GetByRole(AriaRole.Button, new() { Name = "Delete All Jobs" }).ClickAsync();
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Delete All Jobs", Exact = true }).ClickAsync();
         await Expect(Page.Locator("#settings-confirm-modal")).ToBeVisibleAsync();
 
         await Page.Locator("#settings-confirm-modal-input").FillAsync("delete");
@@ -103,7 +120,6 @@ public sealed class DashboardSmokeTests : PageTest
 
         await Expect(Page.Locator("#settings-confirm-modal-error")).ToHaveTextAsync("Type DELETE exactly to continue.");
         await Expect(Page.Locator("#settings-confirm-modal")).ToBeVisibleAsync();
-        await Expect(Page).ToHaveURLAsync(new Regex(".*/settings$"));
 
         await Page.Locator("#settings-confirm-modal-cancel").ClickAsync();
         await Expect(Page.Locator("#settings-confirm-modal")).ToBeHiddenAsync();
@@ -115,26 +131,22 @@ public sealed class DashboardSmokeTests : PageTest
         await Page.GotoAsync($"{_fixture.BaseUrl}/settings?lang=ja");
 
         await Expect(Page.Locator("html")).ToHaveAttributeAsync("lang", "ja");
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "設定" })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("処理モード")).ToBeVisibleAsync();
-        await Expect(Page.GetByText("Hugging Face 接続")).ToBeVisibleAsync();
-        await Expect(Page.GetByText("アプリの言語")).ToBeVisibleAsync();
-        await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "設定を保存" })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("Saved Models", new() { Exact = true })).ToHaveCountAsync(0);
-        await Expect(Page.GetByText("Save And Continue", new() { Exact = true })).ToHaveCountAsync(0);
-        await Expect(Page.GetByText("次にやること", new() { Exact = true })).ToHaveCountAsync(0);
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "設定", Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("処理モード", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Hugging Face 接続", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("アプリの言語", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "設定を保存", Exact = true })).ToBeVisibleAsync();
     }
 
     [TestMethod]
-    public async Task NewJob_UsesModal_When_NoInputIsSelected()
+    public async Task NewJob_ShowsInlineValidation_When_NoInputIsSelected()
     {
         await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/new");
 
-        await Page.GetByRole(AriaRole.Button, new() { Name = "Start" }).ClickAsync();
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Start Conversion", Exact = true }).ClickAsync();
 
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Choose Audio Files First" })).ToBeVisibleAsync();
-        await Page.GetByRole(AriaRole.Button, new() { Name = "OK" }).ClickAsync();
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Choose Audio Files First" })).ToHaveCountAsync(0);
+        await Expect(Page.Locator("#selection-feedback")).ToContainTextAsync("Choose audio files or a folder first.");
+        await Expect(Page.GetByRole(AriaRole.Dialog)).ToHaveCountAsync(0);
     }
 
     [TestMethod]
@@ -143,42 +155,27 @@ public sealed class DashboardSmokeTests : PageTest
         await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/new?lang=ja");
 
         await Expect(Page.Locator("html")).ToHaveAttributeAsync("lang", "ja");
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "補足テキスト" })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("固有名詞や既知の表記があるときだけ入力します。")).ToBeVisibleAsync();
-        await Expect(Page.GetByText("書き方の例")).ToBeVisibleAsync();
-        await Expect(Page.GetByText("補足: 固有名詞や同音異義語の取り違えを減らしたい")).ToBeVisibleAsync();
-        await Expect(Page.GetByText("plain text のみです。固有名詞や同音異義語の取り違えを減らす補足に使います。")).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "補足テキスト", Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("固有名詞や既知の表記があるときだけ入力します。", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("書き方の例", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("補足: 固有名詞や同音異義語の取り違えを減らしたい", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("plain text のみです。固有名詞や同音異義語の取り違えを減らす補足に使います。", new() { Exact = true })).ToBeVisibleAsync();
     }
 
     [TestMethod]
-    public async Task NewJob_ShowsDuplicateDecisionModal_ForPreviouslyConvertedUpload()
-    {
-        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/new");
-
-        await Page.Locator("#upload-files-input").SetInputFilesAsync(_fixture.DuplicateUploadPath);
-        await Expect(Page.Locator("#selected-items-list").GetByText("already-processed.wav")).ToBeVisibleAsync();
-
-        await Page.GetByRole(AriaRole.Button, new() { Name = "Start" }).ClickAsync();
-
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Previously Converted Files Found" })).ToBeVisibleAsync();
-        await Expect(Page.Locator("#decision-modal-list").GetByText("already-processed.wav")).ToBeVisibleAsync();
-        await Page.GetByRole(AriaRole.Button, new() { Name = "Cancel" }).ClickAsync();
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Previously Converted Files Found" })).ToHaveCountAsync(0);
-        await Expect(Page).ToHaveURLAsync(new Regex(".*/jobs$"));
-    }
-
-    [TestMethod]
-    public async Task Jobs_Page_Shows_Completed_Run()
+    public async Task Jobs_Page_Shows_Completed_Run_Card()
     {
         await Page.GotoAsync($"{_fixture.BaseUrl}/jobs");
 
-        var row = Page.Locator("tr").Filter(new() { HasText = _fixture.CompletedJobId });
+        var card = JobCard(_fixture.CompletedJobId);
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Jobs", Exact = true })).ToBeVisibleAsync();
-        await Expect(Page.GetByText(_fixture.CompletedJobId)).ToBeVisibleAsync();
-        await Expect(row).ToContainTextAsync("1 MB");
-        await Expect(row).ToContainTextAsync("1m 10s");
-        await Expect(row).ToContainTextAsync("2m 7s");
-        await Expect(row.GetByRole(AriaRole.Link, new() { Name = "ZIP" })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Recent Jobs", Exact = true })).ToBeVisibleAsync();
+        await Expect(card).ToBeVisibleAsync();
+        await Expect(card).ToContainTextAsync("1 MB");
+        await Expect(card).ToContainTextAsync("1m 10s");
+        await Expect(card).ToContainTextAsync("2m 7s");
+        await Expect(card).ToContainTextAsync("IPA + Readable Text");
+        await Expect(card.GetByRole(AriaRole.Button, new() { Name = "Download", Exact = true })).ToBeVisibleAsync();
     }
 
     [TestMethod]
@@ -190,7 +187,8 @@ public sealed class DashboardSmokeTests : PageTest
         {
             await Page.GotoAsync($"{_fixture.BaseUrl}/jobs");
 
-            var activePanel = Page.Locator("section.panel").Filter(new() { HasText = "Now Processing" });
+            var activePanel = Page.Locator("section.panel.accent-panel");
+            await Expect(activePanel).ToContainTextAsync("Now Processing");
             await Expect(activePanel).ToContainTextAsync(runningJobId);
             await Expect(activePanel).Not.ToContainTextAsync(pendingJobId);
         }
@@ -209,10 +207,10 @@ public sealed class DashboardSmokeTests : PageTest
         {
             await Page.GotoAsync($"{_fixture.BaseUrl}/jobs");
 
-            var row = Page.Locator("tr").Filter(new() { HasText = runningJobId });
-            await Expect(row).ToBeVisibleAsync();
-            await row.GetByRole(AriaRole.Button, new() { Name = "Delete" }).ClickAsync();
-            await Expect(Page.GetByRole(AriaRole.Dialog)).ToBeVisibleAsync();
+            var card = JobCard(runningJobId);
+            await Expect(card).ToBeVisibleAsync();
+            await card.GetByRole(AriaRole.Button, new() { Name = "Delete", Exact = true }).ClickAsync();
+            await Expect(Page.Locator("#confirm-modal")).ToBeVisibleAsync();
             await Page.Locator("#confirm-modal-submit").ClickAsync();
             await Expect(Page.GetByText(runningJobId, new() { Exact = true })).ToHaveCountAsync(0);
             Assert.IsTrue(File.Exists(Path.Combine(_fixture.TempRoot, "outputs", "runs", runningJobId, ".delete-requested")));
@@ -224,109 +222,65 @@ public sealed class DashboardSmokeTests : PageTest
     }
 
     [TestMethod]
-    public async Task Jobs_Page_Counts_Skipped_Items_In_Progress_And_Shows_Zip()
-    {
-        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs");
-
-        var row = Page.Locator("tr").Filter(new() { HasText = _fixture.DuplicateSkippedJobId });
-        await Expect(row).ToContainTextAsync(_fixture.DuplicateSkippedJobId);
-        await Expect(row).ToContainTextAsync("1 / 1");
-        await Expect(row).ToContainTextAsync("Processed 0 | Skipped 1 | Errors 0");
-        await Expect(row.GetByRole(AriaRole.Link, new() { Name = "ZIP" })).ToBeVisibleAsync();
-    }
-
-    [TestMethod]
-    public async Task Jobs_Page_FallsBack_To_TerminalCounts_When_Legacy_Progress_IsMissing()
-    {
-        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs");
-
-        var row = Page.Locator("tr").Filter(new() { HasText = _fixture.LegacyDuplicateProgressJobId });
-        await Expect(row).ToContainTextAsync(_fixture.LegacyDuplicateProgressJobId);
-        await Expect(row).ToContainTextAsync("1 / 1");
-        await Expect(row).ToContainTextAsync("Processed 0 | Skipped 1 | Errors 0");
-    }
-
-    [TestMethod]
-    public async Task CompletedRunDetails_ExposeZip_AndTimeline()
+    public async Task CompletedRunDetails_ShowsArtifacts_AndReadablePreview()
     {
         await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{_fixture.CompletedJobId}");
 
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = _fixture.CompletedJobId })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("Elapsed Time")).ToBeVisibleAsync();
-        await Expect(Page.GetByText("2m 7s")).ToBeVisibleAsync();
-        await Expect(Page.GetByText("This Job Settings", new() { Exact = true })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("Compute Mode: CPU")).ToBeVisibleAsync();
-        await Expect(Page.GetByText("Processing Quality: Standard")).ToBeVisibleAsync();
-        await Expect(Page.GetByText("Current Settings", new() { Exact = true })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("Compute Mode: GPU")).ToBeVisibleAsync();
-        await Expect(Page.GetByText("Processing Quality: High")).ToBeVisibleAsync();
-        await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "Run Again With Same Settings" })).ToBeVisibleAsync();
-        await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "Run Again With Current Settings" })).ToBeVisibleAsync();
-        await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "Download ZIP" })).ToBeVisibleAsync();
-        await Expect(Page.GetByRole(AriaRole.Link, new() { Name = _fixture.CompletedMediaId })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = _fixture.CompletedJobId, Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Processing Time", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("2m 7s", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Per-file Results", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("sample-call.wav", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Conversion Info", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("CPU", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.Locator("#details-download-button")).ToBeVisibleAsync();
 
-        await Page.GetByRole(AriaRole.Link, new() { Name = _fixture.CompletedMediaId }).ClickAsync();
+        var artifactCard = Page.Locator(".detail-artifact-card").Filter(new() { HasText = "sample-call.wav" });
+        await artifactCard.GetByRole(AriaRole.Link, new() { Name = "Readable Text", Exact = true }).ClickAsync();
+
         await Expect(Page).ToHaveURLAsync(new Regex($".*/jobs/{_fixture.CompletedJobId}/{_fixture.CompletedMediaId}$"));
-        await Expect(Page.Locator("pre")).ToContainTextAsync("Audio Timeline");
-        await Expect(Page.Locator("pre")).ToContainTextAsync("public test sample");
+        await Expect(Page.GetByText("Readable View", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Hello, this is a public test sample.", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Nice to meet you. This is the reply.", new() { Exact = true })).ToBeVisibleAsync();
     }
 
     [TestMethod]
-    public async Task DuplicateSkippedRunDetails_Show_ReusedTimeline()
+    public async Task DuplicateSkippedRunDetails_ShowsCacheReuse()
     {
         await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{_fixture.DuplicateSkippedJobId}");
 
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = _fixture.DuplicateSkippedJobId })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("1 / 1")).ToBeVisibleAsync();
-        await Expect(Page.GetByText("Processed 0 | Skipped 1 | Errors 0")).ToBeVisibleAsync();
-        await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "Download ZIP" })).ToBeVisibleAsync();
-        await Expect(Page.GetByRole(AriaRole.Link, new() { Name = _fixture.DuplicateSkippedMediaId })).ToBeVisibleAsync();
-        await Expect(Page.GetByText($"Reused from job: {_fixture.CompletedJobId}")).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = _fixture.DuplicateSkippedJobId, Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Cache Reused", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByText($"Reused from job: {_fixture.CompletedJobId}", new() { Exact = true })).ToBeVisibleAsync();
 
-        await Page.GetByRole(AriaRole.Link, new() { Name = _fixture.DuplicateSkippedMediaId }).ClickAsync();
-        await Expect(Page).ToHaveURLAsync(new Regex($".*/jobs/{_fixture.DuplicateSkippedJobId}/{_fixture.DuplicateSkippedMediaId}$"));
-        await Expect(Page.Locator("pre")).ToContainTextAsync("Audio Timeline");
-        await Expect(Page.Locator("pre")).ToContainTextAsync("public test sample");
+        var artifactCard = Page.Locator(".detail-artifact-card").Filter(new() { HasText = "already-processed.wav" });
+        await Expect(artifactCard.GetByRole(AriaRole.Link, new() { Name = "Readable Text", Exact = true })).ToBeVisibleAsync();
+        await Expect(artifactCard.GetByRole(AriaRole.Link, new() { Name = "IPA", Exact = true })).ToBeVisibleAsync();
     }
 
     [TestMethod]
-    public async Task DuplicateSkippedRun_CanDownloadZip()
+    public async Task CompletedRunDetails_CanDownloadReadableTextZip()
     {
-        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{_fixture.DuplicateSkippedJobId}");
+        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{_fixture.CompletedJobId}");
+
+        await Page.Locator("#details-download-button").ClickAsync();
+        await Expect(Page.Locator("#details-download-modal")).ToBeVisibleAsync();
+        await Expect(Page.Locator("#details-download-modal-readable")).ToBeVisibleAsync();
+        await Expect(Page.Locator("#details-download-modal-ipa")).ToBeVisibleAsync();
 
         var download = await Page.RunAndWaitForDownloadAsync(async () =>
         {
-            await Page.GetByRole(AriaRole.Link, new() { Name = "Download ZIP" }).ClickAsync();
+            await Page.Locator("#details-download-modal-readable").ClickAsync();
         });
 
-        var zipPath = Path.Combine(_fixture.TempRoot, $"{_fixture.DuplicateSkippedJobId}.zip");
+        Assert.AreEqual($"{_fixture.CompletedJobId}-readable-text.zip", download.SuggestedFilename);
+        var zipPath = Path.Combine(_fixture.TempRoot, $"{_fixture.CompletedJobId}-readable-text.zip");
         await download.SaveAsAsync(zipPath);
 
         using var archive = ZipFile.OpenRead(zipPath);
-        Assert.IsTrue(archive.Entries.Any(entry => entry.FullName.StartsWith("timelines/", StringComparison.Ordinal)));
-    }
-
-    [TestMethod]
-    public async Task CompletedRunDetails_CanDownloadZip()
-    {
-        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{_fixture.CompletedJobId}");
-
-        var download = await Page.RunAndWaitForDownloadAsync(async () =>
-        {
-            await Page.GetByRole(AriaRole.Link, new() { Name = "Download ZIP" }).ClickAsync();
-        });
-
-        Assert.AreEqual($"{_fixture.CompletedJobId}.zip", download.SuggestedFilename);
-    }
-
-    [TestMethod]
-    public async Task Jobs_Page_Shows_Zip_For_PartiallyFailed_Run()
-    {
-        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs");
-
-        var row = Page.Locator("tr").Filter(new() { HasText = _fixture.PartialFailedJobId });
-        await Expect(row).ToContainTextAsync(_fixture.PartialFailedJobId);
-        await Expect(row.GetByRole(AriaRole.Link, new() { Name = "ZIP" })).ToBeVisibleAsync();
+        Assert.IsTrue(archive.Entries.Any(entry => entry.FullName.StartsWith("readable-text/", StringComparison.Ordinal)));
+        Assert.IsNotNull(archive.GetEntry("CONVERSION_INFO.md"));
+        Assert.IsNotNull(archive.GetEntry("README.html"));
     }
 
     [TestMethod]
@@ -334,65 +288,66 @@ public sealed class DashboardSmokeTests : PageTest
     {
         await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{_fixture.PartialFailedJobId}");
 
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = _fixture.PartialFailedJobId })).ToBeVisibleAsync();
-        await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "Download ZIP" })).ToBeVisibleAsync();
-        await Expect(Page.GetByRole(AriaRole.Link, new() { Name = _fixture.PartialFailedMediaId })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = _fixture.PartialFailedJobId, Exact = true })).ToBeVisibleAsync();
+        await Page.Locator("#details-download-button").ClickAsync();
+        await Expect(Page.Locator("#details-download-modal-readable")).ToBeVisibleAsync();
 
         var download = await Page.RunAndWaitForDownloadAsync(async () =>
         {
-            await Page.GetByRole(AriaRole.Link, new() { Name = "Download ZIP" }).ClickAsync();
+            await Page.Locator("#details-download-modal-readable").ClickAsync();
         });
 
-        var zipPath = Path.Combine(_fixture.TempRoot, $"{_fixture.PartialFailedJobId}.zip");
+        var zipPath = Path.Combine(_fixture.TempRoot, $"{_fixture.PartialFailedJobId}-readable-text.zip");
         await download.SaveAsAsync(zipPath);
 
         using var archive = ZipFile.OpenRead(zipPath);
-        Assert.IsTrue(archive.Entries.Any(entry => entry.FullName.StartsWith("timelines/", StringComparison.Ordinal)));
+        Assert.IsTrue(archive.Entries.Any(entry => entry.FullName.StartsWith("readable-text/", StringComparison.Ordinal)));
         Assert.IsNotNull(archive.GetEntry("FAILURE_REPORT.md"));
         Assert.IsNotNull(archive.GetEntry("logs/worker.log"));
 
-        using var reportReader = new StreamReader(archive.GetEntry("FAILURE_REPORT.md")!.Open());
+        await using var reportStream = archive.GetEntry("FAILURE_REPORT.md")!.Open();
+        using var reportReader = new StreamReader(reportStream);
         var reportText = await reportReader.ReadToEndAsync();
         StringAssert.Contains(reportText, "broken-call.wav");
         StringAssert.Contains(reportText, "CUDA failed with error unknown error");
     }
 
     [TestMethod]
-    public async Task FailedRunWithoutTimelines_HidesZip_AndDownloadReturnsBadRequest()
+    public async Task FailedRunWithoutArtifacts_HidesDownload_AndDownloadReturnsBadRequest()
     {
         await Page.GotoAsync($"{_fixture.BaseUrl}/jobs");
 
-        var row = Page.Locator("tr").Filter(new() { HasText = _fixture.FailedNoTimelineJobId });
-        await Expect(row).ToContainTextAsync(_fixture.FailedNoTimelineJobId);
-        await Expect(row.GetByRole(AriaRole.Link, new() { Name = "ZIP" })).ToHaveCountAsync(0);
+        var card = JobCard(_fixture.FailedNoTimelineJobId);
+        await Expect(card).ToBeVisibleAsync();
+        await Expect(card.Locator("button[data-download-job-id]")).ToHaveCountAsync(0);
 
         await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{_fixture.FailedNoTimelineJobId}");
-        await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "Download ZIP" })).ToHaveCountAsync(0);
+        await Expect(Page.Locator("#details-download-button")).ToHaveCountAsync(0);
 
         using var client = new HttpClient();
-        using var response = await client.GetAsync($"{_fixture.BaseUrl}/jobs/{_fixture.FailedNoTimelineJobId}/download");
+        using var response = await client.GetAsync($"{_fixture.BaseUrl}/jobs/{_fixture.FailedNoTimelineJobId}/download?artifact=readable-text");
         Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
-        StringAssert.Contains(body, "No completed timelines are available to download for this job.");
+        StringAssert.Contains(body, "No completed Readable Text artifacts are available to download for this job.");
     }
 
     [TestMethod]
-    public async Task RunningRun_HidesZip_AndDownloadReturnsBadRequest()
+    public async Task RunningRun_HidesDownload_AndDownloadReturnsBadRequest()
     {
         var jobId = await _fixture.CreateRunningRunAsync();
         try
         {
             await Page.GotoAsync($"{_fixture.BaseUrl}/jobs");
 
-            var row = Page.Locator("tr").Filter(new() { HasText = jobId });
-            await Expect(row).ToContainTextAsync(jobId);
-            await Expect(row.GetByRole(AriaRole.Link, new() { Name = "ZIP" })).ToHaveCountAsync(0);
+            var card = JobCard(jobId);
+            await Expect(card).ToBeVisibleAsync();
+            await Expect(card.Locator("button[data-download-job-id]")).ToHaveCountAsync(0);
 
             await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{jobId}");
-            await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "Download ZIP" })).ToHaveCountAsync(0);
+            await Expect(Page.Locator("#details-download-button")).ToHaveCountAsync(0);
 
             using var client = new HttpClient();
-            using var response = await client.GetAsync($"{_fixture.BaseUrl}/jobs/{jobId}/download");
+            using var response = await client.GetAsync($"{_fixture.BaseUrl}/jobs/{jobId}/download?artifact=ipa");
             Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
             var body = await response.Content.ReadAsStringAsync();
             StringAssert.Contains(body, "The job is still in progress.");
@@ -412,67 +367,4 @@ public sealed class DashboardSmokeTests : PageTest
         await Page.GotoAsync($"{_fixture.BaseUrl}/runs/{_fixture.CompletedJobId}/{_fixture.CompletedMediaId}");
         await Expect(Page).ToHaveURLAsync(new Regex($".*/jobs/{_fixture.CompletedJobId}/{_fixture.CompletedMediaId}$"));
     }
-
-    [TestMethod]
-    public async Task Root_DoesNotRequire_Token_After_Language_IsSelected()
-    {
-        try
-        {
-            await _fixture.SetTokenAsync(null);
-
-            await Page.GotoAsync($"{_fixture.BaseUrl}/");
-
-            await Expect(Page).ToHaveURLAsync(new Regex(".*/jobs$"));
-        }
-        finally
-        {
-            await _fixture.SetTokenAsync("hf_test_token_value");
-        }
-    }
-
-    [TestMethod]
-    public async Task CompletedRun_CanRerunWithOriginalSettings()
-    {
-        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{_fixture.CompletedJobId}");
-
-        await Page.GetByRole(AriaRole.Button, new() { Name = "Run Again With Same Settings" }).ClickAsync();
-        await Expect(Page).ToHaveURLAsync(new Regex(".*/jobs/job-[^/]+$"));
-
-        var rerunJobId = new Uri(Page.Url).Segments[^1].Trim('/');
-        try
-        {
-            var request = await _fixture.ReadJobRequestSettingsAsync(rerunJobId);
-            Assert.AreEqual("cpu", request.ComputeMode);
-            Assert.AreEqual("standard", request.ProcessingQuality);
-            Assert.IsTrue(request.ReprocessDuplicates);
-        }
-        finally
-        {
-            await _fixture.DeleteRunAsync(rerunJobId);
-        }
-    }
-
-    [TestMethod]
-    public async Task CompletedRun_CanRerunWithCurrentSettings()
-    {
-        await Page.GotoAsync($"{_fixture.BaseUrl}/jobs/{_fixture.CompletedJobId}");
-
-        await Page.GetByRole(AriaRole.Button, new() { Name = "Run Again With Current Settings" }).ClickAsync();
-        await Expect(Page).ToHaveURLAsync(new Regex(".*/jobs/job-[^/]+$"));
-
-        var rerunJobId = new Uri(Page.Url).Segments[^1].Trim('/');
-        try
-        {
-            var request = await _fixture.ReadJobRequestSettingsAsync(rerunJobId);
-            Assert.AreEqual("gpu", request.ComputeMode);
-            Assert.AreEqual("high", request.ProcessingQuality);
-            Assert.IsTrue(request.ReprocessDuplicates);
-        }
-        finally
-        {
-            await _fixture.DeleteRunAsync(rerunJobId);
-        }
-    }
 }
-
-

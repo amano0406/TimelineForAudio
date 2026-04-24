@@ -1053,6 +1053,12 @@ code {
   padding: 1.5rem;
 }
 
+.modal-shell.hidden,
+.modal-shell[aria-hidden="true"] {
+  display: none;
+  pointer-events: none;
+}
+
 .modal-backdrop {
   position: absolute;
   inset: 0;

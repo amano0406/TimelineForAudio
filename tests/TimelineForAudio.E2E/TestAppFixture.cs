@@ -296,15 +296,19 @@ internal sealed class TestAppFixture : IAsyncDisposable
     {
         const string jobId = "job-e2e-completed";
         const string mediaId = "sample-media-001";
+        const string fileName = "sample-call.wav";
 
         var runRoot = Path.Combine(outputRoot, jobId);
         var fixturesRoot = Path.Combine(tempRoot, "fixtures");
-        var uploadedPath = Path.Combine(fixturesRoot, "sample-call.wav");
+        var uploadedPath = Path.Combine(fixturesRoot, fileName);
+        var mediaRoot = Path.Combine(runRoot, "media", mediaId);
         Directory.CreateDirectory(fixturesRoot);
         Directory.CreateDirectory(runRoot);
         Directory.CreateDirectory(Path.Combine(runRoot, "llm"));
         Directory.CreateDirectory(Path.Combine(runRoot, "logs"));
-        Directory.CreateDirectory(Path.Combine(runRoot, "media", mediaId, "timeline"));
+        Directory.CreateDirectory(Path.Combine(mediaRoot, "readable-text"));
+        Directory.CreateDirectory(Path.Combine(mediaRoot, "ipa"));
+        Directory.CreateDirectory(Path.Combine(mediaRoot, "analysis"));
         await File.WriteAllBytesAsync(uploadedPath, Encoding.UTF8.GetBytes("TimelineForAudio-e2e-completed-source"));
 
         var request = new
@@ -326,8 +330,8 @@ internal sealed class TestAppFixture : IAsyncDisposable
                     input_id = "upload-0001",
                     source_kind = "upload",
                     source_id = "uploads",
-                    original_path = "sample-call.wav",
-                    display_name = "sample-call.wav",
+                    original_path = fileName,
+                    display_name = fileName,
                     size_bytes = 1048576,
                     uploaded_path = uploadedPath.Replace("\\", "/"),
                 },
@@ -383,8 +387,8 @@ internal sealed class TestAppFixture : IAsyncDisposable
                 {
                     input_id = "upload-0001",
                     source_kind = "upload",
-                    original_path = "sample-call.wav",
-                    file_name = "sample-call.wav",
+                    original_path = fileName,
+                    file_name = fileName,
                     size_bytes = 1048576,
                     duration_seconds = 70.417,
                     source_hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -393,6 +397,8 @@ internal sealed class TestAppFixture : IAsyncDisposable
                     duplicate_of = (string?)null,
                     audio_id = mediaId,
                     status = "completed",
+                    speaker_count = 2,
+                    speaker_count_status = "confirmed",
                 },
             },
         };
@@ -403,7 +409,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
         await File.WriteAllTextAsync(Path.Combine(runRoot, "result.json"), JsonSerializer.Serialize(result, jsonOptions));
         await File.WriteAllTextAsync(Path.Combine(runRoot, "manifest.json"), JsonSerializer.Serialize(manifest, jsonOptions));
         await File.WriteAllTextAsync(Path.Combine(runRoot, "RUN_INFO.md"), "# Run Info\n");
-        await File.WriteAllTextAsync(Path.Combine(runRoot, "TRANSCRIPTION_INFO.md"), "# Transcription Info\n");
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "CONVERSION_INFO.md"), BuildConversionInfoMarkdown("CPU", "en", readableTextEnabled: true));
         await File.WriteAllTextAsync(Path.Combine(runRoot, "NOTICE.md"), "# Notice\n");
         await File.WriteAllTextAsync(Path.Combine(runRoot, "logs", "worker.log"), "[info] completed test run\n");
         await File.WriteAllTextAsync(Path.Combine(runRoot, "llm", "timeline_index.jsonl"), "{\"audio_id\":\"sample-media-001\"}\n");
@@ -411,21 +417,46 @@ internal sealed class TestAppFixture : IAsyncDisposable
             Path.Combine(runRoot, "llm", "batch-001.md"),
             "# Batch 001\n\nIncluded: sample-media-001\n");
         await File.WriteAllTextAsync(
-            Path.Combine(runRoot, "media", mediaId, "timeline", "timeline.md"),
-            """
-            # Audio Timeline
-
-            - Source: `sample-call.wav`
-            - Audio ID: `sample-media-001`
-            - Duration: `70.417s`
-
-            ## 00:00:11.179 - 00:00:57.194
-            - Speaker: `SPEAKER_00`
-            - Text: Hello, this is a public test sample.
-            - Pause before: `0.000s`
-            - Overlap with previous: `0.000s`
-            - Estimated units/min: `155.4`
-            """);
+            Path.Combine(mediaRoot, "readable-text", "Readable Text.md"),
+            BuildReadableTextMarkdown(
+                "2026-03-24 09-00-00",
+                2,
+                "en",
+                ("00:00:11.179 - 00:00:26.000", "SPEAKER_00", "Hello, this is a public test sample."),
+                ("00:00:26.200 - 00:00:41.000", "SPEAKER_01", "Nice to meet you. This is the reply."),
+                ("00:00:41.100 - 00:00:57.194", "SPEAKER_00", "Great, let's continue with the call.")));
+        await File.WriteAllTextAsync(
+            Path.Combine(mediaRoot, "ipa", "IPA.md"),
+            BuildIpaMarkdown(
+                "2026-03-24 09-00-00",
+                2,
+                "en",
+                ("00:00:11.179 - 00:00:26.000", "SPEAKER_00", "/həˈloʊ ðɪs ɪz ə ˈpʌblɪk tɛst ˈsæmpəl/"),
+                ("00:00:26.200 - 00:00:41.000", "SPEAKER_01", "/naɪs tə miːt juː ðɪs ɪz ðə rɪˈplaɪ/"),
+                ("00:00:41.100 - 00:00:57.194", "SPEAKER_00", "/ɡreɪt lɛts kənˈtɪnjuː wɪð ðə kɔːl/")));
+        await File.WriteAllTextAsync(
+            Path.Combine(mediaRoot, "source.json"),
+            JsonSerializer.Serialize(
+                new
+                {
+                    original_path = fileName,
+                    resolved_path = uploadedPath.Replace("\\", "/"),
+                    display_name = fileName,
+                    captured_at = "2026-03-24 09-00-00",
+                    recorded_at = "2026-03-24 09-00-00",
+                },
+                jsonOptions));
+        await File.WriteAllTextAsync(
+            Path.Combine(mediaRoot, "analysis", "speaker_summary.json"),
+            JsonSerializer.Serialize(
+                new
+                {
+                    speaker_count = 2,
+                    speaker_count_status = "confirmed",
+                    speaker_count_note = "Speaker separation confirmed for the test fixture.",
+                    diarization_used = true,
+                },
+                jsonOptions));
     }
 
     private static async Task SeedDuplicateCatalogEntryAsync(string outputRoot, string tempRoot)
@@ -463,12 +494,16 @@ internal sealed class TestAppFixture : IAsyncDisposable
     {
         const string jobId = "job-e2e-partial";
         const string mediaId = "sample-media-002";
+        const string fileName = "good-call.wav";
 
         var runRoot = Path.Combine(outputRoot, jobId);
+        var mediaRoot = Path.Combine(runRoot, "media", mediaId);
         Directory.CreateDirectory(runRoot);
         Directory.CreateDirectory(Path.Combine(runRoot, "llm"));
         Directory.CreateDirectory(Path.Combine(runRoot, "logs"));
-        Directory.CreateDirectory(Path.Combine(runRoot, "media", mediaId, "timeline"));
+        Directory.CreateDirectory(Path.Combine(mediaRoot, "readable-text"));
+        Directory.CreateDirectory(Path.Combine(mediaRoot, "ipa"));
+        Directory.CreateDirectory(Path.Combine(mediaRoot, "analysis"));
 
         var request = new
         {
@@ -487,8 +522,8 @@ internal sealed class TestAppFixture : IAsyncDisposable
                     input_id = "upload-0001",
                     source_kind = "upload",
                     source_id = "uploads",
-                    original_path = "good-call.wav",
-                    display_name = "good-call.wav",
+                    original_path = fileName,
+                    display_name = fileName,
                     size_bytes = 2097152,
                     uploaded_path = (string?)null,
                 },
@@ -560,15 +595,18 @@ internal sealed class TestAppFixture : IAsyncDisposable
                 {
                     input_id = "upload-0001",
                     source_kind = "upload",
-                    original_path = "good-call.wav",
-                    file_name = "good-call.wav",
+                    original_path = fileName,
+                    file_name = fileName,
                     size_bytes = 2097152,
                     duration_seconds = 120.125,
                     source_hash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                    conversion_signature = CurrentConversionSignature,
                     duplicate_status = "new",
                     duplicate_of = (string?)null,
                     audio_id = mediaId,
                     status = "completed",
+                    speaker_count = 1,
+                    speaker_count_status = "confirmed",
                 },
                 new
                 {
@@ -579,6 +617,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
                     size_bytes = 3145728,
                     duration_seconds = 60.650,
                     source_hash = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                    conversion_signature = CurrentConversionSignature,
                     duplicate_status = "new",
                     duplicate_of = (string?)null,
                     audio_id = "broken-media-003",
@@ -601,7 +640,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
         await File.WriteAllTextAsync(Path.Combine(runRoot, "result.json"), JsonSerializer.Serialize(result, jsonOptions));
         await File.WriteAllTextAsync(Path.Combine(runRoot, "manifest.json"), JsonSerializer.Serialize(manifest, jsonOptions));
         await File.WriteAllTextAsync(Path.Combine(runRoot, "RUN_INFO.md"), "# Run Info\n");
-        await File.WriteAllTextAsync(Path.Combine(runRoot, "TRANSCRIPTION_INFO.md"), "# Transcription Info\n");
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "CONVERSION_INFO.md"), BuildConversionInfoMarkdown("GPU", "en", readableTextEnabled: true));
         await File.WriteAllTextAsync(Path.Combine(runRoot, "NOTICE.md"), "# Notice\n");
         await File.WriteAllTextAsync(
             Path.Combine(runRoot, "logs", "worker.log"),
@@ -615,24 +654,35 @@ internal sealed class TestAppFixture : IAsyncDisposable
             Path.Combine(runRoot, "llm", "batch-001.md"),
             "# Batch 001\n\nIncluded: sample-media-002\n");
         await File.WriteAllTextAsync(
-            Path.Combine(runRoot, "media", mediaId, "source.json"),
+            Path.Combine(mediaRoot, "source.json"),
             JsonSerializer.Serialize(sourceInfo, jsonOptions));
         await File.WriteAllTextAsync(
-            Path.Combine(runRoot, "media", mediaId, "timeline", "timeline.md"),
-            """
-            # Audio Timeline
-
-            - Source: `good-call.wav`
-            - Audio ID: `sample-media-002`
-            - Duration: `120.125s`
-
-            ## 00:00:05.000 - 00:01:10.000
-            - Speaker: `SPEAKER_00`
-            - Text: This is the successful part of a partially failed run.
-            - Pause before: `0.000s`
-            - Overlap with previous: `0.000s`
-            - Estimated units/min: `149.2`
-            """);
+            Path.Combine(mediaRoot, "readable-text", "Readable Text.md"),
+            BuildReadableTextMarkdown(
+                "2026-03-24 10-00-00",
+                1,
+                "en",
+                ("00:00:05.000 - 00:01:10.000", "SPEAKER_00", "This is the successful part of a partially failed run."),
+                ("00:01:10.100 - 00:02:00.125", "SPEAKER_00", "Only this file produced a readable artifact.")));
+        await File.WriteAllTextAsync(
+            Path.Combine(mediaRoot, "ipa", "IPA.md"),
+            BuildIpaMarkdown(
+                "2026-03-24 10-00-00",
+                1,
+                "en",
+                ("00:00:05.000 - 00:01:10.000", "SPEAKER_00", "/ðɪs ɪz ðə səkˈsɛsfəl pɑːrt əv ə ˈpɑːrʃəli feɪld rʌn/"),
+                ("00:01:10.100 - 00:02:00.125", "SPEAKER_00", "/ˈoʊnli ðɪs faɪl prəˈdjuːst ə ˈriːdəbəl ˈɑːrtəfækt/")));
+        await File.WriteAllTextAsync(
+            Path.Combine(mediaRoot, "analysis", "speaker_summary.json"),
+            JsonSerializer.Serialize(
+                new
+                {
+                    speaker_count = 1,
+                    speaker_count_status = "confirmed",
+                    speaker_count_note = "Single speaker confirmed for the successful file.",
+                    diarization_used = true,
+                },
+                jsonOptions));
     }
 
     private static async Task SeedDuplicateSkippedRunAsync(string outputRoot)
@@ -647,7 +697,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
 
         var duplicateBytes = Encoding.UTF8.GetBytes("TimelineForAudio-e2e-duplicate-seed");
         var source_hash = Convert.ToHexString(SHA256.HashData(duplicateBytes)).ToLowerInvariant();
-        var referencedTimelinePath = Path.Combine(outputRoot, "job-e2e-completed", "media", "sample-media-001", "timeline", "timeline.md")
+        var referencedReadableTextPath = Path.Combine(outputRoot, "job-e2e-completed", "media", "sample-media-001", "readable-text", "Readable Text.md")
             .Replace("\\", "/");
 
         var request = new
@@ -733,9 +783,11 @@ internal sealed class TestAppFixture : IAsyncDisposable
                     source_hash,
                     conversion_signature = CurrentConversionSignature,
                     duplicate_status = "duplicate_skip",
-                    duplicate_of = referencedTimelinePath,
+                    duplicate_of = referencedReadableTextPath,
                     audio_id = mediaId,
                     status = "skipped_duplicate",
+                    speaker_count = 2,
+                    speaker_count_status = "confirmed",
                     container_name = "mp4",
                     video_codec = "h264",
                     audio_codec = "aac",
@@ -758,6 +810,7 @@ internal sealed class TestAppFixture : IAsyncDisposable
         await File.WriteAllTextAsync(Path.Combine(runRoot, "status.json"), JsonSerializer.Serialize(status, jsonOptions));
         await File.WriteAllTextAsync(Path.Combine(runRoot, "result.json"), JsonSerializer.Serialize(result, jsonOptions));
         await File.WriteAllTextAsync(Path.Combine(runRoot, "manifest.json"), JsonSerializer.Serialize(manifest, jsonOptions));
+        await File.WriteAllTextAsync(Path.Combine(runRoot, "CONVERSION_INFO.md"), BuildConversionInfoMarkdown("CPU", "en", readableTextEnabled: true));
         await File.WriteAllTextAsync(Path.Combine(runRoot, "logs", "worker.log"), "[info] duplicate timeline reused\n");
     }
 
@@ -1208,6 +1261,76 @@ internal sealed class TestAppFixture : IAsyncDisposable
         await File.WriteAllTextAsync(Path.Combine(runRoot, "TRANSCRIPTION_INFO.md"), "# Transcription Info\n");
         await File.WriteAllTextAsync(Path.Combine(runRoot, "NOTICE.md"), "# Notice\n");
         await File.WriteAllTextAsync(Path.Combine(runRoot, "logs", "worker.log"), "[info] pending test run\n");
+    }
+
+    private static string BuildReadableTextMarkdown(
+        string fileLabel,
+        int speakers,
+        string languageHint,
+        params (string Time, string Speaker, string Text)[] turns)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("# Readable Text");
+        builder.AppendLine();
+        builder.AppendLine($"- File: `{fileLabel}`");
+        builder.AppendLine($"- Speakers: `{speakers}`");
+        builder.AppendLine($"- Language Hint: `{languageHint}`");
+        builder.AppendLine();
+
+        for (var index = 0; index < turns.Length; index += 1)
+        {
+            var turn = turns[index];
+            builder.AppendLine($"### Turn {(index + 1):000}");
+            builder.AppendLine($"Time: `{turn.Time}`");
+            builder.AppendLine($"Speaker: `{turn.Speaker}`");
+            builder.AppendLine($"Text: {turn.Text}");
+            builder.AppendLine();
+        }
+
+        return builder.ToString().TrimEnd() + Environment.NewLine;
+    }
+
+    private static string BuildIpaMarkdown(
+        string fileLabel,
+        int speakers,
+        string languageHint,
+        params (string Time, string Speaker, string Ipa)[] turns)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("# IPA");
+        builder.AppendLine();
+        builder.AppendLine($"- File: `{fileLabel}`");
+        builder.AppendLine($"- Speakers: `{speakers}`");
+        builder.AppendLine($"- Language Hint: `{languageHint}`");
+        builder.AppendLine();
+
+        for (var index = 0; index < turns.Length; index += 1)
+        {
+            var turn = turns[index];
+            builder.AppendLine($"## Turn {(index + 1):000}");
+            builder.AppendLine($"Time: `{turn.Time}`");
+            builder.AppendLine($"Speaker: `{turn.Speaker}`");
+            builder.AppendLine($"IPA: {turn.Ipa}");
+            builder.AppendLine();
+        }
+
+        return builder.ToString().TrimEnd() + Environment.NewLine;
+    }
+
+    private static string BuildConversionInfoMarkdown(string computeMode, string languageHint, bool readableTextEnabled)
+    {
+        var lines = new[]
+        {
+            "# Conversion Info",
+            "",
+            "- AUDIO TO IPA BASE: `faster-whisper with medium, compute " + computeMode.ToLowerInvariant() + "`",
+            "- READABLE TEXT RECONSTRUCTION: `" + (readableTextEnabled ? "enabled" : "disabled") + "`",
+            "- LANGUAGE HINT: `" + languageHint + "`",
+            "- SUPPLEMENTAL CONTEXT CONFIGURED: `False`",
+            "- IPA CLEANUP RULES VERSION: `context-builder-v1`",
+        };
+
+        return string.Join(Environment.NewLine, lines) + Environment.NewLine;
     }
 
     private static int GetFreePort()
