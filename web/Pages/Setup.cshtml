@@ -17,6 +17,29 @@
     var recommendedComputeLabel = recommendedComputeMode == "gpu"
         ? L("settings.compute_mode.gpu")
         : L("settings.compute_mode.cpu");
+    int StepNumberFor(string step) => step switch
+    {
+        "language" => 1,
+        "compute" => 2,
+        "account" => 3,
+        "register" => 3,
+        "token" => 4,
+        "approval" => 5,
+        "complete" => 5,
+        _ => 1,
+    };
+    string StepTitleFor(string step) => step switch
+    {
+        "language" => L("setup.step.language"),
+        "compute" => L("setup.step.compute"),
+        "account" or "register" => L("setup.step.account"),
+        "token" => L("setup.step.token"),
+        "approval" => L("setup.step.approval"),
+        "complete" => L("setup.complete.eyebrow"),
+        _ => L("setup.step.language"),
+    };
+    var currentStepNumber = StepNumberFor(Model.Step);
+    var progressPercent = Math.Clamp(currentStepNumber * 20, 20, 100);
     ViewData["Title"] = L("setup.page_title");
 }
 
@@ -38,6 +61,19 @@
     </aside>
 
     <section class="setup-card">
+        <section class="space-y-3 rounded-[22px] border border-slate-200 bg-slate-50/90 px-4 py-4">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <p class="setup-eyebrow mb-1">@L("setup.step_label") @currentStepNumber / 5</p>
+                    <p class="text-sm font-medium text-slate-900">@StepTitleFor(Model.Step)</p>
+                </div>
+                <span class="badge-chip">@L("setup.eyebrow")</span>
+            </div>
+            <div class="h-2 overflow-hidden rounded-full bg-slate-200">
+                <div class="h-full rounded-full bg-[#3b71ca] transition-[width] duration-300 ease-in-out" style="width:@(progressPercent)%"></div>
+            </div>
+        </section>
+
         @if (!ViewContext.ModelState.IsValid)
         {
             <section class="error-panel">
