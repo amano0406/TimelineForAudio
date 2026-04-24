@@ -173,7 +173,7 @@
                             @if (item.HasIpaArtifact)
                             {
                                 <a class="@(item.IsCurrent && string.Equals(Model.SelectedArtifactKind, "ipa", StringComparison.OrdinalIgnoreCase) ? "btn-primary" : "btn-table")"
-                                   href="@ArtifactUrl(item.MediaId, "ipa")">IPA</a>
+                                   href="@ArtifactUrl(item.MediaId, "ipa")">@L("artifact.ipa")</a>
                             }
                         </div>
                     </article>
@@ -183,7 +183,19 @@
 
         <div class="work-surface document-surface">
             <div class="flex flex-wrap items-center justify-between gap-3">
-                <h2 class="section-title">@L("media.preview_title")</h2>
+                <div class="flex flex-wrap items-center gap-3">
+                    <h2 class="section-title">@L("media.preview_title")</h2>
+                    @if (string.Equals(Model.SelectedArtifactKind, "ipa", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <button type="button"
+                                class="btn-table"
+                                id="media-ipa-help-open"
+                                aria-label="@L("artifact.ipa.help_label")"
+                                title="@L("artifact.ipa.help_label")">
+                            @L("common.help")
+                        </button>
+                    }
+                </div>
                 <span class="badge-chip">@ArtifactLabel(Model.SelectedArtifactKind)</span>
             </div>
             @if (Model.PreviewBlocks.Count == 0)
@@ -214,3 +226,58 @@
 
     <pre id="artifact-raw-markdown" class="sr-only" hidden>@Model.ArtifactText</pre>
 </section>
+
+<div id="media-ipa-help-modal"
+     class="modal-shell hidden"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="media-ipa-help-modal-title">
+    <div class="modal-backdrop" data-ipa-help-close="true"></div>
+    <div class="modal-card">
+        <div class="space-y-3">
+            <h2 class="section-title" id="media-ipa-help-modal-title">@L("artifact.ipa.help_title")</h2>
+            <p class="page-description !mt-0">@L("artifact.ipa.help_intro")</p>
+        </div>
+        <ul class="modal-list mt-6">
+            <li class="modal-list-item">@L("artifact.ipa.help_point_1")</li>
+            <li class="modal-list-item">@L("artifact.ipa.help_point_2")</li>
+            <li class="modal-list-item">@L("artifact.ipa.help_point_3")</li>
+        </ul>
+        <div class="mt-6 flex items-center justify-end gap-3">
+            <button type="button" class="btn-secondary" id="media-ipa-help-close">@L("common.cancel")</button>
+        </div>
+    </div>
+</div>
+
+@section Scripts
+{
+    <script>
+        (() => {
+            const ipaHelpOpen = document.getElementById("media-ipa-help-open");
+            const ipaHelpModal = document.getElementById("media-ipa-help-modal");
+            const ipaHelpClose = document.getElementById("media-ipa-help-close");
+            if (!ipaHelpModal) {
+                return;
+            }
+
+            const closeIpaHelpModal = () => {
+                ipaHelpModal.classList.add("hidden");
+            };
+
+            ipaHelpOpen?.addEventListener("click", () => {
+                ipaHelpModal.classList.remove("hidden");
+            });
+
+            ipaHelpClose?.addEventListener("click", closeIpaHelpModal);
+            ipaHelpModal.querySelectorAll("[data-ipa-help-close='true']").forEach((element) => {
+                element.addEventListener("click", closeIpaHelpModal);
+            });
+
+            document.addEventListener("keydown", (event) => {
+                if (event.key === "Escape" && !ipaHelpModal.classList.contains("hidden")) {
+                    closeIpaHelpModal();
+                }
+            });
+        })();
+    </script>
+}

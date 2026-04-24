@@ -351,9 +351,38 @@
         <div class="mt-6 flex flex-wrap gap-3">
             <a id="download-modal-readable" class="btn-primary hidden" href="#">@L("artifact.readable_text")</a>
             <a id="download-modal-ipa" class="btn-secondary hidden" href="#">@L("artifact.ipa")</a>
+            <button type="button"
+                    id="download-modal-ipa-help"
+                    class="btn-table hidden"
+                    aria-label="@L("artifact.ipa.help_label")"
+                    title="@L("artifact.ipa.help_label")">
+                @L("common.help")
+            </button>
         </div>
         <div class="mt-6 flex items-center justify-end gap-3">
             <button type="button" class="btn-secondary" id="download-modal-close">@L("common.cancel")</button>
+        </div>
+    </div>
+</div>
+
+<div id="download-ipa-help-modal"
+     class="modal-shell hidden"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="download-ipa-help-modal-title">
+    <div class="modal-backdrop" data-ipa-help-close="true"></div>
+    <div class="modal-card">
+        <div class="space-y-3">
+            <h2 class="section-title" id="download-ipa-help-modal-title">@L("artifact.ipa.help_title")</h2>
+            <p class="page-description !mt-0">@L("artifact.ipa.help_intro")</p>
+        </div>
+        <ul class="modal-list mt-6">
+            <li class="modal-list-item">@L("artifact.ipa.help_point_1")</li>
+            <li class="modal-list-item">@L("artifact.ipa.help_point_2")</li>
+            <li class="modal-list-item">@L("artifact.ipa.help_point_3")</li>
+        </ul>
+        <div class="mt-6 flex items-center justify-end gap-3">
+            <button type="button" class="btn-secondary" id="download-ipa-help-close">@L("common.cancel")</button>
         </div>
     </div>
 </div>
@@ -375,7 +404,10 @@
             const downloadModalMessage = document.getElementById("download-modal-message");
             const downloadModalReadable = document.getElementById("download-modal-readable");
             const downloadModalIpa = document.getElementById("download-modal-ipa");
+            const downloadModalIpaHelp = document.getElementById("download-modal-ipa-help");
             const downloadModalClose = document.getElementById("download-modal-close");
+            const ipaHelpModal = document.getElementById("download-ipa-help-modal");
+            const ipaHelpClose = document.getElementById("download-ipa-help-close");
 
             const hasActive = page?.dataset.hasActive === "true";
             let activeForm = null;
@@ -493,6 +525,7 @@
 
             const closeDownloadModal = () => {
                 downloadModal?.classList.add("hidden");
+                ipaHelpModal?.classList.add("hidden");
                 if (downloadModalMessage) {
                     downloadModalMessage.textContent = "";
                 }
@@ -504,6 +537,11 @@
                     downloadModalIpa.classList.add("hidden");
                     downloadModalIpa.removeAttribute("href");
                 }
+                downloadModalIpaHelp?.classList.add("hidden");
+            };
+
+            const closeIpaHelpModal = () => {
+                ipaHelpModal?.classList.add("hidden");
             };
 
             document.querySelectorAll("button[data-download-job-id]").forEach((button) => {
@@ -528,9 +566,11 @@
                         if (ipaUrl) {
                             downloadModalIpa.setAttribute("href", ipaUrl);
                             downloadModalIpa.classList.remove("hidden");
+                            downloadModalIpaHelp?.classList.remove("hidden");
                         } else {
                             downloadModalIpa.classList.add("hidden");
                             downloadModalIpa.removeAttribute("href");
+                            downloadModalIpaHelp?.classList.add("hidden");
                         }
                     }
 
@@ -539,12 +579,19 @@
             });
 
             downloadModalClose?.addEventListener("click", closeDownloadModal);
+            downloadModalIpaHelp?.addEventListener("click", () => ipaHelpModal?.classList.remove("hidden"));
+            ipaHelpClose?.addEventListener("click", closeIpaHelpModal);
             downloadModal?.querySelectorAll("[data-download-close='true']").forEach((element) => {
                 element.addEventListener("click", closeDownloadModal);
             });
+            ipaHelpModal?.querySelectorAll("[data-ipa-help-close='true']").forEach((element) => {
+                element.addEventListener("click", closeIpaHelpModal);
+            });
 
             document.addEventListener("keydown", (event) => {
-                if (event.key === "Escape" && downloadModal && !downloadModal.classList.contains("hidden")) {
+                if (event.key === "Escape" && ipaHelpModal && !ipaHelpModal.classList.contains("hidden")) {
+                    closeIpaHelpModal();
+                } else if (event.key === "Escape" && downloadModal && !downloadModal.classList.contains("hidden")) {
                     closeDownloadModal();
                 }
             });
