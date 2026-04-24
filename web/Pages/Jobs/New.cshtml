@@ -10,8 +10,21 @@
 
 <section class="app-page space-y-6">
     <header class="panel page-header">
-        <div>
+        <div class="space-y-2">
+            <p class="eyebrow">@L("layout.new_job")</p>
             <h1 class="page-title">@L("jobs.new.page_title")</h1>
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2">
+            <div class="metric-card min-w-[13rem]">
+                <div class="metric-label">@L("jobs.new.selected_title")</div>
+                <div class="metric-value" id="selected-items-count">0</div>
+                <div class="metric-subtle" id="selection-count-label">@L("jobs.new.selected_empty")</div>
+            </div>
+            <div class="metric-card min-w-[13rem]">
+                <div class="metric-label">@L("jobs.new.output_title")</div>
+                <div class="metric-value text-base" id="output-mode-value">@L("artifact.readable_text")</div>
+                <div class="metric-subtle">@L("jobs.new.output_description")</div>
+            </div>
         </div>
     </header>
 
@@ -65,9 +78,8 @@
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div class="space-y-2">
                         <h2 class="section-title">@L("jobs.new.selected_title")</h2>
-                        <p class="text-sm text-slate-600" id="selection-count-label">@L("jobs.new.selected_empty")</p>
+                        <p class="text-sm text-slate-600">@L("jobs.new.selected_empty")</p>
                     </div>
-                    <div class="badge-chip" id="selected-items-count">0</div>
                 </div>
 
                 <div class="selection-feedback mt-4 hidden" id="selection-feedback" aria-live="polite"></div>
@@ -172,8 +184,9 @@
             const cancelButton = document.getElementById("upload-cancel-button");
             const supplementalContextText = document.getElementById("supplemental-context-text");
             const readableTextEnabled = document.getElementById("readable-text-enabled");
+            const outputModeValue = document.getElementById("output-mode-value");
 
-            if (!form || !filesInput || !directoryInput || !pickFilesButton || !pickFolderButton || !executeButton || !selectedItemsList || !selectedItemsEmpty || !selectedItemsCount || !selectionCountLabel || !selectionFeedback || !progressPanel || !progressTitle || !progressMessage || !progressPercent || !progressBar || !cancelButton || !supplementalContextText || !readableTextEnabled) {
+            if (!form || !filesInput || !directoryInput || !pickFilesButton || !pickFolderButton || !executeButton || !selectedItemsList || !selectedItemsEmpty || !selectedItemsCount || !selectionCountLabel || !selectionFeedback || !progressPanel || !progressTitle || !progressMessage || !progressPercent || !progressBar || !cancelButton || !supplementalContextText || !readableTextEnabled || !outputModeValue) {
                 return;
             }
 
@@ -188,6 +201,8 @@
                 selectedCount: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.selected_count"))),
                 sourceFiles: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.source_files"))),
                 sourceFolder: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.source_folder"))),
+                artifactIpa: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("artifact.ipa"))),
+                artifactReadableText: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("artifact.readable_text"))),
                 duplicateSummary: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.duplicate_summary"))),
                 unsupportedSummary: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.unsupported_summary"))),
                 uploadPreparing: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.new.upload_preparing"))),
@@ -331,6 +346,12 @@
                 }
             };
 
+            const renderOutputMode = () => {
+                outputModeValue.textContent = readableTextEnabled.checked
+                    ? `${messages.artifactIpa} + ${messages.artifactReadableText}`
+                    : messages.artifactIpa;
+            };
+
             const addFilesToSelection = (files, sourceKind) => {
                 selectionFeedbackState.duplicates = [];
                 selectionFeedbackState.unsupported = [];
@@ -458,6 +479,7 @@
 
             pickFilesButton.addEventListener("click", () => filesInput.click());
             pickFolderButton.addEventListener("click", () => directoryInput.click());
+            readableTextEnabled.addEventListener("change", renderOutputMode);
 
             filesInput.addEventListener("change", () => {
                 addFilesToSelection(Array.from(filesInput.files || []), "files");
@@ -508,6 +530,8 @@
                     event.stopPropagation();
                 }
             }, true);
+
+            renderOutputMode();
 
             form.addEventListener("submit", async (event) => {
                 event.preventDefault();
