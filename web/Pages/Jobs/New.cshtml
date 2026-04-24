@@ -9,22 +9,11 @@
 }
 
 <section class="app-page space-y-6">
-    <header class="panel page-header">
-        <div class="space-y-2">
+    <header class="page-hero">
+        <div class="space-y-3">
             <p class="eyebrow">@L("layout.new_job")</p>
             <h1 class="page-title">@L("jobs.new.page_title")</h1>
-        </div>
-        <div class="grid gap-3 sm:grid-cols-2">
-            <div class="metric-card min-w-[13rem]">
-                <div class="metric-label">@L("jobs.new.selected_title")</div>
-                <div class="metric-value" id="selected-items-count">0</div>
-                <div class="metric-subtle" id="selection-count-label">@L("jobs.new.selected_empty")</div>
-            </div>
-            <div class="metric-card min-w-[13rem]">
-                <div class="metric-label">@L("jobs.new.output_title")</div>
-                <div class="metric-value text-base" id="output-mode-value">@L("artifact.readable_text")</div>
-                <div class="metric-subtle">@L("jobs.new.output_description")</div>
-            </div>
+            <p class="page-description">@L("jobs.new.description")</p>
         </div>
     </header>
 
@@ -48,92 +37,114 @@
             </section>
         }
 
-        <div class="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-            <section class="panel">
-                <h2 class="section-title">@L("jobs.new.files_title")</h2>
-                <div class="mt-4 flex flex-wrap gap-3">
-                    <button type="button" class="btn-secondary" id="pick-files-button">@L("jobs.new.pick_files")</button>
-                    <button type="button" class="btn-secondary" id="pick-folder-button">@L("jobs.new.pick_folder")</button>
+        <section class="work-surface">
+            <div class="surface-status-strip">
+                <div class="surface-status-chip">
+                    <span class="surface-status-label">@L("jobs.new.selected_title")</span>
+                    <span class="surface-status-value" id="selected-items-count">0</span>
+                    <span class="surface-status-note" id="selection-count-label">@L("jobs.new.selected_empty")</span>
                 </div>
-                <p class="selection-hint mt-4">
-                    @string.Format(System.Globalization.CultureInfo.CurrentCulture, L("jobs.new.supported_extensions"), Model.AllowedExtensionsDisplay)
-                </p>
-                <input asp-for="UploadFiles"
-                       type="file"
-                       multiple
-                       accept="@Model.AcceptAttribute"
-                       class="hidden"
-                       id="upload-files-input" />
-                <input asp-for="UploadDirectoryFiles"
-                       type="file"
-                       multiple
-                       webkitdirectory
-                       directory
-                       accept="@Model.AcceptAttribute"
-                       class="hidden"
-                       id="upload-directory-input" />
-            </section>
+                <div class="surface-status-chip">
+                    <span class="surface-status-label">@L("jobs.new.output_title")</span>
+                    <span class="surface-status-value" id="output-mode-value">@L("artifact.ipa") + @L("artifact.readable_text")</span>
+                    <span class="surface-status-note">@L("jobs.new.output_description")</span>
+                </div>
+            </div>
 
-            <section class="panel">
-                <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="surface-row surface-row-balanced">
+                <section class="surface-block">
+                    <div class="space-y-2">
+                        <h2 class="section-title">@L("jobs.new.files_title")</h2>
+                        <p class="page-description compact">@L("jobs.new.files_description")</p>
+                    </div>
+                    <div class="mt-4 flex flex-wrap gap-3">
+                        <button type="button" class="btn-secondary" id="pick-files-button">@L("jobs.new.pick_files")</button>
+                        <button type="button" class="btn-secondary" id="pick-folder-button">@L("jobs.new.pick_folder")</button>
+                    </div>
+                    <p class="selection-hint mt-4">
+                        @string.Format(System.Globalization.CultureInfo.CurrentCulture, L("jobs.new.supported_extensions"), Model.AllowedExtensionsDisplay)
+                    </p>
+                    <input asp-for="UploadFiles"
+                           type="file"
+                           multiple
+                           accept="@Model.AcceptAttribute"
+                           class="hidden"
+                           id="upload-files-input" />
+                    <input asp-for="UploadDirectoryFiles"
+                           type="file"
+                           multiple
+                           webkitdirectory
+                           directory
+                           accept="@Model.AcceptAttribute"
+                           class="hidden"
+                           id="upload-directory-input" />
+                </section>
+
+                <section class="surface-block surface-block-muted">
                     <div class="space-y-2">
                         <h2 class="section-title">@L("jobs.new.selected_title")</h2>
-                        <p class="text-sm text-slate-600">@L("jobs.new.selected_empty")</p>
+                        <p class="page-description compact">@L("jobs.new.selected_empty")</p>
+                    </div>
+
+                    <div class="selection-feedback mt-4 hidden" id="selection-feedback" aria-live="polite"></div>
+
+                    <div class="selection-list-shell mt-4">
+                        <div class="selection-empty" id="selected-items-empty">@L("jobs.new.selected_empty")</div>
+                        <ul class="selection-list hidden" id="selected-items-list"></ul>
+                    </div>
+                </section>
+            </div>
+
+            <div class="surface-row">
+                <section class="surface-block">
+                    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div class="space-y-2">
+                            <h2 class="section-title">@L("jobs.new.output_title")</h2>
+                            <p class="page-description compact">@L("jobs.new.output_description")</p>
+                        </div>
+                        <label class="surface-choice">
+                            <input asp-for="ReadableTextEnabled"
+                                   type="checkbox"
+                                   class="surface-choice-input"
+                                   id="readable-text-enabled" />
+                            <span>
+                                <span class="surface-choice-title">@L("jobs.new.readable_text_enabled")</span>
+                                <span class="surface-choice-note">@L("jobs.new.readable_text_enabled_note")</span>
+                            </span>
+                        </label>
+                    </div>
+                </section>
+            </div>
+
+            <details class="soft-callout" open>
+                <summary class="soft-callout-summary">
+                    <span>
+                        <span class="section-title">@L("jobs.new.supplemental_context.title")</span>
+                        <span class="soft-callout-note">@L("jobs.new.supplemental_context.description")</span>
+                    </span>
+                </summary>
+                <div class="soft-callout-content">
+                    <div class="soft-example">
+                        <div class="soft-example-title">@L("jobs.new.supplemental_context.example_title")</div>
+                        <p class="soft-example-body">@L("jobs.new.supplemental_context.example_body")</p>
+                    </div>
+                    <div class="space-y-2">
+                        <textarea asp-for="SupplementalContextText"
+                                  rows="8"
+                                  class="form-input w-full"
+                                  spellcheck="false"
+                                  id="supplemental-context-text"
+                                  placeholder="@L("jobs.new.supplemental_context.placeholder")"></textarea>
+                        <p class="helper-text">@L("jobs.new.supplemental_context.help")</p>
                     </div>
                 </div>
+            </details>
 
-                <div class="selection-feedback mt-4 hidden" id="selection-feedback" aria-live="polite"></div>
-
-                <div class="selection-list-shell mt-4">
-                    <div class="selection-empty" id="selected-items-empty">@L("jobs.new.selected_empty")</div>
-                    <ul class="selection-list hidden" id="selected-items-list"></ul>
-                </div>
-            </section>
-        </div>
-
-        <section class="panel">
-            <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div class="space-y-2">
-                    <h2 class="section-title">@L("jobs.new.output_title")</h2>
-                    <p class="text-sm text-slate-600">@L("jobs.new.output_description")</p>
-                </div>
-                <label class="flex max-w-xl cursor-pointer items-start gap-3 rounded-[18px] border border-slate-200 bg-white/70 px-4 py-4">
-                    <input asp-for="ReadableTextEnabled"
-                           type="checkbox"
-                           class="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900"
-                           id="readable-text-enabled" />
-                    <span>
-                        <span class="block font-medium text-slate-900">@L("jobs.new.readable_text_enabled")</span>
-                        <span class="block text-xs leading-6 text-slate-500">@L("jobs.new.readable_text_enabled_note")</span>
-                    </span>
-                </label>
+            <div class="surface-action-bar">
+                <a class="btn-secondary" href="@Model.CancelHref">@L("common.cancel")</a>
+                <button asp-page-handler="Execute" class="btn-primary" id="execute-job-button">@L("jobs.new.execute")</button>
             </div>
         </section>
-
-        <section class="panel">
-            <div class="space-y-2">
-                <h2 class="section-title">@L("jobs.new.supplemental_context.title")</h2>
-                <p class="text-sm text-slate-600">@L("jobs.new.supplemental_context.description")</p>
-            </div>
-            <div class="mt-4 rounded-[18px] border border-slate-200 bg-white/70 px-4 py-4 text-sm text-slate-700">
-                <div class="font-medium text-slate-900">@L("jobs.new.supplemental_context.example_title")</div>
-                <p class="mt-2 whitespace-pre-line text-sm leading-7 text-slate-600">@L("jobs.new.supplemental_context.example_body")</p>
-            </div>
-            <div class="mt-4 space-y-2">
-                <textarea asp-for="SupplementalContextText"
-                          rows="8"
-                          class="form-input w-full"
-                          spellcheck="false"
-                          id="supplemental-context-text"
-                          placeholder="@L("jobs.new.supplemental_context.placeholder")"></textarea>
-                <p class="text-xs text-slate-500">@L("jobs.new.supplemental_context.help")</p>
-            </div>
-        </section>
-
-        <div class="flex flex-wrap items-center gap-3">
-            <a class="btn-secondary" href="@Model.CancelHref">@L("common.cancel")</a>
-            <button asp-page-handler="Execute" class="btn-primary" id="execute-job-button">@L("jobs.new.execute")</button>
-        </div>
     </form>
 </section>
 

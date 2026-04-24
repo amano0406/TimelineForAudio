@@ -1,9 +1,13 @@
 @inject TimelineForAudio.Web.Services.LanguageService LanguageService
 @inject TimelineForAudio.Web.Services.JsonLocalizationService Localizer
 @inject TimelineForAudio.Web.Services.AppInstanceService AppInstanceService
+@inject TimelineForAudio.Web.Services.SettingsStore SettingsStore
 @using TimelineForAudio.Web.Models
+@using TimelineForAudio.Web.Infrastructure
 @{
     var lang = LanguageService.Resolve(Context.Request);
+    var currentSettings = await SettingsStore.LoadAsync(Context.RequestAborted);
+    var themeMode = ThemeModes.Normalize(currentSettings.ThemeMode);
     var currentLanguage = LanguageService.GetSupportedLanguages()
         .FirstOrDefault(item => string.Equals(item.Code, lang, StringComparison.OrdinalIgnoreCase))?.NativeName
         ?? lang;
@@ -13,6 +17,7 @@
     var appInstanceId = AppInstanceService.InstanceId;
     string L(string key) => Localizer.Get(lang, key);
     var currentPath = Context.Request.Path.Value ?? "/";
+    var themeColor = themeMode == ThemeModes.Dark ? "#0f172a" : "#ffffff";
 
     string NavClass(string href, bool includeRuns = false)
     {
@@ -33,12 +38,12 @@
     }
 }
 <!DOCTYPE html>
-<html lang="@lang" data-app-theme="workbench">
+<html lang="@lang" data-app-theme="@themeMode">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - TimelineForAudio</title>
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="theme-color" content="@themeColor" />
     <link rel="icon" type="image/svg+xml" href="~/favicon.svg" asp-append-version="true" />
     <link rel="icon" type="image/x-icon" href="~/favicon.ico" asp-append-version="true" />
     <link rel="apple-touch-icon" href="~/apple-touch-icon.png" asp-append-version="true" />
@@ -49,32 +54,32 @@
 <body class="app-body">
     <div class="app-shell">
         <aside class="app-sidebar">
-            <div class="space-y-6">
-                <div class="space-y-3">
+            <div class="space-y-5">
+                <div class="space-y-4">
                     <a href="/" class="brand-link brand-wordmark" aria-label="Timeline For Audio">
                         <span class="brand-wordmark-main">Timeline</span>
                         <span class="brand-wordmark-sub">For Audio</span>
                     </a>
-                    <section class="sidebar-status-card">
+                    <section class="side-section">
                         <div class="flex flex-wrap items-center gap-2">
                             <span class="@(settingsReady ? "status-pill status-pill-ready" : "status-pill status-pill-blocked")">
                                 @(settingsReady ? L("layout.ready") : L("layout.setup_required"))
                             </span>
                         </div>
-                        <dl class="sidebar-status-meta">
-                            <div class="sidebar-status-row">
-                                <dt>@L("layout.language")</dt>
-                                <dd>@currentLanguage</dd>
-                            </div>
-                            <div class="sidebar-status-row">
-                                <dt>@L("layout.jobs")</dt>
-                                <dd>@(hasJobs ? L("layout.ready") : "-")</dd>
-                            </div>
-                        </dl>
+                        <div class="sidebar-meta-strip" aria-label="@L("layout.settings")">
+                            <span class="sidebar-meta-item">
+                                <span class="sidebar-meta-label">@L("layout.language")</span>
+                                <span class="sidebar-meta-value">@currentLanguage</span>
+                            </span>
+                            <span class="sidebar-meta-item">
+                                <span class="sidebar-meta-label">@L("layout.jobs")</span>
+                                <span class="sidebar-meta-value">@(hasJobs ? L("layout.ready") : "-")</span>
+                            </span>
+                        </div>
                     </section>
                 </div>
 
-                <nav class="space-y-2">
+                <nav class="sidebar-nav">
                     @if (settingsReady)
                     {
                         <a href="/jobs/new" class="@NavClass("/jobs/new")">@L("layout.new_job")</a>

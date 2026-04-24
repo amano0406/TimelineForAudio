@@ -154,6 +154,47 @@
         </section>
 
         <section class="panel space-y-4">
+            <div class="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                <div class="space-y-1">
+                    <h2 class="section-title">@L("settings.theme.title")</h2>
+                    <p class="text-sm text-slate-600">@L("settings.theme.description")</p>
+                </div>
+            </div>
+            <div class="theme-picker md:grid-cols-3">
+                <label class="theme-option">
+                    <input asp-for="ThemeMode" type="radio" value="system" />
+                    <span class="font-medium">@L("settings.theme.system")</span>
+                    <div class="theme-preview theme-preview-system" aria-hidden="true">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                </label>
+                <label class="theme-option">
+                    <input asp-for="ThemeMode" type="radio" value="light" />
+                    <span class="font-medium">@L("settings.theme.light")</span>
+                    <div class="theme-preview theme-preview-light" aria-hidden="true">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                </label>
+                <label class="theme-option">
+                    <input asp-for="ThemeMode" type="radio" value="dark" />
+                    <span class="font-medium">@L("settings.theme.dark")</span>
+                    <div class="theme-preview theme-preview-dark" aria-hidden="true">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                </label>
+            </div>
+        </section>
+
+        <section class="panel space-y-4">
             <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <h2 class="section-title">@L("settings.compute_mode.title")</h2>
                 <span class="badge-chip">@string.Format(L("settings.compute_mode.recommended"), recommendedComputeLabel)</span>

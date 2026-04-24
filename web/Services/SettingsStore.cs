@@ -165,6 +165,8 @@ public sealed class SettingsStore(AppPaths paths)
             _ => "en",
         };
 
+        value.ThemeMode = ThemeModes.Normalize(value.ThemeMode);
+
         value.LanguageSelected = value.LanguageSelected || hasPersistedSettings;
 
         return value;

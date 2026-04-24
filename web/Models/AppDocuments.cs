@@ -47,6 +47,9 @@ public sealed class AppSettingsDocument
     [JsonPropertyName("uiLanguage")]
     public string UiLanguage { get; set; } = "en";
 
+    [JsonPropertyName("themeMode")]
+    public string ThemeMode { get; set; } = "system";
+
     [JsonPropertyName("languageSelected")]
     public bool LanguageSelected { get; set; }
 

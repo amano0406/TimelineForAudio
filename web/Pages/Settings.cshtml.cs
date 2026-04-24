@@ -41,6 +41,9 @@ public sealed class SettingsModel(
     [BindProperty]
     public string UiLanguage { get; set; } = "en";
 
+    [BindProperty]
+    public string ThemeMode { get; set; } = ThemeModes.System;
+
     public bool HasSavedTokenConfigured { get; private set; }
 
     public bool HasPersistedSettings { get; private set; }
@@ -101,6 +104,7 @@ public sealed class SettingsModel(
         settings.ComputeMode = ComputeMode;
         settings.SetupComputeModeSelected = true;
         settings.UiLanguage = languageService.Normalize(UiLanguage) ?? "en";
+        settings.ThemeMode = ThemeModes.Normalize(ThemeMode);
         settings.LanguageSelected = true;
         settings.HuggingfaceTermsConfirmed = false;
         var replaceToken =
@@ -206,6 +210,7 @@ public sealed class SettingsModel(
             ComputeMode = "cpu";
         }
         UiLanguage = languageService.Normalize(settings.UiLanguage) ?? "en";
+        ThemeMode = ThemeModes.Normalize(settings.ThemeMode);
         StatusMessage ??= TempData["StatusMessage"] as string;
     }
 

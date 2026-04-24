@@ -6,6 +6,7 @@
     ".aac",
     ".flac"
   ],
+  "themeMode": "system",
   "contextBuilderVersion": "context-builder-v1",
   "inputRoots": [
     {

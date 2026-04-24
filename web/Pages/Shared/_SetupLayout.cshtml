@@ -1,15 +1,20 @@
 @inject TimelineForAudio.Web.Services.LanguageService LanguageService
 @inject TimelineForAudio.Web.Services.JsonLocalizationService Localizer
+@inject TimelineForAudio.Web.Services.SettingsStore SettingsStore
+@using TimelineForAudio.Web.Infrastructure
 @{
     var lang = LanguageService.Resolve(Context.Request);
+    var currentSettings = await SettingsStore.LoadAsync(Context.RequestAborted);
+    var themeMode = ThemeModes.Normalize(currentSettings.ThemeMode);
+    var themeColor = themeMode == ThemeModes.Dark ? "#0f172a" : "#ffffff";
 }
 <!DOCTYPE html>
-<html lang="@lang" data-app-theme="workbench">
+<html lang="@lang" data-app-theme="@themeMode">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - TimelineForAudio</title>
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="theme-color" content="@themeColor" />
     <link rel="icon" type="image/svg+xml" href="~/favicon.svg" asp-append-version="true" />
     <link rel="icon" type="image/x-icon" href="~/favicon.ico" asp-append-version="true" />
     <link rel="apple-touch-icon" href="~/apple-touch-icon.png" asp-append-version="true" />
