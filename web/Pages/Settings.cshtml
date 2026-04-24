@@ -114,7 +114,7 @@
 }
 
 <section class="app-page space-y-6">
-    <header class="panel page-header">
+    <header class="page-hero">
         <div>
             <h1 class="page-title">@L("settings.page_title")</h1>
         </div>
@@ -140,298 +140,323 @@
     }
 
     <form method="post" asp-page-handler="Save" class="space-y-6">
-        <section class="panel space-y-4">
-            <h2 class="section-title">@L("settings.language.heading")</h2>
-            <div class="pt-1">
-                <label for="language-select" class="mb-2 block text-sm font-medium text-slate-900">@L("layout.language")</label>
-                <select id="language-select" asp-for="UiLanguage" class="form-input w-full">
-                    @foreach (var item in languages)
-                    {
-                        <option value="@item.Code">@item.NativeName</option>
-                    }
-                </select>
-            </div>
-        </section>
-
-        <section class="panel space-y-4">
-            <div class="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-                <div class="space-y-1">
-                    <h2 class="section-title">@L("settings.theme.title")</h2>
-                    <p class="text-sm text-slate-600">@L("settings.theme.description")</p>
-                </div>
-            </div>
-            <div class="theme-picker md:grid-cols-3">
-                <label class="theme-option">
-                    <input asp-for="ThemeMode" type="radio" value="system" />
-                    <span class="font-medium">@L("settings.theme.system")</span>
-                    <div class="theme-preview theme-preview-system" aria-hidden="true">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                        <span></span>
+        <section class="work-surface settings-surface">
+            <section class="settings-row">
+                <div class="settings-row-header">
+                    <div class="settings-row-copy">
+                        <h2 class="section-title">@L("settings.language.heading")</h2>
+                        <p class="page-description compact">@L("settings.language.description")</p>
                     </div>
-                </label>
-                <label class="theme-option">
-                    <input asp-for="ThemeMode" type="radio" value="light" />
-                    <span class="font-medium">@L("settings.theme.light")</span>
-                    <div class="theme-preview theme-preview-light" aria-hidden="true">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                        <span></span>
+                    <div class="settings-row-body settings-row-body-compact">
+                        <label for="language-select" class="settings-label">@L("layout.language")</label>
+                        <select id="language-select" asp-for="UiLanguage" class="form-input w-full">
+                            @foreach (var item in languages)
+                            {
+                                <option value="@item.Code">@item.NativeName</option>
+                            }
+                        </select>
                     </div>
-                </label>
-                <label class="theme-option">
-                    <input asp-for="ThemeMode" type="radio" value="dark" />
-                    <span class="font-medium">@L("settings.theme.dark")</span>
-                    <div class="theme-preview theme-preview-dark" aria-hidden="true">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                        <span></span>
+                </div>
+            </section>
+
+            <section class="settings-row">
+                <div class="settings-row-header">
+                    <div class="settings-row-copy">
+                        <h2 class="section-title">@L("settings.theme.title")</h2>
+                        <p class="page-description compact">@L("settings.theme.description")</p>
                     </div>
-                </label>
-            </div>
-        </section>
-
-        <section class="panel space-y-4">
-            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <h2 class="section-title">@L("settings.compute_mode.title")</h2>
-                <span class="badge-chip">@string.Format(L("settings.compute_mode.recommended"), recommendedComputeLabel)</span>
-            </div>
-
-            <div class="rounded-[18px] border border-slate-200 bg-white/70 px-4 py-4 text-sm text-slate-700">
-                <div class="font-medium text-slate-900">
-                    @(gpuReady
-                        ? string.Format(L("settings.compute_mode.gpu_ready"), detectedGpuLabel)
-                        : L("settings.compute_mode.gpu_unavailable_note"))
+                    <div class="settings-row-body">
+                        <div class="theme-picker md:grid-cols-3">
+                            <label class="theme-option">
+                                <input asp-for="ThemeMode" type="radio" value="system" />
+                                <span class="font-medium">@L("settings.theme.system")</span>
+                                <div class="theme-preview theme-preview-system" aria-hidden="true">
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
+                                </div>
+                            </label>
+                            <label class="theme-option">
+                                <input asp-for="ThemeMode" type="radio" value="light" />
+                                <span class="font-medium">@L("settings.theme.light")</span>
+                                <div class="theme-preview theme-preview-light" aria-hidden="true">
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
+                                </div>
+                            </label>
+                            <label class="theme-option">
+                                <input asp-for="ThemeMode" type="radio" value="dark" />
+                                <span class="font-medium">@L("settings.theme.dark")</span>
+                                <div class="theme-preview theme-preview-dark" aria-hidden="true">
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
                 </div>
-                @if (!string.IsNullOrWhiteSpace(autoSelectedNote))
-                {
-                    <div class="mt-2 text-xs text-slate-500">@autoSelectedNote</div>
-                }
-                @if (Model.SavedGpuPreferenceUnavailable)
-                {
-                    <div class="mt-2 text-xs text-amber-700">@L("settings.compute_mode.saved_gpu_unavailable")</div>
-                }
-            </div>
+            </section>
 
-            <div class="grid gap-3 md:grid-cols-2">
-                <label class="flex items-start gap-3 rounded-[18px] border border-slate-200 bg-white/70 px-4 py-4 text-sm text-slate-700">
-                    <input asp-for="ComputeMode"
-                           type="radio"
-                           value="cpu"
-                           class="mt-1 h-4 w-4 border-slate-300 text-slate-900" />
-                    <span>
-                        <span class="block font-medium text-slate-900">@L("settings.compute_mode.cpu")</span>
-                        <span class="block text-xs text-slate-500">@L("settings.compute_mode.cpu_note")</span>
-                    </span>
-                </label>
-                <label class="flex items-start gap-3 rounded-[18px] border border-slate-200 bg-white/70 px-4 py-4 text-sm text-slate-700 @(!gpuReady ? "opacity-60 cursor-not-allowed" : "")">
-                    <input asp-for="ComputeMode"
-                           type="radio"
-                           value="gpu"
-                           disabled="@(!gpuReady)"
-                           class="mt-1 h-4 w-4 border-slate-300 text-slate-900" />
-                    <span>
-                        <span class="block font-medium text-slate-900">@L("settings.compute_mode.gpu")</span>
-                        <span class="block text-xs text-slate-500">@L("settings.compute_mode.gpu_note")</span>
-                    </span>
-                </label>
-            </div>
-        </section>
+            <section class="settings-row">
+                <div class="settings-row-header">
+                    <div class="settings-row-copy">
+                        <h2 class="section-title">@L("settings.compute_mode.title")</h2>
+                        <p class="page-description compact">@L("settings.compute_mode.description")</p>
+                    </div>
+                    <div class="settings-row-body">
+                        <div class="flex flex-wrap gap-2">
+                            <span class="badge-chip">@string.Format(L("settings.compute_mode.recommended"), recommendedComputeLabel)</span>
+                        </div>
+                        <div class="settings-inline-note">
+                            <div class="settings-inline-note-title">
+                                @(gpuReady
+                                    ? string.Format(L("settings.compute_mode.gpu_ready"), detectedGpuLabel)
+                                    : L("settings.compute_mode.gpu_unavailable_note"))
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(autoSelectedNote))
+                            {
+                                <div class="settings-inline-note-subtle">@autoSelectedNote</div>
+                            }
+                            @if (Model.SavedGpuPreferenceUnavailable)
+                            {
+                                <div class="settings-inline-note-warning">@L("settings.compute_mode.saved_gpu_unavailable")</div>
+                            }
+                        </div>
+                        <div class="grid gap-3 md:grid-cols-2">
+                            <label class="surface-choice">
+                                <input asp-for="ComputeMode"
+                                       type="radio"
+                                       value="cpu"
+                                       class="surface-choice-input" />
+                                <span>
+                                    <span class="surface-choice-title">@L("settings.compute_mode.cpu")</span>
+                                    <span class="surface-choice-note">@L("settings.compute_mode.cpu_note")</span>
+                                </span>
+                            </label>
+                            <label class="surface-choice @(!gpuReady ? "surface-choice-disabled" : string.Empty)">
+                                <input asp-for="ComputeMode"
+                                       type="radio"
+                                       value="gpu"
+                                       disabled="@(!gpuReady)"
+                                       class="surface-choice-input" />
+                                <span>
+                                    <span class="surface-choice-title">@L("settings.compute_mode.gpu")</span>
+                                    <span class="surface-choice-note">@L("settings.compute_mode.gpu_note")</span>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </section>
 
-        <section class="panel space-y-4">
-            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <h2 class="section-title">@L("settings.connection.title")</h2>
-                <div class="flex flex-wrap gap-2">
-                    <span class="@ConnectionBadgeClass(tokenState)">@L($"settings.connection.token_state.{tokenState}")</span>
-                    <span class="@ConnectionBadgeClass(localModelState)">@L($"settings.connection.model_state.{localModelState}")</span>
-                </div>
-            </div>
+            <section class="settings-row">
+                <div class="settings-row-header">
+                    <div class="settings-row-copy">
+                        <h2 class="section-title">@L("settings.connection.title")</h2>
+                        <p class="page-description compact">@L("settings.connection.description")</p>
+                    </div>
+                    <div class="settings-row-body">
+                        <div class="flex flex-wrap gap-2">
+                            <span class="@ConnectionBadgeClass(tokenState)">@L($"settings.connection.token_state.{tokenState}")</span>
+                            <span class="@ConnectionBadgeClass(localModelState)">@L($"settings.connection.model_state.{localModelState}")</span>
+                        </div>
 
-            @if (!string.IsNullOrWhiteSpace(connectionHintKey))
-            {
-                <div class="rounded-[18px] border border-slate-200 bg-white/70 px-4 py-4 text-sm text-slate-700">
-                    <div class="font-medium text-slate-900">@L(connectionHintKey)</div>
-                </div>
-            }
-
-            <div class="space-y-2">
-                <div class="flex items-center justify-between gap-3">
-                    <div class="text-sm font-medium text-slate-900">@L("settings.token")</div>
-                    <span id="token-status-label"
-                          class="text-xs font-medium text-slate-500 @((Model.HasSavedTokenConfigured && string.IsNullOrWhiteSpace(Model.Token)) ? string.Empty : "hidden")">@L("settings.saved")</span>
-                </div>
-                <input id="token-input"
-                       name="Token"
-                       type="hidden"
-                       value="@Model.Token"
-                       data-saved-preview="@Model.TokenPreview"
-                       data-has-saved-token="@(Model.HasSavedTokenConfigured ? "true" : "false")"
-                       data-saved-label="@L("settings.saved")"
-                       data-not-saved-label="@L("settings.not_saved")"
-                       data-change-label="@L("settings.token_change")"
-                       data-enter-label="@L("settings.token_enter")" />
-                <div id="token-preview-panel" class="flex flex-wrap items-center gap-3 rounded-[18px] border border-slate-200 bg-white/70 px-4 py-4">
-                    <code id="token-preview-value"
-                          class="text-sm font-medium text-slate-900 @(string.IsNullOrWhiteSpace(activeTokenPreview) ? "hidden" : string.Empty)">@activeTokenPreview</code>
-                    <span id="token-preview-empty"
-                          class="text-sm text-slate-500 @(!string.IsNullOrWhiteSpace(activeTokenPreview) ? "hidden" : string.Empty)">@L("settings.connection.token_state.missing")</span>
-                    <button id="token-change-button" type="button" class="btn-secondary">@tokenActionLabel</button>
-                </div>
-            </div>
-
-            @if (showTokenAction || showApprovalAction)
-            {
-                <div class="flex flex-wrap gap-3">
-                    @if (showTokenAction)
-                    {
-                        <a class="btn-secondary"
-                           href="@Model.TokenSettingsUrl"
-                           target="_blank"
-                           rel="noreferrer">
-                            @L("settings.open_token")
-                        </a>
-                    }
-                    @if (showApprovalAction)
-                    {
-                        <a class="btn-secondary"
-                           href="@Model.PyannoteModelUrl"
-                           target="_blank"
-                           rel="noreferrer">
-                            @L("settings.open_approval")
-                        </a>
-                    }
-                </div>
-            }
-        </section>
-
-        <details class="panel subtle-panel group">
-            <summary class="flex cursor-pointer list-none items-center justify-between gap-3">
-                <div>
-                    <h2 class="section-title">@L("settings.models.details_title")</h2>
-                </div>
-                <span class="text-sm text-slate-500 group-open:hidden">@L("settings.models.show")</span>
-                <span class="text-sm text-slate-500 hidden group-open:inline">@L("settings.models.hide")</span>
-            </summary>
-            <div class="mt-4 table-shell">
-                <table class="app-table">
-                    <thead>
-                        <tr>
-                            <th>@L("settings.models.model")</th>
-                            <th>@L("settings.models.purpose")</th>
-                            <th>@L("settings.models.saved_size")</th>
-                            <th>@L("settings.models.access")</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var gatedModel in Model.ModelStatuses)
+                        @if (!string.IsNullOrWhiteSpace(connectionHintKey))
                         {
-                            <tr>
-                                <td class="font-medium text-slate-900">
-                                    @if (!string.IsNullOrWhiteSpace(gatedModel.ModelUrl))
-                                    {
-                                        <a class="hover:underline" href="@gatedModel.ModelUrl" target="_blank" rel="noreferrer">
-                                            @gatedModel.DisplayName
-                                        </a>
-                                    }
-                                    else
-                                    {
-                                        @gatedModel.DisplayName
-                                    }
-                                </td>
-                                <td>@gatedModel.Purpose</td>
-                                <td>@ModelSavedSizeLabel(gatedModel)</td>
-                                <td>
-                                    <div class="flex flex-col items-start gap-2">
-                                        <span class="@AccessBadgeClass(gatedModel.AccessState)">@AccessLabel(gatedModel.AccessState)</span>
-                                        @if (gatedModel.RequiresApproval &&
-                                             !gatedModel.CachedLocally &&
-                                             !string.IsNullOrWhiteSpace(gatedModel.ApprovalUrl) &&
-                                             string.Equals(gatedModel.AccessState, "approval_required", StringComparison.OrdinalIgnoreCase))
-                                        {
-                                            <a class="btn-table" href="@gatedModel.ApprovalUrl" target="_blank" rel="noreferrer">
-                                                @L("settings.models.open")
-                                            </a>
-                                        }
-                                    </div>
-                                </td>
-                            </tr>
+                            <div class="settings-inline-note">
+                                <div class="settings-inline-note-title">@L(connectionHintKey)</div>
+                            </div>
                         }
-                    </tbody>
-                </table>
-            </div>
-        </details>
 
-        <div class="flex flex-wrap items-center gap-3">
-            <button class="btn-primary">@L("settings.save_button")</button>
-        </div>
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-between gap-3">
+                                <div class="settings-label">@L("settings.token")</div>
+                                <span id="token-status-label"
+                                      class="text-xs font-medium text-slate-500 @((Model.HasSavedTokenConfigured && string.IsNullOrWhiteSpace(Model.Token)) ? string.Empty : "hidden")">@L("settings.saved")</span>
+                            </div>
+                            <input id="token-input"
+                                   name="Token"
+                                   type="hidden"
+                                   value="@Model.Token"
+                                   data-saved-preview="@Model.TokenPreview"
+                                   data-has-saved-token="@(Model.HasSavedTokenConfigured ? "true" : "false")"
+                                   data-saved-label="@L("settings.saved")"
+                                   data-not-saved-label="@L("settings.not_saved")"
+                                   data-change-label="@L("settings.token_change")"
+                                   data-enter-label="@L("settings.token_enter")" />
+                            <div id="token-preview-panel" class="settings-token-summary">
+                                <code id="token-preview-value"
+                                      class="text-sm font-medium text-slate-900 @(string.IsNullOrWhiteSpace(activeTokenPreview) ? "hidden" : string.Empty)">@activeTokenPreview</code>
+                                <span id="token-preview-empty"
+                                      class="text-sm text-slate-500 @(!string.IsNullOrWhiteSpace(activeTokenPreview) ? "hidden" : string.Empty)">@L("settings.connection.token_state.missing")</span>
+                                <button id="token-change-button" type="button" class="btn-secondary">@tokenActionLabel</button>
+                            </div>
+                        </div>
+
+                        @if (showTokenAction || showApprovalAction)
+                        {
+                            <div class="flex flex-wrap gap-3">
+                                @if (showTokenAction)
+                                {
+                                    <a class="btn-secondary"
+                                       href="@Model.TokenSettingsUrl"
+                                       target="_blank"
+                                       rel="noreferrer">
+                                        @L("settings.open_token")
+                                    </a>
+                                }
+                                @if (showApprovalAction)
+                                {
+                                    <a class="btn-secondary"
+                                       href="@Model.PyannoteModelUrl"
+                                       target="_blank"
+                                       rel="noreferrer">
+                                        @L("settings.open_approval")
+                                    </a>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </section>
+
+            <details class="settings-row group">
+                <summary class="settings-row-summary">
+                    <div class="settings-row-copy">
+                        <h2 class="section-title">@L("settings.models.details_title")</h2>
+                        <p class="page-description compact">@L("settings.models.details_description")</p>
+                    </div>
+                    <span class="text-sm text-slate-500 group-open:hidden">@L("settings.models.show")</span>
+                    <span class="text-sm text-slate-500 hidden group-open:inline">@L("settings.models.hide")</span>
+                </summary>
+                <div class="settings-row-detail">
+                    <div class="table-shell">
+                        <table class="app-table">
+                            <thead>
+                                <tr>
+                                    <th>@L("settings.models.model")</th>
+                                    <th>@L("settings.models.purpose")</th>
+                                    <th>@L("settings.models.saved_size")</th>
+                                    <th>@L("settings.models.access")</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var gatedModel in Model.ModelStatuses)
+                                {
+                                    <tr>
+                                        <td class="font-medium text-slate-900">
+                                            @if (!string.IsNullOrWhiteSpace(gatedModel.ModelUrl))
+                                            {
+                                                <a class="hover:underline" href="@gatedModel.ModelUrl" target="_blank" rel="noreferrer">
+                                                    @gatedModel.DisplayName
+                                                </a>
+                                            }
+                                            else
+                                            {
+                                                @gatedModel.DisplayName
+                                            }
+                                        </td>
+                                        <td>@gatedModel.Purpose</td>
+                                        <td>@ModelSavedSizeLabel(gatedModel)</td>
+                                        <td>
+                                            <div class="flex flex-col items-start gap-2">
+                                                <span class="@AccessBadgeClass(gatedModel.AccessState)">@AccessLabel(gatedModel.AccessState)</span>
+                                                @if (gatedModel.RequiresApproval &&
+                                                     !gatedModel.CachedLocally &&
+                                                     !string.IsNullOrWhiteSpace(gatedModel.ApprovalUrl) &&
+                                                     string.Equals(gatedModel.AccessState, "approval_required", StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    <a class="btn-table" href="@gatedModel.ApprovalUrl" target="_blank" rel="noreferrer">
+                                                        @L("settings.models.open")
+                                                    </a>
+                                                }
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </details>
+
+            <div class="settings-action-row">
+                <button class="btn-primary">@L("settings.save_button")</button>
+            </div>
+        </section>
     </form>
 
-    <section class="panel space-y-4">
-        <h2 class="section-title">@L("settings.maintenance.title")</h2>
+    <section class="work-surface danger-zone">
+        <div class="danger-zone-header">
+            <h2 class="section-title">@L("settings.maintenance.title")</h2>
+            <p class="page-description compact">@L("settings.maintenance.description")</p>
+        </div>
 
-        <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <div class="panel subtle-panel space-y-4">
-                <div class="font-medium text-slate-900">@L("settings.maintenance.cache_title")</div>
-                <p class="text-sm leading-7 text-slate-600">@L("settings.maintenance.cache_description")</p>
-                <dl class="grid gap-2 text-sm text-slate-700">
+        <div class="danger-row">
+            <div class="danger-row-copy">
+                <div class="danger-row-title">@L("settings.maintenance.cache_title")</div>
+                <p class="page-description compact">@L("settings.maintenance.cache_description")</p>
+                <dl class="danger-row-meta">
                     <div>
-                        <dt class="text-slate-500">@L("settings.cache.saved_models")</dt>
+                        <dt>@L("settings.cache.saved_models")</dt>
                         <dd>@FormatSize(Model.ModelCache.TotalBytes)</dd>
                     </div>
                 </dl>
-                <form method="post"
-                      asp-page-handler="ClearModelCache"
-                      data-confirm-title="@L("settings.maintenance.cache_title")"
-                      data-confirm-message="@L("settings.maintenance.cache_confirm")"
-                      data-confirm-submit-label="@L("settings.maintenance.cache_action")">
-                    <button class="btn-secondary" type="submit">@L("settings.maintenance.cache_action")</button>
-                </form>
             </div>
+            <form method="post"
+                  asp-page-handler="ClearModelCache"
+                  data-confirm-title="@L("settings.maintenance.cache_title")"
+                  data-confirm-message="@L("settings.maintenance.cache_confirm")"
+                  data-confirm-submit-label="@L("settings.maintenance.cache_action")">
+                <button class="btn-secondary" type="submit">@L("settings.maintenance.cache_action")</button>
+            </form>
+        </div>
 
-            <div class="panel subtle-panel space-y-4">
-                <div>
-                    <div class="font-medium text-slate-900">@L("settings.maintenance.jobs_title")</div>
-                    <p class="mt-2 text-sm leading-7 text-slate-600">@L("settings.maintenance.jobs_description")</p>
-                </div>
-                <dl class="grid gap-2 text-sm text-slate-700">
+        <div class="danger-row">
+            <div class="danger-row-copy">
+                <div class="danger-row-title">@L("settings.maintenance.jobs_title")</div>
+                <p class="page-description compact">@L("settings.maintenance.jobs_description")</p>
+                <dl class="danger-row-meta">
                     <div>
-                        <dt class="text-slate-500">@L("settings.maintenance.jobs_count")</dt>
+                        <dt>@L("settings.maintenance.jobs_count")</dt>
                         <dd>@Model.TotalRunCount</dd>
                     </div>
                 </dl>
-                <form method="post"
-                      asp-page-handler="DeleteAllJobs"
-                      data-confirm-title="@L("settings.maintenance.jobs_title")"
-                      data-confirm-message="@L("settings.maintenance.jobs_confirm")"
-                      data-confirm-submit-label="@L("settings.maintenance.jobs_action")"
-                      data-confirm-requires-text="true"
-                      data-confirm-expected="DELETE"
-                      data-confirm-invalid="@L("jobs.list.delete_all_invalid")">
-                    <input type="hidden" name="confirmation" />
-                    <button class="btn-table-danger" type="submit">@L("settings.maintenance.jobs_action")</button>
-                </form>
             </div>
+            <form method="post"
+                  asp-page-handler="DeleteAllJobs"
+                  data-confirm-title="@L("settings.maintenance.jobs_title")"
+                  data-confirm-message="@L("settings.maintenance.jobs_confirm")"
+                  data-confirm-submit-label="@L("settings.maintenance.jobs_action")"
+                  data-confirm-requires-text="true"
+                  data-confirm-expected="DELETE"
+                  data-confirm-invalid="@L("jobs.list.delete_all_invalid")">
+                <input type="hidden" name="confirmation" />
+                <button class="btn-table-danger" type="submit">@L("settings.maintenance.jobs_action")</button>
+            </form>
+        </div>
 
-            <div class="panel subtle-panel space-y-4">
-                <div>
-                    <div class="font-medium text-slate-900">@L("settings.maintenance.reset_title")</div>
-                    <p class="mt-2 text-sm leading-7 text-slate-600">@L("settings.maintenance.reset_description_short")</p>
-                </div>
-                <form method="post"
-                      asp-page-handler="ResetApp"
-                      data-confirm-title="@L("settings.maintenance.reset_title")"
-                      data-confirm-message="@L("settings.maintenance.reset_confirm")"
-                      data-confirm-submit-label="@L("settings.maintenance.reset_action")"
-                      data-confirm-requires-text="true"
-                      data-confirm-expected="DELETE"
-                      data-confirm-invalid="@L("jobs.list.delete_all_invalid")">
-                    <input type="hidden" name="confirmation" />
-                    <button class="btn-table-danger" type="submit">@L("settings.maintenance.reset_action")</button>
-                </form>
+        <div class="danger-row">
+            <div class="danger-row-copy">
+                <div class="danger-row-title">@L("settings.maintenance.reset_title")</div>
+                <p class="page-description compact">@L("settings.maintenance.reset_description_short")</p>
             </div>
+            <form method="post"
+                  asp-page-handler="ResetApp"
+                  data-confirm-title="@L("settings.maintenance.reset_title")"
+                  data-confirm-message="@L("settings.maintenance.reset_confirm")"
+                  data-confirm-submit-label="@L("settings.maintenance.reset_action")"
+                  data-confirm-requires-text="true"
+                  data-confirm-expected="DELETE"
+                  data-confirm-invalid="@L("jobs.list.delete_all_invalid")">
+                <input type="hidden" name="confirmation" />
+                <button class="btn-table-danger" type="submit">@L("settings.maintenance.reset_action")</button>
+            </form>
         </div>
     </section>
 </section>

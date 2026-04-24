@@ -140,7 +140,7 @@
         </section>
     }
 
-    <div class="panel page-header">
+    <div class="page-hero">
         <div>
             <p class="eyebrow">@L("common.job")</p>
             <h1 class="page-title">@run.JobId</h1>
@@ -152,59 +152,61 @@
                 }
             </div>
         </div>
+        @if (hasDownloadableArchive)
+        {
+            <button type="button"
+                    class="btn-secondary"
+                    id="details-download-button"
+                    data-download-job-id="@run.JobId"
+                    data-download-readable="@(canDownloadReadableTextArchive ? JobUrls.Download(run.JobId, "readable-text") : "")"
+                    data-download-ipa="@(canDownloadIpaArchive ? JobUrls.Download(run.JobId, "ipa") : "")">
+                @L("details.download_zip")
+            </button>
+        }
     </div>
 
-    <section class="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
-        <div class="metric-card">
-            <div class="metric-label">@L("common.progress")</div>
-            <div class="metric-value">@PercentLabel(progressPercent)</div>
-            <div class="metric-subtle">@($"{CompletedCount(status)} / {totalInputCount}")</div>
-            <div class="progress-track mt-3">
-                <div class="progress-fill" style="width:@(progressPercent.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+    <section class="work-surface">
+        <div class="surface-status-strip">
+            <div class="surface-status-chip">
+                <div class="surface-status-label">@L("common.progress")</div>
+                <div class="surface-status-value">@PercentLabel(progressPercent)</div>
+                <div class="surface-status-note">@($"{CompletedCount(status)} / {totalInputCount}")</div>
+                <div class="progress-track mt-3">
+                    <div class="progress-fill" style="width:@(progressPercent.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+                </div>
             </div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-label">@L("details.audio_files")</div>
-            <div class="metric-value">@($"{run.ArtifactItems.Count} / {totalInputCount}")</div>
-            <div class="metric-subtle">@L("details.generated_timeline")</div>
-        </div>
-        <div class="metric-card">
-            @if (isActive)
-            {
-                <div class="metric-label">@L("details.current_file")</div>
-                <div class="metric-value">@(string.IsNullOrWhiteSpace(status?.CurrentMedia) ? "-" : status?.CurrentMedia)</div>
-                <div class="metric-subtle">@currentFileElapsed</div>
-            }
-            else
-            {
-                <div class="metric-label">@L("details.total_duration")</div>
-                <div class="metric-value">@FormatDurationFriendly(status?.TotalDurationSec)</div>
-            }
-        </div>
-        <div class="metric-card">
-            <div class="metric-label">@L("details.elapsed_time")</div>
-            <div class="metric-value">@FormatDurationOrDash(run.ElapsedWallSec)</div>
+            <div class="surface-status-chip">
+                <div class="surface-status-label">@L("details.audio_files")</div>
+                <div class="surface-status-value">@($"{run.ArtifactItems.Count} / {totalInputCount}")</div>
+                <div class="surface-status-note">@L("details.generated_timeline")</div>
+            </div>
+            <div class="surface-status-chip">
+                @if (isActive)
+                {
+                    <div class="surface-status-label">@L("details.current_file")</div>
+                    <div class="surface-status-value">@(string.IsNullOrWhiteSpace(status?.CurrentMedia) ? "-" : status?.CurrentMedia)</div>
+                    <div class="surface-status-note">@currentFileElapsed</div>
+                }
+                else
+                {
+                    <div class="surface-status-label">@L("details.total_duration")</div>
+                    <div class="surface-status-value">@FormatDurationFriendly(status?.TotalDurationSec)</div>
+                }
+            </div>
+            <div class="surface-status-chip">
+                <div class="surface-status-label">@L("details.elapsed_time")</div>
+                <div class="surface-status-value">@FormatDurationOrDash(run.ElapsedWallSec)</div>
+            </div>
         </div>
     </section>
 
     <section class="grid gap-6 xl:grid-cols-[minmax(0,1.28fr)_minmax(320px,0.72fr)]">
-        <div class="panel">
+        <div class="work-surface">
             <div class="job-list-header">
                 <div class="flex items-center gap-3">
                     <h2 class="section-title">@L("details.generated_timeline")</h2>
                     <span class="badge-chip">@run.ArtifactItems.Count</span>
                 </div>
-                @if (hasDownloadableArchive)
-                {
-                    <button type="button"
-                            class="btn-secondary"
-                            id="details-download-button"
-                            data-download-job-id="@run.JobId"
-                            data-download-readable="@(canDownloadReadableTextArchive ? JobUrls.Download(run.JobId, "readable-text") : "")"
-                            data-download-ipa="@(canDownloadIpaArchive ? JobUrls.Download(run.JobId, "ipa") : "")">
-                        @L("details.download_zip")
-                    </button>
-                }
             </div>
             @if (run.ArtifactItems.Count == 0)
             {
@@ -212,35 +214,35 @@
             }
             else
             {
-                <div class="detail-artifact-grid mt-5">
+                <div class="data-list mt-5">
                     @foreach (var item in run.ArtifactItems)
                     {
-                        <article class="detail-artifact-card">
-                            <div class="detail-artifact-header">
-                                <div class="min-w-0">
-                                    <h3 class="detail-artifact-title">@DisplayFileName(item)</h3>
-                                    <div class="detail-artifact-meta">
-                                        <span class="@StateBadgeClass(item.Status)">@ItemStatusLabel(item.Status)</span>
-                                        @if (item.IsCacheReused)
-                                        {
-                                            <span class="badge-chip">@L("details.cache_reused")</span>
-                                        }
-                                        <span class="badge-chip">@($"{L("details.speakers")}: {(item.SpeakerCount?.ToString() ?? "-")}")</span>
-                                    </div>
-                                    @if (!string.IsNullOrWhiteSpace(SpeakerStatusHint(item.SpeakerCountStatus)))
+                        <article class="data-row">
+                            <div class="data-row-main">
+                                <div class="data-row-title-line">
+                                    <h3 class="data-row-title">@DisplayFileName(item)</h3>
+                                    <span class="@StateBadgeClass(item.Status)">@ItemStatusLabel(item.Status)</span>
+                                    @if (item.IsCacheReused)
                                     {
-                                        <div class="detail-artifact-note">@SpeakerStatusHint(item.SpeakerCountStatus)</div>
-                                    }
-                                    @if (item.IsReferencedDuplicate && !string.IsNullOrWhiteSpace(item.ReferencedJobId))
-                                    {
-                                        <div class="detail-artifact-note">
-                                            @($"{L("details.reused_from_job")}:")
-                                            <a class="text-sky-700 hover:text-sky-500" href="@JobUrls.Details(item.ReferencedJobId!)">@item.ReferencedJobId</a>
-                                        </div>
+                                        <span class="badge-chip">@L("details.cache_reused")</span>
                                     }
                                 </div>
+                                <div class="data-row-meta">
+                                    <span>@($"{L("details.speakers")}: {(item.SpeakerCount?.ToString() ?? "-")}")</span>
+                                    @if (!string.IsNullOrWhiteSpace(SpeakerStatusHint(item.SpeakerCountStatus)))
+                                    {
+                                        <span>@SpeakerStatusHint(item.SpeakerCountStatus)</span>
+                                    }
+                                </div>
+                                @if (item.IsReferencedDuplicate && !string.IsNullOrWhiteSpace(item.ReferencedJobId))
+                                {
+                                    <div class="data-row-note">
+                                        @($"{L("details.reused_from_job")}:")
+                                        <a class="inline-link" href="@JobUrls.Details(item.ReferencedJobId!)">@item.ReferencedJobId</a>
+                                    </div>
+                                }
                             </div>
-                            <div class="job-card-actions">
+                            <div class="data-row-actions">
                                 @if (!string.IsNullOrWhiteSpace(item.ReadableTextPath))
                                 {
                                     <a class="btn-table" href="@ArtifactUrl(item, "readable-text")">@L("artifact.readable_text")</a>
@@ -259,7 +261,7 @@
         <div class="space-y-6">
             @if (isActive)
             {
-                <div class="panel">
+                <div class="surface-block surface-block-muted">
                     <h2 class="section-title">@L("details.current_processing")</h2>
                     <dl class="mt-4 grid gap-4 text-sm text-slate-700">
                         <div>
@@ -286,7 +288,7 @@
                 </div>
             }
 
-            <div class="panel">
+            <div class="surface-block surface-block-muted">
                 <div class="flex items-center justify-between gap-3">
                     <h2 class="section-title">@L("details.conversion_info")</h2>
                     @if (hasConversionInfoMarkdown)
@@ -393,31 +395,25 @@
 
             @if (skippedItems.Count > 0)
             {
-                <div class="panel">
+                <div class="surface-block surface-block-muted">
                     <div class="mb-4 flex items-center justify-between">
                         <h2 class="section-title">@L("details.skipped_inputs")</h2>
                         <span class="badge-chip">@skippedItems.Count</span>
                     </div>
-                    <div class="table-shell">
-                        <table class="app-table">
-                            <thead>
-                                <tr>
-                                    <th>@L("common.source")</th>
-                                    <th>@L("common.status")</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var item in skippedItems)
-                                {
-                                    <tr>
-                                        <td class="text-slate-700">
-                                            <div class="font-medium text-slate-900">@item.FileName</div>
-                                        </td>
-                                        <td>@StageLabel(item.Status)</td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
+                    <div class="data-list">
+                        @foreach (var item in skippedItems)
+                        {
+                            <article class="data-row">
+                                <div class="data-row-main">
+                                    <div class="data-row-title-line">
+                                        <div class="data-row-title">@item.FileName</div>
+                                    </div>
+                                </div>
+                                <div class="data-row-actions">
+                                    <span class="status-badge status-badge-neutral">@StageLabel(item.Status)</span>
+                                </div>
+                            </article>
+                        }
                     </div>
                 </div>
             }

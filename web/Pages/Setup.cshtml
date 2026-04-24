@@ -44,8 +44,8 @@
 }
 
 <section class="setup-page">
-    <aside class="setup-progress-panel">
-        <div class="space-y-3">
+    <aside class="setup-rail">
+        <div class="setup-rail-header space-y-3">
             <p class="setup-eyebrow">@L("setup.eyebrow")</p>
             <h1 class="setup-title">@L("setup.title")</h1>
             <p class="setup-description">@L("setup.description")</p>
@@ -60,18 +60,20 @@
         </ol>
     </aside>
 
-    <section class="setup-card">
-        <section class="space-y-3 rounded-[22px] border border-slate-200 bg-slate-50/90 px-4 py-4">
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                    <p class="setup-eyebrow mb-1">@L("setup.step_label") @currentStepNumber / 5</p>
-                    <p class="text-sm font-medium text-slate-900">@StepTitleFor(Model.Step)</p>
+    <section class="work-surface setup-work-surface">
+        <section class="surface-status-strip setup-status-strip">
+            <article class="surface-status-item">
+                <span class="surface-status-label">@L("setup.step_label")</span>
+                <strong class="surface-status-value">@currentStepNumber / 5</strong>
+                <span class="surface-status-note">@StepTitleFor(Model.Step)</span>
+            </article>
+            <article class="surface-status-item">
+                <span class="surface-status-label">@L("setup.eyebrow")</span>
+                <strong class="surface-status-value">@progressPercent%</strong>
+                <div class="surface-progress-bar">
+                    <span style="width:@(progressPercent)%"></span>
                 </div>
-                <span class="badge-chip">@L("setup.eyebrow")</span>
-            </div>
-            <div class="h-2 overflow-hidden rounded-full bg-slate-200">
-                <div class="h-full rounded-full bg-[#3b71ca] transition-[width] duration-300 ease-in-out" style="width:@(progressPercent)%"></div>
-            </div>
+            </article>
         </section>
 
         @if (!ViewContext.ModelState.IsValid)
@@ -96,7 +98,7 @@
         @if (Model.Step == "language")
         {
             <form method="post" asp-page-handler="Language" class="setup-form">
-                <div class="space-y-2">
+                <div class="setup-section-header">
                     <p class="setup-eyebrow">@L("setup.step_label") 1</p>
                     <h2 class="section-title">@L("setup.language.title")</h2>
                 </div>
@@ -118,15 +120,15 @@
         @if (Model.Step == "compute")
         {
             <form method="post" asp-page-handler="Compute" class="setup-form">
-                <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div class="space-y-2">
+                <div class="setup-header-row">
+                    <div class="setup-section-header">
                         <p class="setup-eyebrow">@L("setup.step_label") 2</p>
                         <h2 class="section-title">@L("setup.compute.title")</h2>
                     </div>
                     <span class="badge-chip">@string.Format(L("settings.compute_mode.recommended"), recommendedComputeLabel)</span>
                 </div>
 
-                <div class="rounded-[18px] border border-slate-200 bg-white/70 px-4 py-4 text-sm text-slate-700">
+                <div class="surface-block surface-block-muted text-sm text-slate-700">
                     <div class="font-medium text-slate-900">
                         @(gpuReady
                             ? string.Format(L("settings.compute_mode.gpu_ready"), detectedGpuLabel)
@@ -168,7 +170,7 @@
         @if (Model.Step == "account")
         {
             <form method="post" asp-page-handler="Account" class="setup-form">
-                <div class="space-y-2">
+                <div class="setup-section-header">
                     <p class="setup-eyebrow">@L("setup.step_label") 3</p>
                     <h2 class="section-title">@L("setup.account.title")</h2>
                     <p class="text-sm leading-7 text-slate-600">@L("setup.account.description")</p>
@@ -194,7 +196,7 @@
         @if (Model.Step == "register")
         {
             <form method="post" asp-page-handler="RegisterDone" class="setup-form">
-                <div class="space-y-2">
+                <div class="setup-section-header">
                     <p class="setup-eyebrow">@L("setup.step_label") 3</p>
                     <h2 class="section-title">@L("setup.register.title")</h2>
                     <p class="text-sm leading-7 text-slate-600">@L("setup.register.description")</p>
@@ -217,21 +219,21 @@
         @if (Model.Step == "token")
         {
             <form method="post" asp-page-handler="Token" class="setup-form">
-                <div class="space-y-2">
+                <div class="setup-section-header">
                     <p class="setup-eyebrow">@L("setup.step_label") 4</p>
                     <h2 class="section-title">@L("setup.token.title")</h2>
                     <p class="text-sm leading-7 text-slate-600">@L("setup.token.description")</p>
                 </div>
 
-                <div class="setup-guide">
-                    <div class="setup-guide-step">1. @L("setup.token.guide_open")</div>
-                    <div class="setup-guide-step">2. @L("setup.token.guide_create")</div>
-                    <div class="setup-guide-step">3. @L("setup.token.guide_read")</div>
-                    <div class="setup-guide-step">4. @L("setup.token.guide_name")</div>
-                    <div class="setup-guide-step">5. @L("setup.token.guide_copy")</div>
-                </div>
+                <ol class="setup-guide-list">
+                    <li class="setup-guide-list-item">@L("setup.token.guide_open")</li>
+                    <li class="setup-guide-list-item">@L("setup.token.guide_create")</li>
+                    <li class="setup-guide-list-item">@L("setup.token.guide_read")</li>
+                    <li class="setup-guide-list-item">@L("setup.token.guide_name")</li>
+                    <li class="setup-guide-list-item">@L("setup.token.guide_copy")</li>
+                </ol>
 
-                <div class="flex flex-wrap gap-3">
+                <div class="setup-link-row">
                     <a class="btn-secondary"
                        href="@Model.TokenSettingsUrl"
                        target="_blank"
@@ -249,7 +251,7 @@
                            placeholder="hf_..."
                            spellcheck="false"
                            autocomplete="off" />
-                    <p class="text-xs leading-6 text-slate-500">@L("setup.token.security_note")</p>
+                    <p class="setup-inline-note">@L("setup.token.security_note")</p>
                 </div>
 
                 <div class="setup-actions">
@@ -262,7 +264,7 @@
         @if (Model.Step == "approval")
         {
             <form method="post" asp-page-handler="CheckApproval" class="setup-form">
-                <div class="space-y-2">
+                <div class="setup-section-header">
                     <p class="setup-eyebrow">@L("setup.step_label") 5</p>
                     <h2 class="section-title">@L("setup.approval.title")</h2>
                     <p class="text-sm leading-7 text-slate-600">@L("setup.approval.description")</p>
@@ -285,13 +287,13 @@
         @if (Model.Step == "complete")
         {
             <section class="setup-form">
-                <div class="space-y-2">
+                <div class="setup-section-header">
                     <p class="setup-eyebrow">@L("setup.complete.eyebrow")</p>
                     <h2 class="section-title">@L("setup.complete.title")</h2>
                     <p class="text-sm leading-7 text-slate-600">@L("setup.complete.description")</p>
                 </div>
 
-                <div class="rounded-[18px] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm leading-7 text-emerald-900">
+                <div class="surface-block setup-success-note">
                     @L("setup.complete.status")
                 </div>
 

@@ -94,7 +94,7 @@
 }
 
 <section class="app-page space-y-6" id="jobs-page" data-has-active="@(Model.ActiveRun is not null ? "true" : "false")">
-    <header class="panel page-header">
+    <header class="page-hero">
         <div>
             <p class="eyebrow">@L("jobs.list.eyebrow")</p>
             <h1 class="page-title">@L("jobs.list.page_title")</h1>
@@ -102,22 +102,6 @@
         </div>
         <div class="flex flex-wrap items-center justify-end gap-3">
             <a class="btn-secondary" href="/jobs/new">@L("layout.new_job")</a>
-            @if (Model.TotalRuns > 0)
-            {
-                <form method="post" asp-page-handler="DeleteAll" id="delete-all-form">
-                    <input type="hidden" name="confirmation" id="delete-all-confirmation" />
-                    <button type="submit"
-                            class="btn-table-danger"
-                            data-confirm-kind="delete-all"
-                            data-confirm-title="@L("jobs.list.delete_all")"
-                            data-confirm-message="@L("jobs.list.delete_all_confirm")"
-                            data-confirm-requires-text="true"
-                            data-confirm-expected="DELETE"
-                            data-confirm-invalid="@L("jobs.list.delete_all_invalid")">
-                        @L("jobs.list.delete_all")
-                    </button>
-                </form>
-            }
         </div>
     </header>
 
@@ -128,22 +112,22 @@
         </section>
     }
 
-    <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div class="metric-card">
-            <div class="metric-label">@L("jobs.list.summary_total")</div>
-            <div class="metric-value">@Model.TotalRuns</div>
+    <section class="surface-status-strip">
+        <div class="surface-status-chip">
+            <div class="surface-status-label">@L("jobs.list.summary_total")</div>
+            <div class="surface-status-value">@Model.TotalRuns</div>
         </div>
-        <div class="metric-card">
-            <div class="metric-label">@L("jobs.list.summary_active")</div>
-            <div class="metric-value">@Model.ActiveRuns</div>
+        <div class="surface-status-chip">
+            <div class="surface-status-label">@L("jobs.list.summary_active")</div>
+            <div class="surface-status-value">@Model.ActiveRuns</div>
         </div>
-        <div class="metric-card">
-            <div class="metric-label">@L("jobs.list.summary_completed")</div>
-            <div class="metric-value">@Model.CompletedRuns</div>
+        <div class="surface-status-chip">
+            <div class="surface-status-label">@L("jobs.list.summary_completed")</div>
+            <div class="surface-status-value">@Model.CompletedRuns</div>
         </div>
-        <div class="metric-card">
-            <div class="metric-label">@L("jobs.list.summary_attention")</div>
-            <div class="metric-value">@Model.AttentionRuns</div>
+        <div class="surface-status-chip">
+            <div class="surface-status-label">@L("jobs.list.summary_attention")</div>
+            <div class="surface-status-value">@Model.AttentionRuns</div>
         </div>
     </section>
 
@@ -154,7 +138,7 @@
             CompletedCount(Model.ActiveRun.VideosDone, Model.ActiveRun.VideosSkipped, Model.ActiveRun.VideosFailed),
             Model.ActiveRun.VideosTotal);
         var activeStageLabel = SecondaryStageLabel(Model.ActiveRun.State, Model.ActiveRun.CurrentStage);
-        <section class="panel accent-panel">
+        <section class="work-surface">
             <div class="job-highlight-header">
                 <div>
                     <p class="eyebrow">@L("jobs.active.title")</p>
@@ -163,43 +147,51 @@
                 <a class="btn-primary" href="@JobUrls.Details(Model.ActiveRun.JobId)">@L("jobs.active.open_details")</a>
             </div>
 
-            <div class="job-card-progress mt-5">
-                <div class="job-card-progress-header">
-                    <div class="job-card-title-row">
-                        <a class="job-card-title" href="@JobUrls.Details(Model.ActiveRun.JobId)">@Model.ActiveRun.JobId</a>
-                        <span class="@StateBadgeClass(Model.ActiveRun.State)">@StateLabel(Model.ActiveRun.State)</span>
+            <div class="data-list mt-5">
+                <article class="data-row data-row-emphasis">
+                    <div class="data-row-main">
+                        <div class="data-row-title-line">
+                            <a class="data-row-title" href="@JobUrls.Details(Model.ActiveRun.JobId)">@Model.ActiveRun.JobId</a>
+                            <span class="@StateBadgeClass(Model.ActiveRun.State)">@StateLabel(Model.ActiveRun.State)</span>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(activeStageLabel))
+                        {
+                            <div class="data-row-meta">
+                                <span>@activeStageLabel</span>
+                            </div>
+                        }
                     </div>
-                    <div class="job-card-progress-value">@PercentLabel(activePercent)</div>
-                </div>
-                @if (!string.IsNullOrWhiteSpace(activeStageLabel))
-                {
-                    <div class="job-card-meta mt-2">
-                        <span>@activeStageLabel</span>
+                    <div class="data-row-side">
+                        <div class="data-row-progress">
+                            <div class="data-row-progress-header">
+                                <span class="metric-label">@L("common.progress")</span>
+                                <span class="job-card-progress-value">@PercentLabel(activePercent)</span>
+                            </div>
+                            <div class="progress-track mt-3">
+                                <div class="progress-fill" style="width:@(activePercent.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+                            </div>
+                        </div>
+                        <dl class="data-row-facts">
+                            <div class="data-row-fact">
+                                <dt>@L("common.total_size")</dt>
+                                <dd>@FormatSize(Model.ActiveRun.TotalSizeBytes)</dd>
+                            </div>
+                            <div class="data-row-fact">
+                                <dt>@L("common.total_duration")</dt>
+                                <dd>@FormatDuration(Model.ActiveRun.TotalDurationSec)</dd>
+                            </div>
+                            <div class="data-row-fact">
+                                <dt>@L("common.elapsed")</dt>
+                                <dd>@FormatDurationOrDash(Model.ActiveRun.ElapsedWallSec)</dd>
+                            </div>
+                        </dl>
                     </div>
-                }
-                <div class="progress-track mt-3">
-                    <div class="progress-fill" style="width:@(activePercent.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
-                </div>
+                </article>
             </div>
-
-            <dl class="job-card-facts mt-5">
-                <div class="job-card-fact">
-                    <dt>@L("common.total_size")</dt>
-                    <dd>@FormatSize(Model.ActiveRun.TotalSizeBytes)</dd>
-                </div>
-                <div class="job-card-fact">
-                    <dt>@L("common.total_duration")</dt>
-                    <dd>@FormatDuration(Model.ActiveRun.TotalDurationSec)</dd>
-                </div>
-                <div class="job-card-fact">
-                    <dt>@L("common.elapsed")</dt>
-                    <dd>@FormatDurationOrDash(Model.ActiveRun.ElapsedWallSec)</dd>
-                </div>
-            </dl>
         </section>
     }
 
-    <section class="panel">
+    <section class="work-surface">
         <div class="job-list-header">
             <div>
                 <p class="eyebrow">@L("jobs.list.history_eyebrow")</p>
@@ -221,7 +213,7 @@
         }
         else
         {
-            <div class="job-list-grid mt-5">
+            <div class="data-list mt-5">
                 @foreach (var run in Model.RecentRuns)
                 {
                     var percent = Percent(
@@ -232,51 +224,48 @@
                     var showDownload = run.HasDownloadableArchive &&
                         !string.Equals(run.State, "pending", StringComparison.OrdinalIgnoreCase) &&
                         !string.Equals(run.State, "running", StringComparison.OrdinalIgnoreCase);
-                    <article class="job-card">
-                        <div class="job-card-header">
-                            <div class="min-w-0">
-                                <a class="job-card-title" href="@JobUrls.Details(run.JobId)">@run.JobId</a>
-                                <div class="job-card-meta">
-                                    <span>@FormatCreatedAt(run.CreatedAt)</span>
-                                    <span aria-hidden="true">•</span>
-                                    <span>@OutputLabel(run)</span>
-                                </div>
-                            </div>
-                            <div class="job-card-status">
+                    <article class="data-row">
+                        <div class="data-row-main">
+                            <div class="data-row-title-line">
+                                <a class="data-row-title" href="@JobUrls.Details(run.JobId)">@run.JobId</a>
                                 <span class="@StateBadgeClass(run.State)">@StateLabel(run.State)</span>
                                 @if (!string.IsNullOrWhiteSpace(stageLabel))
                                 {
-                                    <div class="job-card-stage">@stageLabel</div>
+                                    <span class="badge-chip">@stageLabel</span>
                                 }
                             </div>
-                        </div>
-
-                        <div class="job-card-progress">
-                            <div class="job-card-progress-header">
-                                <span class="metric-label">@L("common.progress")</span>
-                                <span class="job-card-progress-value">@PercentLabel(percent)</span>
-                            </div>
-                            <div class="progress-track mt-3">
-                                <div class="progress-fill" style="width:@(percent.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+                            <div class="data-row-meta">
+                                <span>@FormatCreatedAt(run.CreatedAt)</span>
+                                <span aria-hidden="true">•</span>
+                                <span>@OutputLabel(run)</span>
                             </div>
                         </div>
-
-                        <dl class="job-card-facts">
-                            <div class="job-card-fact">
-                                <dt>@L("common.total_size")</dt>
-                                <dd>@FormatSize(run.TotalSizeBytes)</dd>
+                        <div class="data-row-side">
+                            <div class="data-row-progress">
+                                <div class="data-row-progress-header">
+                                    <span class="metric-label">@L("common.progress")</span>
+                                    <span class="job-card-progress-value">@PercentLabel(percent)</span>
+                                </div>
+                                <div class="progress-track mt-3">
+                                    <div class="progress-fill" style="width:@(percent.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+                                </div>
                             </div>
-                            <div class="job-card-fact">
-                                <dt>@L("common.total_duration")</dt>
-                                <dd>@FormatDuration(run.TotalDurationSec)</dd>
-                            </div>
-                            <div class="job-card-fact">
-                                <dt>@L("common.elapsed")</dt>
-                                <dd>@FormatDurationOrDash(run.ElapsedWallSec)</dd>
-                            </div>
-                        </dl>
-
-                        <div class="job-card-actions">
+                            <dl class="data-row-facts">
+                                <div class="data-row-fact">
+                                    <dt>@L("common.total_size")</dt>
+                                    <dd>@FormatSize(run.TotalSizeBytes)</dd>
+                                </div>
+                                <div class="data-row-fact">
+                                    <dt>@L("common.total_duration")</dt>
+                                    <dd>@FormatDuration(run.TotalDurationSec)</dd>
+                                </div>
+                                <div class="data-row-fact">
+                                    <dt>@L("common.elapsed")</dt>
+                                    <dd>@FormatDurationOrDash(run.ElapsedWallSec)</dd>
+                                </div>
+                            </dl>
+                        </div>
+                        <div class="data-row-actions">
                             <a class="btn-table" href="@JobUrls.Details(run.JobId)">@L("common.details")</a>
                             @if (showDownload)
                             {
@@ -374,8 +363,6 @@
     <script>
         (() => {
             const page = document.getElementById("jobs-page");
-            const deleteAllForm = document.getElementById("delete-all-form");
-            const deleteAllConfirmation = document.getElementById("delete-all-confirmation");
             const confirmModal = document.getElementById("confirm-modal");
             const confirmModalTitle = document.getElementById("confirm-modal-title");
             const confirmModalMessage = document.getElementById("confirm-modal-message");
@@ -490,8 +477,10 @@
                         confirmModalInput?.focus();
                         return;
                     }
-                    if (deleteAllConfirmation) {
-                        deleteAllConfirmation.value = typed;
+
+                    const confirmationInput = activeForm.querySelector("input[name='confirmation']");
+                    if (confirmationInput instanceof HTMLInputElement) {
+                        confirmationInput.value = typed;
                     }
                 }
 

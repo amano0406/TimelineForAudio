@@ -46,7 +46,7 @@
 }
 
 <section class="app-page space-y-6">
-    <div class="panel page-header">
+    <div class="page-hero">
         <div>
             <p class="eyebrow">@L("media.run")</p>
             <h1 class="page-title">@Model.FileName</h1>
@@ -122,49 +122,49 @@
         </div>
     </div>
 
-    <section class="grid gap-4 md:grid-cols-3">
-        <div class="metric-card">
-            <div class="metric-label">@L("details.primary_artifact")</div>
-            <div class="metric-value">@ArtifactLabel(Model.SelectedArtifactKind)</div>
+    <section class="surface-status-strip">
+        <div class="surface-status-chip">
+            <div class="surface-status-label">@L("details.primary_artifact")</div>
+            <div class="surface-status-value">@ArtifactLabel(Model.SelectedArtifactKind)</div>
         </div>
-        <div class="metric-card">
-            <div class="metric-label">@L("details.speakers")</div>
-            <div class="metric-value">@(Model.SpeakerCount?.ToString() ?? "-")</div>
+        <div class="surface-status-chip">
+            <div class="surface-status-label">@L("details.speakers")</div>
+            <div class="surface-status-value">@(Model.SpeakerCount?.ToString() ?? "-")</div>
             @if (!string.IsNullOrWhiteSpace(SpeakerStatusHint(Model.SpeakerCountStatus)))
             {
-                <div class="metric-subtle">@SpeakerStatusHint(Model.SpeakerCountStatus)</div>
+                <div class="surface-status-note">@SpeakerStatusHint(Model.SpeakerCountStatus)</div>
             }
         </div>
-        <div class="metric-card">
-            <div class="metric-label">@L("media.turn_groups")</div>
-            <div class="metric-value">@Model.PreviewGroupCount</div>
+        <div class="surface-status-chip">
+            <div class="surface-status-label">@L("media.turn_groups")</div>
+            <div class="surface-status-value">@Model.PreviewGroupCount</div>
         </div>
     </section>
 
-    <section class="grid gap-6 xl:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.1fr)]">
-        <div class="panel">
+    <section class="grid gap-6 xl:grid-cols-[minmax(280px,0.78fr)_minmax(0,1.22fr)]">
+        <div class="work-surface">
             <div class="job-list-header">
                 <h2 class="section-title">@L("media.artifact_list")</h2>
                 <span class="badge-chip">@Model.JobArtifacts.Count</span>
             </div>
-            <div class="artifact-switch-list mt-5">
+            <div class="data-list artifact-rail-list mt-5">
                 @foreach (var item in Model.JobArtifacts)
                 {
-                    <article class="artifact-switch-item @(item.IsCurrent ? "artifact-switch-item-current" : string.Empty)">
-                        <div class="artifact-switch-header">
-                            <div class="min-w-0">
-                                <div class="artifact-switch-title">@item.FileName</div>
-                                <div class="artifact-switch-meta">
-                                    <span class="@StateBadgeClass(item.Status)">@StateLabel(item.Status)</span>
-                                    <span>@($"{L("details.speakers")}: {(item.SpeakerCount?.ToString() ?? "-")}")</span>
-                                </div>
+                    <article class="artifact-rail-item @(item.IsCurrent ? "artifact-rail-item-current" : string.Empty)">
+                        <div class="data-row-main">
+                            <div class="data-row-title-line">
+                                <div class="data-row-title">@item.FileName</div>
+                                @if (item.IsCurrent)
+                                {
+                                    <span class="badge-chip">@L("media.current_item")</span>
+                                }
                             </div>
-                            @if (item.IsCurrent)
-                            {
-                                <span class="badge-chip">@L("media.current_item")</span>
-                            }
+                            <div class="data-row-meta">
+                                <span class="@StateBadgeClass(item.Status)">@StateLabel(item.Status)</span>
+                                <span>@($"{L("details.speakers")}: {(item.SpeakerCount?.ToString() ?? "-")}")</span>
+                            </div>
                         </div>
-                        <div class="job-card-actions">
+                        <div class="data-row-actions">
                             @if (item.HasReadableTextArtifact)
                             {
                                 <a class="@(item.IsCurrent && string.Equals(Model.SelectedArtifactKind, "readable-text", StringComparison.OrdinalIgnoreCase) ? "btn-primary" : "btn-table")"
@@ -181,7 +181,7 @@
             </div>
         </div>
 
-        <div class="panel">
+        <div class="work-surface document-surface">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <h2 class="section-title">@L("media.preview_title")</h2>
                 <span class="badge-chip">@ArtifactLabel(Model.SelectedArtifactKind)</span>
@@ -192,22 +192,20 @@
             }
             else
             {
-                <div class="conversation-thread mt-6">
+                <div class="artifact-document mt-6">
                     @foreach (var block in Model.PreviewBlocks)
                     {
-                        <div class="conversation-row @(string.Equals(block.Alignment, "right", StringComparison.OrdinalIgnoreCase) ? "conversation-row-right" : string.Empty)">
-                            <article class="conversation-bubble @(block.IsIpa ? "conversation-bubble-ipa" : string.Empty)">
-                                <div class="conversation-speaker">@block.Speaker</div>
-                                @if (block.IsIpa)
-                                {
-                                    <pre class="conversation-text conversation-code">@block.Content</pre>
-                                }
-                                else
-                                {
-                                    <div class="conversation-text">@block.Content</div>
-                                }
-                            </article>
-                        </div>
+                        <article class="artifact-document-block">
+                            <div class="artifact-document-speaker">@block.Speaker</div>
+                            @if (block.IsIpa)
+                            {
+                                <pre class="artifact-document-content artifact-document-content-ipa">@block.Content</pre>
+                            }
+                            else
+                            {
+                                <div class="artifact-document-content">@block.Content</div>
+                            }
+                        </article>
                     }
                 </div>
             }
