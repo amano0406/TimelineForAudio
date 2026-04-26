@@ -165,9 +165,11 @@
                     </div>
                     <div class="settings-row-body">
                         <div class="theme-picker md:grid-cols-3">
-                            <label class="theme-option">
-                                <input asp-for="ThemeMode" type="radio" value="system" />
-                                <span class="font-medium">@L("settings.theme.system")</span>
+                            <label class="twe-choice-card twe-choice-card-theme">
+                                <span class="twe-choice-leading">
+                                    <input asp-for="ThemeMode" type="radio" value="system" class="twe-choice-input" />
+                                    <span class="twe-choice-title">@L("settings.theme.system")</span>
+                                </span>
                                 <div class="theme-preview theme-preview-system" aria-hidden="true">
                                     <span></span>
                                     <span></span>
@@ -175,9 +177,11 @@
                                     <span></span>
                                 </div>
                             </label>
-                            <label class="theme-option">
-                                <input asp-for="ThemeMode" type="radio" value="light" />
-                                <span class="font-medium">@L("settings.theme.light")</span>
+                            <label class="twe-choice-card twe-choice-card-theme">
+                                <span class="twe-choice-leading">
+                                    <input asp-for="ThemeMode" type="radio" value="light" class="twe-choice-input" />
+                                    <span class="twe-choice-title">@L("settings.theme.light")</span>
+                                </span>
                                 <div class="theme-preview theme-preview-light" aria-hidden="true">
                                     <span></span>
                                     <span></span>
@@ -185,9 +189,11 @@
                                     <span></span>
                                 </div>
                             </label>
-                            <label class="theme-option">
-                                <input asp-for="ThemeMode" type="radio" value="dark" />
-                                <span class="font-medium">@L("settings.theme.dark")</span>
+                            <label class="twe-choice-card twe-choice-card-theme">
+                                <span class="twe-choice-leading">
+                                    <input asp-for="ThemeMode" type="radio" value="dark" class="twe-choice-input" />
+                                    <span class="twe-choice-title">@L("settings.theme.dark")</span>
+                                </span>
                                 <div class="theme-preview theme-preview-dark" aria-hidden="true">
                                     <span></span>
                                     <span></span>
@@ -206,11 +212,13 @@
                         <div class="flex items-center gap-2">
                             <h2 class="section-title">@L("settings.compute_mode.title")</h2>
                             <button type="button"
-                                    class="btn-table"
+                                    class="btn-icon"
                                     id="settings-gpu-help-open"
+                                    data-twe-tooltip-ref
+                                    data-twe-placement="top"
                                     aria-label="@L("settings.compute_mode.help_label")"
                                     title="@L("settings.compute_mode.help_label")">
-                                @L("common.help")
+                                @Html.AppIcon(AppIcons.Help, "ui-icon-sm")
                             </button>
                         </div>
                     </div>
@@ -234,25 +242,25 @@
                             }
                         </div>
                         <div class="grid gap-3 md:grid-cols-2">
-                            <label class="surface-choice">
+                            <label class="twe-choice-card">
                                 <input asp-for="ComputeMode"
                                        type="radio"
                                        value="cpu"
-                                       class="surface-choice-input" />
-                                <span>
-                                    <span class="surface-choice-title">@L("settings.compute_mode.cpu")</span>
-                                    <span class="surface-choice-note">@L("settings.compute_mode.cpu_note")</span>
+                                       class="twe-choice-input" />
+                                <span class="twe-choice-content">
+                                    <span class="twe-choice-title">@L("settings.compute_mode.cpu")</span>
+                                    <span class="twe-choice-note">@L("settings.compute_mode.cpu_note")</span>
                                 </span>
                             </label>
-                            <label class="surface-choice @(!gpuReady ? "surface-choice-disabled" : string.Empty)">
+                            <label class="twe-choice-card @(!gpuReady ? "twe-choice-card-disabled" : string.Empty)">
                                 <input asp-for="ComputeMode"
                                        type="radio"
                                        value="gpu"
                                        disabled="@(!gpuReady)"
-                                       class="surface-choice-input" />
-                                <span>
-                                    <span class="surface-choice-title">@L("settings.compute_mode.gpu")</span>
-                                    <span class="surface-choice-note">@L("settings.compute_mode.gpu_note")</span>
+                                       class="twe-choice-input" />
+                                <span class="twe-choice-content">
+                                    <span class="twe-choice-title">@L("settings.compute_mode.gpu")</span>
+                                    <span class="twe-choice-note">@L("settings.compute_mode.gpu_note")</span>
                                 </span>
                             </label>
                         </div>
@@ -312,7 +320,8 @@
                                        href="@Model.TokenSettingsUrl"
                                        target="_blank"
                                        rel="noreferrer">
-                                        @L("settings.open_token")
+                                        @Html.AppIcon(AppIcons.OpenExternal, "ui-icon-sm")
+                                        <span>@L("settings.open_token")</span>
                                     </a>
                                 }
                                 @if (showApprovalAction)
@@ -321,7 +330,8 @@
                                        href="@Model.PyannoteModelUrl"
                                        target="_blank"
                                        rel="noreferrer">
-                                        @L("settings.open_approval")
+                                        @Html.AppIcon(AppIcons.OpenExternal, "ui-icon-sm")
+                                        <span>@L("settings.open_approval")</span>
                                     </a>
                                 }
                             </div>
@@ -330,15 +340,24 @@
                 </div>
             </section>
 
-            <details class="settings-row group">
-                <summary class="settings-row-summary">
+            <section class="settings-row">
+                <button type="button"
+                        class="settings-row-summary"
+                        data-twe-collapse-init
+                        data-twe-target="#settings-models-detail"
+                        aria-expanded="false">
                     <div class="settings-row-copy">
                         <h2 class="section-title">@L("settings.models.details_title")</h2>
                     </div>
-                    <span class="text-sm text-slate-500 dark:text-slate-400 group-open:hidden">@L("settings.models.show")</span>
-                    <span class="text-sm text-slate-500 dark:text-slate-400 hidden group-open:inline">@L("settings.models.hide")</span>
-                </summary>
-                <div class="settings-row-detail">
+                    <span class="settings-row-summary-meta">
+                        <span class="settings-row-summary-closed">@L("settings.models.show")</span>
+                        <span class="settings-row-summary-open">@L("settings.models.hide")</span>
+                        @Html.AppIcon(AppIcons.Expand, "ui-icon-sm")
+                    </span>
+                </button>
+                <div id="settings-models-detail"
+                     class="settings-row-detail hidden"
+                     data-twe-collapse-item>
                     <div class="table-shell">
                         <table class="app-table">
                             <thead>
@@ -373,10 +392,11 @@
                                                 @if (gatedModel.RequiresApproval &&
                                                      !gatedModel.CachedLocally &&
                                                      !string.IsNullOrWhiteSpace(gatedModel.ApprovalUrl) &&
-                                                     string.Equals(gatedModel.AccessState, "approval_required", StringComparison.OrdinalIgnoreCase))
+                                                    string.Equals(gatedModel.AccessState, "approval_required", StringComparison.OrdinalIgnoreCase))
                                                 {
                                                     <a class="btn-table" href="@gatedModel.ApprovalUrl" target="_blank" rel="noreferrer">
-                                                        @L("settings.models.open")
+                                                        @Html.AppIcon(AppIcons.OpenExternal, "ui-icon-sm")
+                                                        <span>@L("settings.models.open")</span>
                                                     </a>
                                                 }
                                             </div>
@@ -387,10 +407,13 @@
                         </table>
                     </div>
                 </div>
-            </details>
+            </section>
 
             <div class="settings-action-row">
-                <button class="btn-primary">@L("settings.save_button")</button>
+                <button class="btn-primary">
+                    @Html.AppIcon(AppIcons.Save, "ui-icon-sm")
+                    <span>@L("settings.save_button")</span>
+                </button>
             </div>
         </section>
     </form>
@@ -416,7 +439,10 @@
                   data-confirm-title="@L("settings.maintenance.cache_title")"
                   data-confirm-message="@L("settings.maintenance.cache_confirm")"
                   data-confirm-submit-label="@L("settings.maintenance.cache_action")">
-                <button class="btn-secondary" type="submit">@L("settings.maintenance.cache_action")</button>
+                <button class="btn-secondary" type="submit">
+                    @Html.AppIcon(AppIcons.Delete, "ui-icon-sm")
+                    <span>@L("settings.maintenance.cache_action")</span>
+                </button>
             </form>
         </div>
 
@@ -440,7 +466,10 @@
                   data-confirm-expected="DELETE"
                   data-confirm-invalid="@L("jobs.list.delete_all_invalid")">
                 <input type="hidden" name="confirmation" />
-                <button class="btn-table-danger" type="submit">@L("settings.maintenance.jobs_action")</button>
+                <button class="btn-table-danger" type="submit">
+                    @Html.AppIcon(AppIcons.Delete, "ui-icon-sm")
+                    <span>@L("settings.maintenance.jobs_action")</span>
+                </button>
             </form>
         </div>
 
@@ -458,7 +487,10 @@
                   data-confirm-expected="DELETE"
                   data-confirm-invalid="@L("jobs.list.delete_all_invalid")">
                 <input type="hidden" name="confirmation" />
-                <button class="btn-table-danger" type="submit">@L("settings.maintenance.reset_action")</button>
+                <button class="btn-table-danger" type="submit">
+                    @Html.AppIcon(AppIcons.Delete, "ui-icon-sm")
+                    <span>@L("settings.maintenance.reset_action")</span>
+                </button>
             </form>
         </div>
     </section>
@@ -466,11 +498,14 @@
 
 <div id="settings-gpu-help-modal"
      class="modal-shell hidden"
+     tabindex="-1"
+     aria-hidden="true"
+     data-twe-modal-init
+     data-twe-class-backdrop="opacity-50 transition-all duration-200 ease-out fixed inset-0 z-[1040] bg-slate-950/45 backdrop-blur-sm"
      role="dialog"
      aria-modal="true"
      aria-labelledby="settings-gpu-help-modal-title">
-    <div class="modal-backdrop" data-settings-gpu-help-close="true"></div>
-    <div class="modal-card">
+    <div class="modal-card opacity-0 transition-opacity duration-200 ease-out" data-twe-modal-dialog-ref>
         <div class="space-y-4">
             <h2 class="section-title" id="settings-gpu-help-modal-title">@L("settings.compute_mode.help_title")</h2>
             <p class="page-description !mt-0">@L("settings.compute_mode.help_intro")</p>
@@ -481,33 +516,36 @@
             </ul>
         </div>
         <div class="mt-6 flex flex-wrap justify-end gap-3">
-            <button type="button" class="btn-secondary" id="settings-gpu-help-close">@L("common.cancel")</button>
+            <button type="button" class="btn-secondary" id="settings-gpu-help-close" data-twe-modal-dismiss>@L("common.cancel")</button>
         </div>
     </div>
 </div>
 
 <div id="settings-token-modal"
      class="modal-shell @(Model.ShowTokenEditor ? string.Empty : "hidden")"
+     tabindex="-1"
+     aria-hidden="@(Model.ShowTokenEditor ? "false" : "true")"
+     data-twe-modal-init
+     data-twe-class-backdrop="opacity-50 transition-all duration-200 ease-out fixed inset-0 z-[1040] bg-slate-950/45 backdrop-blur-sm"
      role="dialog"
      aria-modal="true"
      aria-labelledby="settings-token-modal-title">
-    <div class="modal-backdrop" data-token-modal-close="true"></div>
-    <div class="modal-card">
+    <div class="modal-card opacity-0 transition-opacity duration-200 ease-out" data-twe-modal-dialog-ref>
         <div class="space-y-4">
             <h2 class="section-title" id="settings-token-modal-title">@L("settings.token")</h2>
-            <div class="space-y-2">
-                <label class="metric-label" for="settings-token-modal-input">@L("settings.token")</label>
+            <div data-twe-input-wrapper-init class="twe-field">
                 <input id="settings-token-modal-input"
                        type="text"
                        value="@Model.Token"
                        placeholder="hf_..."
-                       class="form-input"
+                       class="twe-field-control"
                        spellcheck="false"
                        autocomplete="off" />
+                <label class="twe-field-label" for="settings-token-modal-input">@L("settings.token")</label>
             </div>
         </div>
         <div class="mt-6 flex flex-wrap justify-end gap-3">
-            <button type="button" class="btn-secondary" id="settings-token-modal-cancel">@L("common.cancel")</button>
+            <button type="button" class="btn-secondary" id="settings-token-modal-cancel" data-twe-modal-dismiss>@L("common.cancel")</button>
             <button type="button" class="btn-primary" id="settings-token-modal-submit">@L("settings.token_apply")</button>
         </div>
     </div>
@@ -515,26 +553,31 @@
 
 <div id="settings-confirm-modal"
      class="modal-shell hidden"
+     tabindex="-1"
+     aria-hidden="true"
+     data-twe-modal-init
+     data-twe-class-backdrop="opacity-50 transition-all duration-200 ease-out fixed inset-0 z-[1040] bg-slate-950/45 backdrop-blur-sm"
      role="dialog"
      aria-modal="true"
      aria-labelledby="settings-confirm-modal-title">
-    <div class="modal-backdrop" data-settings-modal-close="true"></div>
-    <div class="modal-card">
+    <div class="modal-card opacity-0 transition-opacity duration-200 ease-out" data-twe-modal-dialog-ref>
         <div class="space-y-4">
             <h2 class="section-title" id="settings-confirm-modal-title"></h2>
             <p class="page-description !mt-0" id="settings-confirm-modal-message"></p>
-            <div id="settings-confirm-modal-input-wrap" class="hidden space-y-2">
-                <label class="metric-label" for="settings-confirm-modal-input">@L("common.confirm_text")</label>
-                <input id="settings-confirm-modal-input"
-                       type="text"
-                       class="form-input"
-                       autocomplete="off"
-                       spellcheck="false" />
-                <p id="settings-confirm-modal-error" class="text-sm text-rose-700 dark:text-rose-300 hidden"></p>
+            <div id="settings-confirm-modal-input-wrap" class="hidden">
+                <div data-twe-input-wrapper-init class="twe-field">
+                    <input id="settings-confirm-modal-input"
+                           type="text"
+                           class="twe-field-control"
+                           autocomplete="off"
+                           spellcheck="false" />
+                    <label class="twe-field-label" for="settings-confirm-modal-input">@L("common.confirm_text")</label>
+                </div>
+                <p id="settings-confirm-modal-error" class="mt-2 text-sm text-rose-700 dark:text-rose-300 hidden"></p>
             </div>
         </div>
         <div class="mt-6 flex flex-wrap justify-end gap-3">
-            <button type="button" class="btn-secondary" id="settings-confirm-modal-cancel">@L("common.cancel")</button>
+            <button type="button" class="btn-secondary" id="settings-confirm-modal-cancel" data-twe-modal-dismiss>@L("common.cancel")</button>
             <button type="button" class="btn-table-danger" id="settings-confirm-modal-submit">@L("common.confirm")</button>
         </div>
     </div>
@@ -544,9 +587,9 @@
 {
     <script>
         (() => {
+            const modalApi = window.timelineForAudioModal;
             const gpuHelpOpen = document.getElementById("settings-gpu-help-open");
             const gpuHelpModal = document.getElementById("settings-gpu-help-modal");
-            const gpuHelpClose = document.getElementById("settings-gpu-help-close");
             const tokenHiddenInput = document.getElementById("token-input");
             const tokenPreviewValue = document.getElementById("token-preview-value");
             const tokenPreviewEmpty = document.getElementById("token-preview-empty");
@@ -554,7 +597,6 @@
             const tokenStatusLabel = document.getElementById("token-status-label");
             const tokenModal = document.getElementById("settings-token-modal");
             const tokenModalInput = document.getElementById("settings-token-modal-input");
-            const tokenModalCancel = document.getElementById("settings-token-modal-cancel");
             const tokenModalSubmit = document.getElementById("settings-token-modal-submit");
             const confirmModal = document.getElementById("settings-confirm-modal");
             const confirmModalTitle = document.getElementById("settings-confirm-modal-title");
@@ -562,7 +604,6 @@
             const confirmModalInputWrap = document.getElementById("settings-confirm-modal-input-wrap");
             const confirmModalInput = document.getElementById("settings-confirm-modal-input");
             const confirmModalError = document.getElementById("settings-confirm-modal-error");
-            const confirmModalCancel = document.getElementById("settings-confirm-modal-cancel");
             const confirmModalSubmit = document.getElementById("settings-confirm-modal-submit");
 
             let activeForm = null;
@@ -622,7 +663,6 @@
             };
 
             const closeTokenModal = () => {
-                tokenModal?.classList.add("hidden");
                 if (tokenModalInput && tokenHiddenInput) {
                     tokenModalInput.value = tokenHiddenInput.value;
                 }
@@ -639,42 +679,40 @@
 
                 tokenLastFocusedElement = trigger;
                 tokenModalInput.value = tokenHiddenInput?.value || "";
-                tokenModal.classList.remove("hidden");
+                modalApi?.show(tokenModal, trigger);
                 window.setTimeout(() => tokenModalInput.focus(), 0);
             };
 
             const closeGpuHelpModal = () => {
-                gpuHelpModal?.classList.add("hidden");
             };
 
-            gpuHelpOpen?.addEventListener("click", () => gpuHelpModal?.classList.remove("hidden"));
-            gpuHelpClose?.addEventListener("click", closeGpuHelpModal);
-            gpuHelpModal?.querySelectorAll("[data-settings-gpu-help-close='true']").forEach((element) => {
-                element.addEventListener("click", closeGpuHelpModal);
+            modalApi?.onHidden(gpuHelpModal, closeGpuHelpModal);
+            modalApi?.onHidden(tokenModal, closeTokenModal);
+
+            gpuHelpOpen?.addEventListener("click", () => {
+                modalApi?.show(gpuHelpModal, gpuHelpOpen);
             });
 
             tokenChangeButton?.addEventListener("click", () => openTokenModal(tokenChangeButton));
-            tokenModalCancel?.addEventListener("click", closeTokenModal);
-            tokenModal?.querySelectorAll("[data-token-modal-close='true']").forEach((element) => {
-                element.addEventListener("click", closeTokenModal);
-            });
             tokenModalSubmit?.addEventListener("click", () => {
                 if (!tokenHiddenInput || !tokenModalInput) {
-                    closeTokenModal();
+                    modalApi?.hide(tokenModal);
                     return;
                 }
 
                 tokenHiddenInput.value = tokenModalInput.value.trim();
                 syncTokenSummary();
-                closeTokenModal();
+                modalApi?.hide(tokenModal);
             });
             syncTokenSummary();
             if (tokenModal && !tokenModal.classList.contains("hidden")) {
-                window.setTimeout(() => tokenModalInput?.focus(), 0);
+                window.setTimeout(() => {
+                    modalApi?.show(tokenModal);
+                    tokenModalInput?.focus();
+                }, 0);
             }
 
             const closeModal = () => {
-                confirmModal?.classList.add("hidden");
                 confirmModalInputWrap?.classList.add("hidden");
                 confirmModalError?.classList.add("hidden");
                 if (confirmModalInput) {
@@ -691,6 +729,8 @@
                 }
                 lastFocusedElement = null;
             };
+
+            modalApi?.onHidden(confirmModal, closeModal);
 
             const openModal = (form, trigger) => {
                 if (!confirmModal || !confirmModalTitle || !confirmModalMessage || !confirmModalSubmit) {
@@ -711,7 +751,7 @@
                 if (confirmModalInput) {
                     confirmModalInput.value = "";
                 }
-                confirmModal.classList.remove("hidden");
+                modalApi?.show(confirmModal, trigger);
                 window.setTimeout(() => {
                     if (needsText) {
                         confirmModalInput?.focus();
@@ -734,30 +774,9 @@
                 });
             });
 
-            confirmModalCancel?.addEventListener("click", closeModal);
-            confirmModal?.querySelectorAll("[data-settings-modal-close='true']").forEach((element) => {
-                element.addEventListener("click", closeModal);
-            });
-
-            document.addEventListener("keydown", (event) => {
-                if (event.key === "Escape" && gpuHelpModal && !gpuHelpModal.classList.contains("hidden")) {
-                    closeGpuHelpModal();
-                    return;
-                }
-
-                if (event.key === "Escape" && tokenModal && !tokenModal.classList.contains("hidden")) {
-                    closeTokenModal();
-                    return;
-                }
-
-                if (event.key === "Escape" && confirmModal && !confirmModal.classList.contains("hidden")) {
-                    closeModal();
-                }
-            });
-
             confirmModalSubmit?.addEventListener("click", () => {
                 if (!activeForm) {
-                    closeModal();
+                    modalApi?.hide(confirmModal);
                     return;
                 }
 
@@ -779,7 +798,7 @@
                 }
 
                 const targetForm = activeForm;
-                closeModal();
+                modalApi?.hide(confirmModal);
                 targetForm.submit();
             });
         })();

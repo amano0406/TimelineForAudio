@@ -90,22 +90,32 @@
                 <nav class="sidebar-nav">
                     @if (settingsReady)
                     {
-                        <a href="/jobs/new" class="@NavClass("/jobs/new")">@L("layout.new_job")</a>
+                        <a href="/jobs/new" class="@NavClass("/jobs/new")">
+                            @Html.AppIcon(AppIcons.NavNewJob, "ui-icon-sm")
+                            <span>@L("layout.new_job")</span>
+                        </a>
                     }
                     @if (hasJobs)
                     {
-                        <a href="/jobs" class="@NavClass("/jobs", includeRuns: true)">@L("layout.jobs")</a>
+                        <a href="/jobs" class="@NavClass("/jobs", includeRuns: true)">
+                            @Html.AppIcon(AppIcons.NavJobs, "ui-icon-sm")
+                            <span>@L("layout.jobs")</span>
+                        </a>
                     }
                     else if (settingsReady)
                     {
                         <span class="nav-link nav-link-disabled"
                               aria-disabled="true"
                               title="@L("jobs.list.empty")">
-                            @L("layout.jobs")
+                            @Html.AppIcon(AppIcons.NavJobs, "ui-icon-sm")
+                            <span>@L("layout.jobs")</span>
                         </span>
                     }
                     <a href="@(settingsReady ? "/settings" : "/setup")"
-                       class="@(settingsReady ? NavClass("/settings") : NavClass("/setup"))">@L("layout.settings")</a>
+                       class="@(settingsReady ? NavClass("/settings") : NavClass("/setup"))">
+                        @Html.AppIcon(AppIcons.NavSettings, "ui-icon-sm")
+                        <span>@L("layout.settings")</span>
+                    </a>
                 </nav>
             </div>
 
@@ -121,6 +131,11 @@
          class="fixed bottom-4 right-4 hidden rounded-xl border border-slate-200 bg-slate-950 px-4 py-3 text-sm font-medium text-white shadow-2xl dark:border-slate-700">
         @L("layout.update_detected")
     </div>
+    <script src="~/lib/tw-elements/tw-elements.umd.min.js" asp-append-version="true"></script>
+    <script src="~/js/twe-modal.js" asp-append-version="true"></script>
+    <script src="~/js/twe-dropdown.js" asp-append-version="true"></script>
+    <script src="~/js/twe-ripple.js" asp-append-version="true"></script>
+    <script src="~/js/twe-tooltip.js" asp-append-version="true"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
     <script>
         (() => {

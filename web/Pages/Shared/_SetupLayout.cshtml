@@ -60,6 +60,11 @@
         </div>
         @RenderBody()
     </main>
+    <script src="~/lib/tw-elements/tw-elements.umd.min.js" asp-append-version="true"></script>
+    <script src="~/js/twe-modal.js" asp-append-version="true"></script>
+    <script src="~/js/twe-dropdown.js" asp-append-version="true"></script>
+    <script src="~/js/twe-ripple.js" asp-append-version="true"></script>
+    <script src="~/js/twe-tooltip.js" asp-append-version="true"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>

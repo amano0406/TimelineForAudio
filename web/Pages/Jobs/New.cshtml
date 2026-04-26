@@ -57,8 +57,14 @@
                         <h2 class="section-title">@L("jobs.new.files_title")</h2>
                     </div>
                     <div class="mt-4 flex flex-wrap gap-3">
-                        <button type="button" class="btn-secondary" id="pick-files-button">@L("jobs.new.pick_files")</button>
-                        <button type="button" class="btn-secondary" id="pick-folder-button">@L("jobs.new.pick_folder")</button>
+                        <button type="button" class="btn-secondary" id="pick-files-button">
+                            @Html.AppIcon(AppIcons.ChooseFiles, "ui-icon-sm")
+                            <span>@L("jobs.new.pick_files")</span>
+                        </button>
+                        <button type="button" class="btn-secondary" id="pick-folder-button">
+                            @Html.AppIcon(AppIcons.ChooseFolder, "ui-icon-sm")
+                            <span>@L("jobs.new.pick_folder")</span>
+                        </button>
                     </div>
                     <p class="selection-hint mt-4">
                         @string.Format(System.Globalization.CultureInfo.CurrentCulture, L("jobs.new.supported_extensions"), Model.AllowedExtensionsDisplay)
@@ -100,54 +106,77 @@
                         <div class="space-y-2">
                             <h2 class="section-title">@L("jobs.new.output_title")</h2>
                         </div>
-                        <label class="surface-choice">
+                        <label class="twe-choice-card">
                             <input asp-for="ReadableTextEnabled"
                                    type="checkbox"
-                                   class="surface-choice-input"
+                                   class="twe-choice-input"
                                    id="readable-text-enabled" />
-                            <span>
-                                <span class="surface-choice-title">@L("jobs.new.readable_text_enabled")</span>
-                                <span class="surface-choice-note">@L("jobs.new.readable_text_enabled_note")</span>
+                            <span class="twe-choice-content">
+                                <span class="twe-choice-title">@L("jobs.new.readable_text_enabled")</span>
+                                <span class="twe-choice-note">@L("jobs.new.readable_text_enabled_note")</span>
                             </span>
                         </label>
                     </div>
                 </section>
             </div>
 
-            <details class="soft-callout" open>
-                <summary class="soft-callout-summary">
+            <section class="soft-callout">
+                <button type="button"
+                        class="soft-callout-summary"
+                        data-twe-collapse-init
+                        data-twe-target="#supplemental-context-panel"
+                        aria-expanded="true">
                     <span>
                         <span class="section-title">@L("jobs.new.supplemental_context.title")</span>
                         <span class="soft-callout-note">@L("jobs.new.supplemental_context.description")</span>
                     </span>
-                </summary>
-                <div class="soft-callout-content">
+                    <span class="soft-callout-chevron" aria-hidden="true">
+                        @Html.AppIcon(AppIcons.Expand, "ui-icon-sm")
+                    </span>
+                </button>
+                <div id="supplemental-context-panel"
+                     class="soft-callout-content"
+                     data-twe-collapse-item
+                     data-twe-collapse-show>
                     <div class="soft-example">
                         <div class="soft-example-title">@L("jobs.new.supplemental_context.example_title")</div>
                         <p class="soft-example-body">@L("jobs.new.supplemental_context.example_body")</p>
                     </div>
-                    <div class="space-y-2">
+                    <div data-twe-input-wrapper-init class="twe-field">
                         <textarea asp-for="SupplementalContextText"
                                   rows="8"
-                                  class="form-input w-full"
+                                  class="twe-field-control"
                                   spellcheck="false"
                                   id="supplemental-context-text"
                                   placeholder="@L("jobs.new.supplemental_context.placeholder")"></textarea>
+                        <label class="twe-field-label" for="supplemental-context-text">@L("jobs.new.supplemental_context.title")</label>
                     </div>
                 </div>
-            </details>
+            </section>
 
             <div class="surface-action-bar">
                 <a class="btn-secondary" href="@Model.CancelHref">@L("common.cancel")</a>
-                <button asp-page-handler="Execute" class="btn-primary" id="execute-job-button">@L("jobs.new.execute")</button>
+                <button asp-page-handler="Execute" class="btn-primary" id="execute-job-button">
+                    @Html.AppIcon(AppIcons.StartConversion, "ui-icon-sm")
+                    <span>@L("jobs.new.execute")</span>
+                </button>
             </div>
         </section>
     </form>
 </section>
 
-<section class="modal-shell hidden" id="upload-overlay" aria-hidden="true" role="dialog" aria-modal="true" aria-live="polite">
-    <div class="modal-backdrop"></div>
-    <div class="modal-card upload-modal-card">
+<section class="modal-shell hidden"
+         id="upload-overlay"
+         tabindex="-1"
+         aria-hidden="true"
+         data-twe-modal-init
+         data-twe-backdrop="static"
+         data-twe-keyboard="false"
+         data-twe-class-backdrop="opacity-50 transition-all duration-200 ease-out fixed inset-0 z-[1040] bg-slate-950/45 backdrop-blur-sm"
+         role="dialog"
+         aria-modal="true"
+         aria-live="polite">
+    <div class="modal-card upload-modal-card opacity-0 transition-opacity duration-200 ease-out" data-twe-modal-dialog-ref>
         <div class="space-y-4">
             <div class="flex items-center justify-between gap-3">
                 <div>
@@ -174,6 +203,7 @@
     <script>
         (() => {
             const form = document.getElementById("new-job-form");
+            const modalApi = window.timelineForAudioModal;
             const filesInput = document.getElementById("upload-files-input");
             const directoryInput = document.getElementById("upload-directory-input");
             const pickFilesButton = document.getElementById("pick-files-button");
@@ -418,8 +448,11 @@
                 executeButton.disabled = busy;
                 executeButton.textContent = busy ? messages.uploadRunning : messages.execute;
                 cancelButton.disabled = !busy;
-                progressPanel.classList.toggle("hidden", !busy);
-                progressPanel.setAttribute("aria-hidden", busy ? "false" : "true");
+                if (busy) {
+                    modalApi?.show(progressPanel);
+                } else {
+                    modalApi?.hide(progressPanel);
+                }
             };
 
             const cleanupSession = async () => {

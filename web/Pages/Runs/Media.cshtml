@@ -72,18 +72,21 @@
             }
         </div>
         <div class="flex items-center gap-3">
-            <a class="btn-secondary" href="@JobUrls.Details(Model.JobId)">@L("media.back_to_job_details")</a>
-            <details class="action-menu" data-action-menu>
-                <summary class="action-menu-summary"
-                         aria-label="@L("common.more_actions")"
-                         title="@L("common.more_actions")">
-                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                        <circle cx="12" cy="5" r="1.8"></circle>
-                        <circle cx="12" cy="12" r="1.8"></circle>
-                        <circle cx="12" cy="19" r="1.8"></circle>
-                    </svg>
-                </summary>
-                <div class="action-menu-panel" role="menu">
+            <a class="btn-secondary" href="@JobUrls.Details(Model.JobId)">
+                @Html.AppIcon(AppIcons.Previous, "ui-icon-sm")
+                <span>@L("media.back_to_job_details")</span>
+            </a>
+            <div class="action-menu" data-twe-dropdown-ref>
+                <button type="button"
+                        class="action-menu-summary"
+                        data-twe-dropdown-toggle-ref
+                        data-twe-dropdown-auto-close="outside"
+                        aria-expanded="false"
+                        aria-label="@L("common.more_actions")"
+                        title="@L("common.more_actions")">
+                    @Html.AppIcon(AppIcons.MoreActions, "ui-icon-sm")
+                </button>
+                <div class="action-menu-panel" data-twe-dropdown-menu-ref role="menu">
                     <button type="button"
                             class="action-menu-item"
                             data-copy-source="artifact-raw-markdown"
@@ -93,32 +96,23 @@
                             aria-label="@L("common.copy_markdown")"
                             title="@L("common.copy_markdown")">
                         <span class="copy-icon copy-icon-default" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                                <rect x="9" y="9" width="11" height="11" rx="2"></rect>
-                                <path d="M7 15H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v1"></path>
-                            </svg>
+                            @Html.AppIcon(AppIcons.Copy, "ui-icon-sm")
                         </span>
                         <span class="copy-icon copy-icon-success" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M20 6 9 17l-5-5"></path>
-                            </svg>
+                            @Html.AppIcon(AppIcons.StatusReady, "ui-icon-sm")
                         </span>
                         <span>@L("common.copy_markdown")</span>
                         <span class="sr-only" data-copy-feedback aria-live="polite"></span>
                     </button>
                     <a class="action-menu-item"
-                       data-menu-close="true"
+                       data-dropdown-close="true"
                        href="@JobUrls.MediaMarkdown(Model.JobId, Model.MediaId, Model.SelectedArtifactKind)"
                        download>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="M12 3v12"></path>
-                            <path d="m7 10 5 5 5-5"></path>
-                            <path d="M5 21h14"></path>
-                        </svg>
+                        @Html.AppIcon(AppIcons.Download, "ui-icon-sm")
                         <span>@L("common.download_markdown")</span>
                     </a>
                 </div>
-            </details>
+            </div>
         </div>
     </div>
 
@@ -188,11 +182,13 @@
                     @if (string.Equals(Model.SelectedArtifactKind, "ipa", StringComparison.OrdinalIgnoreCase))
                     {
                         <button type="button"
-                                class="btn-table"
+                                class="btn-icon"
                                 id="media-ipa-help-open"
+                                data-twe-tooltip-ref
+                                data-twe-placement="top"
                                 aria-label="@L("artifact.ipa.help_label")"
                                 title="@L("artifact.ipa.help_label")">
-                            @L("common.help")
+                            @Html.AppIcon(AppIcons.Help, "ui-icon-sm")
                         </button>
                     }
                 </div>
@@ -229,11 +225,14 @@
 
 <div id="media-ipa-help-modal"
      class="modal-shell hidden"
+     tabindex="-1"
+     aria-hidden="true"
+     data-twe-modal-init
+     data-twe-class-backdrop="opacity-50 transition-all duration-200 ease-out fixed inset-0 z-[1040] bg-slate-950/45 backdrop-blur-sm"
      role="dialog"
      aria-modal="true"
      aria-labelledby="media-ipa-help-modal-title">
-    <div class="modal-backdrop" data-ipa-help-close="true"></div>
-    <div class="modal-card">
+    <div class="modal-card opacity-0 transition-opacity duration-200 ease-out" data-twe-modal-dialog-ref>
         <div class="space-y-3">
             <h2 class="section-title" id="media-ipa-help-modal-title">@L("artifact.ipa.help_title")</h2>
             <p class="page-description !mt-0">@L("artifact.ipa.help_intro")</p>
@@ -244,7 +243,7 @@
             <li class="modal-list-item">@L("artifact.ipa.help_point_3")</li>
         </ul>
         <div class="mt-6 flex items-center justify-end gap-3">
-            <button type="button" class="btn-secondary" id="media-ipa-help-close">@L("common.cancel")</button>
+            <button type="button" class="btn-secondary" id="media-ipa-help-close" data-twe-modal-dismiss>@L("common.cancel")</button>
         </div>
     </div>
 </div>
@@ -255,28 +254,17 @@
         (() => {
             const ipaHelpOpen = document.getElementById("media-ipa-help-open");
             const ipaHelpModal = document.getElementById("media-ipa-help-modal");
-            const ipaHelpClose = document.getElementById("media-ipa-help-close");
+            const modalApi = window.timelineForAudioModal;
             if (!ipaHelpModal) {
                 return;
             }
 
             const closeIpaHelpModal = () => {
-                ipaHelpModal.classList.add("hidden");
             };
 
+            modalApi?.onHidden(ipaHelpModal, closeIpaHelpModal);
             ipaHelpOpen?.addEventListener("click", () => {
-                ipaHelpModal.classList.remove("hidden");
-            });
-
-            ipaHelpClose?.addEventListener("click", closeIpaHelpModal);
-            ipaHelpModal.querySelectorAll("[data-ipa-help-close='true']").forEach((element) => {
-                element.addEventListener("click", closeIpaHelpModal);
-            });
-
-            document.addEventListener("keydown", (event) => {
-                if (event.key === "Escape" && !ipaHelpModal.classList.contains("hidden")) {
-                    closeIpaHelpModal();
-                }
+                modalApi?.show(ipaHelpModal, ipaHelpOpen);
             });
         })();
     </script>

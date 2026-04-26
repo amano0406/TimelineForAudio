@@ -75,48 +75,25 @@
         });
     });
 
-    const actionMenus = Array.from(document.querySelectorAll("[data-action-menu]"));
-    if (actionMenus.length === 0) {
-        return;
-    }
-
-    const closeAllActionMenus = (exceptMenu) => {
-        actionMenus.forEach((menu) => {
-            if (menu !== exceptMenu) {
-                menu.removeAttribute("open");
-            }
-        });
-    };
-
-    actionMenus.forEach((menu) => {
-        const summary = menu.querySelector("summary");
-        summary?.addEventListener("click", () => {
-            window.setTimeout(() => closeAllActionMenus(menu), 0);
-        });
-
-        menu.querySelectorAll("[data-menu-close='true']").forEach((item) => {
-            item.addEventListener("click", () => {
-                window.setTimeout(() => menu.removeAttribute("open"), 0);
-            });
-        });
-    });
-
     document.addEventListener("click", (event) => {
         const target = event.target;
-        if (!(target instanceof Node)) {
+        if (!(target instanceof Element)) {
             return;
         }
 
-        actionMenus.forEach((menu) => {
-            if (!menu.contains(target)) {
-                menu.removeAttribute("open");
-            }
-        });
-    });
+        const closeTrigger = target.closest("[data-dropdown-close='true']");
+        if (!closeTrigger) {
+            return;
+        }
 
-    document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape") {
-            closeAllActionMenus(null);
+        const toggle = closeTrigger
+            .closest("[data-twe-dropdown-ref]")
+            ?.querySelector("[data-twe-dropdown-toggle-ref]");
+
+        if (toggle instanceof Element) {
+            window.setTimeout(() => {
+                window.timelineForAudioDropdown?.hide(toggle);
+            }, 0);
         }
     });
 })();

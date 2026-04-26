@@ -112,7 +112,10 @@
                     </select>
                 </div>
                 <div class="setup-actions">
-                    <button class="btn-primary" type="submit">@L("common.next")</button>
+                    <button class="btn-primary" type="submit">
+                        <span>@L("common.next")</span>
+                        @Html.AppIcon(AppIcons.Next, "ui-icon-sm")
+                    </button>
                 </div>
             </form>
         }
@@ -126,11 +129,13 @@
                         <div class="flex items-center gap-2">
                             <h2 class="section-title">@L("setup.compute.title")</h2>
                             <button type="button"
-                                    class="btn-table"
+                                    class="btn-icon"
                                     id="setup-gpu-help-open"
+                                    data-twe-tooltip-ref
+                                    data-twe-placement="top"
                                     aria-label="@L("settings.compute_mode.help_label")"
                                     title="@L("settings.compute_mode.help_label")">
-                                @L("common.help")
+                                @Html.AppIcon(AppIcons.Help, "ui-icon-sm")
                             </button>
                         </div>
                     </div>
@@ -146,32 +151,38 @@
                 </div>
 
                 <div class="grid gap-3 md:grid-cols-2">
-                    <label class="setup-choice">
+                    <label class="twe-choice-card">
                         <input asp-for="ComputeMode"
                                type="radio"
                                value="cpu"
-                               class="mt-1 h-4 w-4 border-slate-300 text-slate-900 dark:border-slate-600 dark:text-slate-100" />
-                        <span>
-                            <span class="block font-medium text-slate-900 dark:text-slate-100">@L("settings.compute_mode.cpu")</span>
-                            <span class="block text-xs text-slate-500 dark:text-slate-400">@L("settings.compute_mode.cpu_note")</span>
+                               class="twe-choice-input" />
+                        <span class="twe-choice-content">
+                            <span class="twe-choice-title">@L("settings.compute_mode.cpu")</span>
+                            <span class="twe-choice-note">@L("settings.compute_mode.cpu_note")</span>
                         </span>
                     </label>
-                    <label class="setup-choice @(!gpuReady ? "opacity-60 cursor-not-allowed" : "")">
+                    <label class="twe-choice-card @(!gpuReady ? "twe-choice-card-disabled" : string.Empty)">
                         <input asp-for="ComputeMode"
                                type="radio"
                                value="gpu"
                                disabled="@(!gpuReady)"
-                               class="mt-1 h-4 w-4 border-slate-300 text-slate-900 dark:border-slate-600 dark:text-slate-100" />
-                        <span>
-                            <span class="block font-medium text-slate-900 dark:text-slate-100">@L("settings.compute_mode.gpu")</span>
-                            <span class="block text-xs text-slate-500 dark:text-slate-400">@L("settings.compute_mode.gpu_note")</span>
+                               class="twe-choice-input" />
+                        <span class="twe-choice-content">
+                            <span class="twe-choice-title">@L("settings.compute_mode.gpu")</span>
+                            <span class="twe-choice-note">@L("settings.compute_mode.gpu_note")</span>
                         </span>
                     </label>
                 </div>
 
                 <div class="setup-actions">
-                    <a class="btn-secondary" href="/setup?step=language">@L("common.previous")</a>
-                    <button class="btn-primary" type="submit">@L("common.next")</button>
+                    <a class="btn-secondary" href="/setup?step=language">
+                        @Html.AppIcon(AppIcons.Previous, "ui-icon-sm")
+                        <span>@L("common.previous")</span>
+                    </a>
+                    <button class="btn-primary" type="submit">
+                        <span>@L("common.next")</span>
+                        @Html.AppIcon(AppIcons.Next, "ui-icon-sm")
+                    </button>
                 </div>
             </form>
         }
@@ -197,7 +208,10 @@
                 </div>
 
                 <div class="setup-actions">
-                    <a class="btn-secondary" href="/setup?step=compute">@L("common.previous")</a>
+                    <a class="btn-secondary" href="/setup?step=compute">
+                        @Html.AppIcon(AppIcons.Previous, "ui-icon-sm")
+                        <span>@L("common.previous")</span>
+                    </a>
                 </div>
             </form>
         }
@@ -215,12 +229,19 @@
                    href="@Model.HuggingFaceJoinUrl"
                    target="_blank"
                    rel="noreferrer">
-                    @L("setup.register.open")
+                    @Html.AppIcon(AppIcons.OpenExternal, "ui-icon-sm")
+                    <span>@L("setup.register.open")</span>
                 </a>
 
                 <div class="setup-actions">
-                    <a class="btn-secondary" href="/setup?step=account">@L("common.previous")</a>
-                    <button class="btn-primary" type="submit">@L("setup.register.done")</button>
+                    <a class="btn-secondary" href="/setup?step=account">
+                        @Html.AppIcon(AppIcons.Previous, "ui-icon-sm")
+                        <span>@L("common.previous")</span>
+                    </a>
+                    <button class="btn-primary" type="submit">
+                        <span>@L("setup.register.done")</span>
+                        @Html.AppIcon(AppIcons.Next, "ui-icon-sm")
+                    </button>
                 </div>
             </form>
         }
@@ -247,25 +268,32 @@
                        href="@Model.TokenSettingsUrl"
                        target="_blank"
                        rel="noreferrer">
-                        @L("setup.token.open")
+                        @Html.AppIcon(AppIcons.OpenExternal, "ui-icon-sm")
+                        <span>@L("setup.token.open")</span>
                     </a>
                 </div>
 
-                <div class="space-y-2">
-                    <label class="metric-label" for="setup-token-input">@L("settings.token")</label>
+                <div data-twe-input-wrapper-init class="twe-field">
                     <input id="setup-token-input"
                            asp-for="Token"
                            type="password"
-                           class="form-input"
+                           class="twe-field-control"
                            placeholder="hf_..."
                            spellcheck="false"
                            autocomplete="off" />
-                    <p class="setup-inline-note">@L("setup.token.security_note")</p>
+                    <label class="twe-field-label" for="setup-token-input">@L("settings.token")</label>
+                    <div data-twe-input-helper-ref class="twe-field-helper">@L("setup.token.security_note")</div>
                 </div>
 
                 <div class="setup-actions">
-                    <a class="btn-secondary" href="/setup?step=account">@L("common.previous")</a>
-                    <button class="btn-primary" type="submit">@L("setup.token.verify")</button>
+                    <a class="btn-secondary" href="/setup?step=account">
+                        @Html.AppIcon(AppIcons.Previous, "ui-icon-sm")
+                        <span>@L("common.previous")</span>
+                    </a>
+                    <button class="btn-primary" type="submit">
+                        <span>@L("setup.token.verify")</span>
+                        @Html.AppIcon(AppIcons.Next, "ui-icon-sm")
+                    </button>
                 </div>
             </form>
         }
@@ -283,12 +311,19 @@
                    href="@Model.PyannoteModelUrl"
                    target="_blank"
                    rel="noreferrer">
-                    @L("setup.approval.open")
+                    @Html.AppIcon(AppIcons.OpenExternal, "ui-icon-sm")
+                    <span>@L("setup.approval.open")</span>
                 </a>
 
                 <div class="setup-actions">
-                    <a class="btn-secondary" href="/setup?step=token">@L("common.previous")</a>
-                    <button class="btn-primary" type="submit">@L("setup.approval.check")</button>
+                    <a class="btn-secondary" href="/setup?step=token">
+                        @Html.AppIcon(AppIcons.Previous, "ui-icon-sm")
+                        <span>@L("common.previous")</span>
+                    </a>
+                    <button class="btn-primary" type="submit">
+                        <span>@L("setup.approval.check")</span>
+                        @Html.AppIcon(AppIcons.Next, "ui-icon-sm")
+                    </button>
                 </div>
             </form>
         }
@@ -307,7 +342,10 @@
                 </div>
 
                 <div class="setup-actions">
-                    <a class="btn-primary" href="/jobs/new">@L("setup.complete.new_job")</a>
+                    <a class="btn-primary" href="/jobs/new">
+                        @Html.AppIcon(AppIcons.NavNewJob, "ui-icon-sm")
+                        <span>@L("setup.complete.new_job")</span>
+                    </a>
                 </div>
             </section>
         }
@@ -316,11 +354,14 @@
 
 <div id="setup-gpu-help-modal"
      class="modal-shell hidden"
+     tabindex="-1"
+     aria-hidden="true"
+     data-twe-modal-init
+     data-twe-class-backdrop="opacity-50 transition-all duration-200 ease-out fixed inset-0 z-[1040] bg-slate-950/45 backdrop-blur-sm"
      role="dialog"
      aria-modal="true"
      aria-labelledby="setup-gpu-help-modal-title">
-    <div class="modal-backdrop" data-setup-gpu-help-close="true"></div>
-    <div class="modal-card">
+    <div class="modal-card opacity-0 transition-opacity duration-200 ease-out" data-twe-modal-dialog-ref>
         <div class="space-y-4">
             <h2 class="section-title" id="setup-gpu-help-modal-title">@L("settings.compute_mode.help_title")</h2>
             <p class="page-description !mt-0">@L("settings.compute_mode.help_intro")</p>
@@ -331,7 +372,7 @@
             </ul>
         </div>
         <div class="mt-6 flex flex-wrap justify-end gap-3">
-            <button type="button" class="btn-secondary" id="setup-gpu-help-close">@L("common.cancel")</button>
+            <button type="button" class="btn-secondary" id="setup-gpu-help-close" data-twe-modal-dismiss>@L("common.cancel")</button>
         </div>
     </div>
 </div>
@@ -342,26 +383,17 @@
         (() => {
             const gpuHelpOpen = document.getElementById("setup-gpu-help-open");
             const gpuHelpModal = document.getElementById("setup-gpu-help-modal");
-            const gpuHelpClose = document.getElementById("setup-gpu-help-close");
+            const modalApi = window.timelineForAudioModal;
             if (!gpuHelpModal) {
                 return;
             }
 
             const closeGpuHelpModal = () => {
-                gpuHelpModal.classList.add("hidden");
             };
 
+            modalApi?.onHidden(gpuHelpModal, closeGpuHelpModal);
             gpuHelpOpen?.addEventListener("click", () => {
-                gpuHelpModal.classList.remove("hidden");
-            });
-            gpuHelpClose?.addEventListener("click", closeGpuHelpModal);
-            gpuHelpModal.querySelectorAll("[data-setup-gpu-help-close='true']").forEach((element) => {
-                element.addEventListener("click", closeGpuHelpModal);
-            });
-            document.addEventListener("keydown", (event) => {
-                if (event.key === "Escape" && !gpuHelpModal.classList.contains("hidden")) {
-                    closeGpuHelpModal();
-                }
+                modalApi?.show(gpuHelpModal, gpuHelpOpen);
             });
         })();
     </script>

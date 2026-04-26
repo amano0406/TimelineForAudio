@@ -15,6 +15,10 @@ _SIMPLE_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z'’-]*|[ぁ-ゖァ-ヺー]+")
 _VOWEL_RE = re.compile(r"[aiɯeo]")
 _KANJI_RE = re.compile(r"[一-龯々]")
 
+DEFAULT_IPA_BACKEND = "sudachi-reading-ipa-v1"
+EXPERIMENTAL_PYOPENJTALK_IPA_BACKEND = "pyopenjtalk-g2p-v1"
+MIXED_DERIVED_IPA_BACKEND = "mixed-derived-ipa-v1"
+
 _SPECIAL_READINGS = {
     "こんにちは": "コンニチワ",
     "こんばんは": "コンバンワ",
@@ -252,6 +256,14 @@ def _get_sudachi_tokenizer() -> SudachiTokenizer | None:
     return Dictionary(dict="core").create()
 
 
+def _get_pyopenjtalk_module() -> Any | None:
+    try:
+        import pyopenjtalk
+    except ImportError:
+        return None
+    return pyopenjtalk
+
+
 def _compact_text(value: Any) -> str:
     return " ".join(str(value or "").strip().split())
 
@@ -482,11 +494,18 @@ def _phonemize_with_sudachi(text: str) -> tuple[str | None, list[str]]:
     return " ".join(ipa_tokens), warnings
 
 
-def _derive_ipa_from_text(text: str) -> tuple[str | None, list[str]]:
-    normalized = _compact_text(text)
-    if not normalized:
-        return None, []
+def resolve_ipa_backend(preferred_backend: str | None = None) -> str:
+    normalized = str(preferred_backend or "").strip().lower()
+    if normalized in {
+        EXPERIMENTAL_PYOPENJTALK_IPA_BACKEND,
+        "pyopenjtalk",
+        "pyopenjtalk-g2p",
+    }:
+        return EXPERIMENTAL_PYOPENJTALK_IPA_BACKEND
+    return DEFAULT_IPA_BACKEND
 
+
+def _derive_ipa_from_text_with_current_backend(normalized: str) -> tuple[str | None, list[str]]:
     if any(char.isascii() and char.isalpha() for char in normalized):
         sudachi_ipa, sudachi_warnings = _phonemize_with_sudachi(normalized)
         if sudachi_ipa:
@@ -502,6 +521,53 @@ def _derive_ipa_from_text(text: str) -> tuple[str | None, list[str]]:
     return None, ["IPA derivation could not normalize the current turn text."]
 
 
+def _phonemize_with_pyopenjtalk(text: str) -> tuple[str | None, list[str]]:
+    pyopenjtalk_module = _get_pyopenjtalk_module()
+    if pyopenjtalk_module is None:
+        return None, [
+            "PyOpenJTalk is not available for experimental IPA derivation."
+        ]
+
+    try:
+        kana_text = str(pyopenjtalk_module.g2p(text, kana=True) or "").strip()
+    except Exception as exc:
+        return None, [f"PyOpenJTalk failed to derive kana readings: {exc}"]
+
+    if not kana_text:
+        return None, ["PyOpenJTalk did not return any kana readings for the current turn text."]
+
+    ipa_text = _katakana_to_ipa(kana_text)
+    if not ipa_text:
+        return None, ["PyOpenJTalk returned kana readings, but IPA conversion produced an empty result."]
+    return ipa_text, []
+
+
+def _derive_ipa_from_text(
+    text: str,
+    *,
+    preferred_backend: str | None = None,
+) -> tuple[str | None, list[str], str | None]:
+    normalized = _compact_text(text)
+    if not normalized:
+        return None, [], None
+
+    selected_backend = resolve_ipa_backend(preferred_backend)
+    warnings: list[str] = []
+
+    if selected_backend == EXPERIMENTAL_PYOPENJTALK_IPA_BACKEND:
+        pyopenjtalk_ipa, pyopenjtalk_warnings = _phonemize_with_pyopenjtalk(normalized)
+        warnings.extend(pyopenjtalk_warnings)
+        if pyopenjtalk_ipa:
+            return pyopenjtalk_ipa, warnings, EXPERIMENTAL_PYOPENJTALK_IPA_BACKEND
+        warnings.append("PyOpenJTalk backend fell back to the current Sudachi-based IPA path.")
+
+    current_ipa, current_warnings = _derive_ipa_from_text_with_current_backend(normalized)
+    warnings.extend(current_warnings)
+    if current_ipa:
+        return current_ipa, warnings, DEFAULT_IPA_BACKEND
+    return None, warnings, None
+
+
 def _ensure_slashes(value: str) -> str:
     stripped = str(value or "").strip()
     if not stripped:
@@ -514,6 +580,7 @@ def _ensure_slashes(value: str) -> str:
 def generate_ipa_turns(
     *,
     transcript_payload: dict[str, Any],
+    preferred_backend: str | None = None,
 ) -> IPAResult:
     raw_segments = (
         transcript_payload.get("speaker_segments")
@@ -523,7 +590,7 @@ def generate_ipa_turns(
     )
     turns: list[IPATurn] = []
     warnings: list[str] = []
-    derived_used = False
+    derived_backends: list[str] = []
 
     for index, segment in enumerate(raw_segments, start=1):
         ipa_text = str(
@@ -533,10 +600,14 @@ def generate_ipa_turns(
             or ""
         ).strip()
         if not ipa_text:
-            derived_text, derived_warnings = _derive_ipa_from_text(segment.get("text"))
+            derived_text, derived_warnings, derived_backend = _derive_ipa_from_text(
+                segment.get("text"),
+                preferred_backend=preferred_backend,
+            )
             warnings.extend(derived_warnings)
             ipa_text = derived_text or ""
-            derived_used = derived_used or bool(ipa_text)
+            if derived_backend and ipa_text:
+                derived_backends.append(derived_backend)
         if not ipa_text:
             continue
 
@@ -555,15 +626,23 @@ def generate_ipa_turns(
 
     deduped_warnings = list(dict.fromkeys(row for row in warnings if str(row).strip()))
     if turns:
+        backend_name = "segment-ipa-passthrough"
+        if derived_backends:
+            unique_backends = list(dict.fromkeys(derived_backends))
+            backend_name = (
+                unique_backends[0]
+                if len(unique_backends) == 1
+                else MIXED_DERIVED_IPA_BACKEND
+            )
         return IPAResult(
-            backend_name="sudachi-reading-ipa-v1" if derived_used else "segment-ipa-passthrough",
+            backend_name=backend_name,
             status="ok",
             turns=turns,
             warnings=deduped_warnings,
         )
 
     return IPAResult(
-        backend_name="sudachi-reading-ipa-v1",
+        backend_name=resolve_ipa_backend(preferred_backend),
         status="unavailable",
         turns=[],
         warnings=deduped_warnings

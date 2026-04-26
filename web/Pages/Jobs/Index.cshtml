@@ -101,7 +101,10 @@
             <p class="page-description">@L("jobs.list.description")</p>
         </div>
         <div class="flex flex-wrap items-center justify-end gap-3">
-            <a class="btn-secondary" href="/jobs/new">@L("layout.new_job")</a>
+            <a class="btn-secondary" href="/jobs/new">
+                @Html.AppIcon(AppIcons.NavNewJob, "ui-icon-sm")
+                <span>@L("layout.new_job")</span>
+            </a>
         </div>
     </header>
 
@@ -144,7 +147,10 @@
                     <p class="eyebrow">@L("jobs.active.title")</p>
                     <h2 class="section-title">@L("jobs.active.heading")</h2>
                 </div>
-                <a class="btn-primary" href="@JobUrls.Details(Model.ActiveRun.JobId)">@L("jobs.active.open_details")</a>
+                <a class="btn-primary" href="@JobUrls.Details(Model.ActiveRun.JobId)">
+                    @Html.AppIcon(AppIcons.OpenDetails, "ui-icon-sm")
+                    <span>@L("jobs.active.open_details")</span>
+                </a>
             </div>
 
             <div class="data-list mt-5">
@@ -266,15 +272,21 @@
                             </dl>
                         </div>
                         <div class="data-row-actions">
-                            <a class="btn-table" href="@JobUrls.Details(run.JobId)">@L("common.details")</a>
+                            <a class="btn-table" href="@JobUrls.Details(run.JobId)">
+                                @Html.AppIcon(AppIcons.OpenDetails, "ui-icon-sm")
+                                <span>@L("common.details")</span>
+                            </a>
                             @if (showDownload)
                             {
                                 <button type="button"
                                         class="btn-table-success"
                                         data-download-job-id="@run.JobId"
+                                        data-twe-toggle="modal"
+                                        data-twe-target="#download-modal"
                                         data-download-readable="@(run.HasReadableTextArchive ? JobUrls.Download(run.JobId, "readable-text") : "")"
                                         data-download-ipa="@(run.HasIpaArchive ? JobUrls.Download(run.JobId, "ipa") : "")">
-                                    @L("details.download_zip")
+                                    @Html.AppIcon(AppIcons.Download, "ui-icon-sm")
+                                    <span>@L("details.download_zip")</span>
                                 </button>
                             }
                             <form method="post" asp-page-handler="Delete" class="inline">
@@ -285,7 +297,8 @@
                                         data-confirm-title="@L("common.delete")"
                                         data-confirm-message="@string.Format(System.Globalization.CultureInfo.CurrentCulture, L("jobs.list.delete_one_confirm"), run.JobId)"
                                         data-confirm-requires-text="false">
-                                    @L("common.delete")
+                                    @Html.AppIcon(AppIcons.Delete, "ui-icon-sm")
+                                    <span>@L("common.delete")</span>
                                 </button>
                             </form>
                         </div>
@@ -299,11 +312,17 @@
             <div class="mt-5 flex items-center justify-end gap-2">
                 @if (Model.PageNumber > 1)
                 {
-                    <a class="btn-table" href="/jobs?pageNumber=@(Model.PageNumber - 1)">@L("common.previous")</a>
+                    <a class="btn-table" href="/jobs?pageNumber=@(Model.PageNumber - 1)">
+                        @Html.AppIcon(AppIcons.Previous, "ui-icon-sm")
+                        <span>@L("common.previous")</span>
+                    </a>
                 }
                 @if (Model.PageNumber < Model.TotalPages)
                 {
-                    <a class="btn-table" href="/jobs?pageNumber=@(Model.PageNumber + 1)">@L("common.next")</a>
+                    <a class="btn-table" href="/jobs?pageNumber=@(Model.PageNumber + 1)">
+                        @Html.AppIcon(AppIcons.Next, "ui-icon-sm")
+                        <span>@L("common.next")</span>
+                    </a>
                 }
             </div>
         }
@@ -312,11 +331,14 @@
 
 <div id="confirm-modal"
      class="modal-shell hidden"
+     tabindex="-1"
+     aria-hidden="true"
+     data-twe-modal-init
+     data-twe-class-backdrop="opacity-50 transition-all duration-200 ease-out fixed inset-0 z-[1040] bg-slate-950/45 backdrop-blur-sm"
      role="dialog"
      aria-modal="true"
      aria-labelledby="confirm-modal-title">
-    <div class="modal-backdrop" data-modal-close="true"></div>
-    <div class="modal-card">
+    <div class="modal-card opacity-0 transition-opacity duration-200 ease-out" data-twe-modal-dialog-ref>
         <div class="space-y-3">
             <h2 class="section-title" id="confirm-modal-title"></h2>
             <p class="page-description !mt-0" id="confirm-modal-message"></p>
@@ -331,7 +353,7 @@
             </div>
         </div>
         <div class="mt-6 flex items-center justify-end gap-3">
-            <button type="button" class="btn-secondary" id="confirm-modal-cancel">@L("common.cancel")</button>
+            <button type="button" class="btn-secondary" id="confirm-modal-cancel" data-twe-modal-dismiss>@L("common.cancel")</button>
             <button type="button" class="btn-table-danger" id="confirm-modal-submit">@L("common.delete")</button>
         </div>
     </div>
@@ -339,39 +361,50 @@
 
 <div id="download-modal"
      class="modal-shell hidden"
+     tabindex="-1"
+     aria-hidden="true"
+     data-twe-modal-init
+     data-twe-class-backdrop="opacity-50 transition-all duration-200 ease-out fixed inset-0 z-[1040] bg-slate-950/45 backdrop-blur-sm"
      role="dialog"
      aria-modal="true"
      aria-labelledby="download-modal-title">
-    <div class="modal-backdrop" data-download-close="true"></div>
-    <div class="modal-card">
+    <div class="modal-card opacity-0 transition-opacity duration-200 ease-out" data-twe-modal-dialog-ref>
         <div class="space-y-3">
             <h2 class="section-title" id="download-modal-title">@L("jobs.list.download_title")</h2>
             <p class="page-description !mt-0" id="download-modal-message"></p>
         </div>
-        <div class="mt-6 flex flex-wrap gap-3">
+            <div class="mt-6 flex flex-wrap gap-3">
             <a id="download-modal-readable" class="btn-primary hidden" href="#">@L("artifact.readable_text")</a>
             <a id="download-modal-ipa" class="btn-secondary hidden" href="#">@L("artifact.ipa")</a>
             <button type="button"
                     id="download-modal-ipa-help"
-                    class="btn-table hidden"
+                    class="btn-icon hidden"
+                    data-twe-modal-dismiss
+                    data-twe-toggle="modal"
+                    data-twe-target="#download-ipa-help-modal"
+                    data-twe-tooltip-ref
+                    data-twe-placement="top"
                     aria-label="@L("artifact.ipa.help_label")"
                     title="@L("artifact.ipa.help_label")">
-                @L("common.help")
+                @Html.AppIcon(AppIcons.Help, "ui-icon-sm")
             </button>
         </div>
         <div class="mt-6 flex items-center justify-end gap-3">
-            <button type="button" class="btn-secondary" id="download-modal-close">@L("common.cancel")</button>
+            <button type="button" class="btn-secondary" id="download-modal-close" data-twe-modal-dismiss>@L("common.cancel")</button>
         </div>
     </div>
 </div>
 
 <div id="download-ipa-help-modal"
      class="modal-shell hidden"
+     tabindex="-1"
+     aria-hidden="true"
+     data-twe-modal-init
+     data-twe-class-backdrop="opacity-50 transition-all duration-200 ease-out fixed inset-0 z-[1040] bg-slate-950/45 backdrop-blur-sm"
      role="dialog"
      aria-modal="true"
      aria-labelledby="download-ipa-help-modal-title">
-    <div class="modal-backdrop" data-ipa-help-close="true"></div>
-    <div class="modal-card">
+    <div class="modal-card opacity-0 transition-opacity duration-200 ease-out" data-twe-modal-dialog-ref>
         <div class="space-y-3">
             <h2 class="section-title" id="download-ipa-help-modal-title">@L("artifact.ipa.help_title")</h2>
             <p class="page-description !mt-0">@L("artifact.ipa.help_intro")</p>
@@ -382,7 +415,7 @@
             <li class="modal-list-item">@L("artifact.ipa.help_point_3")</li>
         </ul>
         <div class="mt-6 flex items-center justify-end gap-3">
-            <button type="button" class="btn-secondary" id="download-ipa-help-close">@L("common.cancel")</button>
+            <button type="button" class="btn-secondary" id="download-ipa-help-close" data-twe-modal-dismiss>@L("common.cancel")</button>
         </div>
     </div>
 </div>
@@ -392,28 +425,25 @@
     <script>
         (() => {
             const page = document.getElementById("jobs-page");
+            const modalApi = window.timelineForAudioModal;
             const confirmModal = document.getElementById("confirm-modal");
             const confirmModalTitle = document.getElementById("confirm-modal-title");
             const confirmModalMessage = document.getElementById("confirm-modal-message");
             const confirmModalInputWrap = document.getElementById("confirm-modal-input-wrap");
             const confirmModalInput = document.getElementById("confirm-modal-input");
             const confirmModalError = document.getElementById("confirm-modal-error");
-            const confirmModalCancel = document.getElementById("confirm-modal-cancel");
             const confirmModalSubmit = document.getElementById("confirm-modal-submit");
             const downloadModal = document.getElementById("download-modal");
             const downloadModalMessage = document.getElementById("download-modal-message");
             const downloadModalReadable = document.getElementById("download-modal-readable");
             const downloadModalIpa = document.getElementById("download-modal-ipa");
             const downloadModalIpaHelp = document.getElementById("download-modal-ipa-help");
-            const downloadModalClose = document.getElementById("download-modal-close");
             const ipaHelpModal = document.getElementById("download-ipa-help-modal");
-            const ipaHelpClose = document.getElementById("download-ipa-help-close");
 
             const hasActive = page?.dataset.hasActive === "true";
             let activeForm = null;
             let activeExpected = null;
             let activeInvalidMessage = null;
-            let restoreButton = null;
 
             window.addEventListener("pageshow", (event) => {
                 if (event.persisted) {
@@ -426,7 +456,6 @@
             }
 
             const closeModal = () => {
-                confirmModal?.classList.add("hidden");
                 confirmModalError?.classList.add("hidden");
                 if (confirmModalError) {
                     confirmModalError.textContent = "";
@@ -437,14 +466,14 @@
                 activeForm = null;
                 activeExpected = null;
                 activeInvalidMessage = null;
-                restoreButton = null;
             };
+
+            modalApi?.onHidden(confirmModal, closeModal);
 
             const openModal = (button, form) => {
                 activeForm = form;
                 activeExpected = button.dataset.confirmExpected || null;
                 activeInvalidMessage = button.dataset.confirmInvalid || "";
-                restoreButton = button;
 
                 if (confirmModalTitle) {
                     confirmModalTitle.textContent = button.dataset.confirmTitle || "";
@@ -463,7 +492,7 @@
                     confirmModalInput.value = "";
                 }
 
-                confirmModal?.classList.remove("hidden");
+                modalApi?.show(confirmModal, button);
                 if (needsText) {
                     window.setTimeout(() => confirmModalInput?.focus(), 0);
                 } else {
@@ -482,20 +511,9 @@
                 });
             });
 
-            confirmModalCancel?.addEventListener("click", closeModal);
-            confirmModal?.querySelectorAll("[data-modal-close='true']").forEach((element) => {
-                element.addEventListener("click", closeModal);
-            });
-
-            document.addEventListener("keydown", (event) => {
-                if (event.key === "Escape" && confirmModal && !confirmModal.classList.contains("hidden")) {
-                    closeModal();
-                }
-            });
-
             confirmModalSubmit?.addEventListener("click", () => {
                 if (!activeForm) {
-                    closeModal();
+                    modalApi?.hide(confirmModal);
                     return;
                 }
 
@@ -517,15 +535,13 @@
                 }
 
                 const targetForm = activeForm;
-                closeModal();
+                modalApi?.hide(confirmModal);
                 targetForm.submit();
             });
 
             const downloadMessagePrefix = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(L("jobs.list.download_message_prefix")));
 
             const closeDownloadModal = () => {
-                downloadModal?.classList.add("hidden");
-                ipaHelpModal?.classList.add("hidden");
                 if (downloadModalMessage) {
                     downloadModalMessage.textContent = "";
                 }
@@ -540,9 +556,7 @@
                 downloadModalIpaHelp?.classList.add("hidden");
             };
 
-            const closeIpaHelpModal = () => {
-                ipaHelpModal?.classList.add("hidden");
-            };
+            modalApi?.onHidden(downloadModal, closeDownloadModal);
 
             document.querySelectorAll("button[data-download-job-id]").forEach((button) => {
                 button.addEventListener("click", () => {
@@ -573,27 +587,7 @@
                             downloadModalIpaHelp?.classList.add("hidden");
                         }
                     }
-
-                    downloadModal?.classList.remove("hidden");
                 });
-            });
-
-            downloadModalClose?.addEventListener("click", closeDownloadModal);
-            downloadModalIpaHelp?.addEventListener("click", () => ipaHelpModal?.classList.remove("hidden"));
-            ipaHelpClose?.addEventListener("click", closeIpaHelpModal);
-            downloadModal?.querySelectorAll("[data-download-close='true']").forEach((element) => {
-                element.addEventListener("click", closeDownloadModal);
-            });
-            ipaHelpModal?.querySelectorAll("[data-ipa-help-close='true']").forEach((element) => {
-                element.addEventListener("click", closeIpaHelpModal);
-            });
-
-            document.addEventListener("keydown", (event) => {
-                if (event.key === "Escape" && ipaHelpModal && !ipaHelpModal.classList.contains("hidden")) {
-                    closeIpaHelpModal();
-                } else if (event.key === "Escape" && downloadModal && !downloadModal.classList.contains("hidden")) {
-                    closeDownloadModal();
-                }
             });
         })();
     </script>
