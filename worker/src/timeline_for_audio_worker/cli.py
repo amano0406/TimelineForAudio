@@ -6,7 +6,7 @@ import os
 import time
 from pathlib import Path
 
-from .config import AppConfig, ChangeDetectionConfig, SourceDirectory, load_config
+from .config import AppConfig, SourceDirectory, load_config
 from .discovery import discover_audio
 from .fs_utils import now_iso
 from .job_store import (
@@ -43,6 +43,7 @@ def parse_args() -> argparse.Namespace:
     settings_save.add_argument("--token", type=str, required=False)
     settings_save.add_argument("--terms-confirmed", action="store_const", const=True, default=None)
     settings_save.add_argument("--compute-mode", choices=["cpu", "gpu"], required=False)
+    settings_save.add_argument("--language", type=str, required=False)
     settings_save.add_argument("--json", action="store_true")
 
     jobs_parser = subparsers.add_parser("jobs", help="Create or inspect jobs.")
@@ -61,6 +62,10 @@ def parse_args() -> argparse.Namespace:
     )
     jobs_create.add_argument("--source-id", dest="source_ids", action="append", default=[])
     jobs_create.add_argument("--output-root-id", type=str, default="runs")
+    jobs_create.add_argument("--language", type=str, required=False)
+    jobs_create.add_argument("--supplemental-context", type=str, required=False)
+    jobs_create.add_argument("--supplemental-context-file", type=Path, required=False)
+    jobs_create.add_argument("--ipa-only", action="store_true")
     jobs_create.add_argument("--reprocess-duplicates", action="store_true")
     jobs_create.add_argument("--queue-only", action="store_true")
     jobs_create.add_argument("--json", action="store_true")
@@ -80,11 +85,6 @@ def parse_args() -> argparse.Namespace:
     )
     scan_parser.add_argument("--config", type=Path, required=False)
     scan_parser.add_argument("--output", type=Path, required=False)
-
-    compare_parser = subparsers.add_parser("compare-images", help="Compare two images.")
-    compare_parser.add_argument("--config", type=Path, required=False)
-    compare_parser.add_argument("--previous", type=Path, required=True)
-    compare_parser.add_argument("--current", type=Path, required=True)
 
     run_parser = subparsers.add_parser("run-job", help="Run one specific job directory.")
     run_parser.add_argument("--job-dir", type=Path, required=True)
@@ -119,7 +119,6 @@ def _runtime_config() -> AppConfig:
             defaults.get("outputRoots", [{}])[0].get("path") or "/shared/outputs/default"
         ),
         audio_extensions=[str(ext) for ext in defaults.get("audioExtensions", [])],
-        change_detection=ChangeDetectionConfig(),
     )
 
 
@@ -134,15 +133,6 @@ def cmd_scan(config_path: Path | None, output: Path | None) -> int:
     if output:
         write_json(output, payload)
     print(json.dumps(payload, ensure_ascii=False, indent=2))
-    return 0
-
-
-def cmd_compare(config_path: Path | None, previous: Path, current: Path) -> int:
-    from .change_detection import compare_images
-
-    config = _load_app_config(config_path)
-    result = compare_images(previous, current, config.change_detection)
-    print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
     return 0
 
 
@@ -240,6 +230,7 @@ def cmd_settings_save(
     token: str | None,
     terms_confirmed: bool | None,
     compute_mode: str | None,
+    language: str | None,
     as_json: bool,
 ) -> int:
     settings = load_settings()
@@ -247,6 +238,8 @@ def cmd_settings_save(
         save_huggingface_token(token)
     if compute_mode is not None:
         settings["computeMode"] = compute_mode
+    if language is not None:
+        settings["uiLanguage"] = language
     if terms_confirmed is not None:
         settings["huggingfaceTermsConfirmed"] = terms_confirmed
     save_settings(settings)
@@ -284,11 +277,22 @@ def cmd_jobs_create(
     directories: list[Path],
     source_ids: list[str],
     output_root_id: str,
+    language: str | None,
+    supplemental_context: str | None,
+    supplemental_context_file: Path | None,
+    ipa_only: bool,
     reprocess_duplicates: bool,
     queue_only: bool,
     as_json: bool,
 ) -> int:
     settings = load_settings()
+    if language is not None:
+        settings["uiLanguage"] = language
+    supplemental_context_text = supplemental_context
+    if supplemental_context_file is not None:
+        supplemental_context_text = supplemental_context_file.read_text(
+            encoding="utf-8-sig", errors="replace"
+        )
     input_items = collect_input_items(
         settings=settings,
         files=files,
@@ -303,6 +307,8 @@ def cmd_jobs_create(
         input_items=input_items,
         output_root_id=output_root_id,
         reprocess_duplicates=reprocess_duplicates,
+        readable_text_enabled=not ipa_only,
+        supplemental_context_text=supplemental_context_text,
     )
 
     payload: dict[str, object] = {
@@ -310,6 +316,7 @@ def cmd_jobs_create(
         "run_dir": str(run_dir),
         "state": "pending",
         "input_count": len(input_items),
+        "readable_text_enabled": not ipa_only,
         "queue_only": queue_only,
     }
 
@@ -372,6 +379,7 @@ def main() -> int:
                 token,
                 args.terms_confirmed,
                 args.compute_mode,
+                args.language,
                 args.json,
             )
     if args.command == "jobs":
@@ -385,6 +393,10 @@ def main() -> int:
                 directories=args.directories,
                 source_ids=args.source_ids,
                 output_root_id=args.output_root_id,
+                language=args.language,
+                supplemental_context=args.supplemental_context,
+                supplemental_context_file=args.supplemental_context_file,
+                ipa_only=args.ipa_only,
                 reprocess_duplicates=args.reprocess_duplicates,
                 queue_only=args.queue_only,
                 as_json=args.json,
@@ -395,8 +407,6 @@ def main() -> int:
             return cmd_jobs_archive(args.job_id, args.output, args.artifact_kind, args.json)
     if args.command == "scan":
         return cmd_scan(args.config, args.output)
-    if args.command == "compare-images":
-        return cmd_compare(args.config, args.previous, args.current)
     if args.command == "run-job":
         return cmd_run_job(args.job_dir)
     if args.command == "daemon":

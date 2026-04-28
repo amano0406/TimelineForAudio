@@ -23,11 +23,6 @@ find_python() {
   echo ""
 }
 
-if ! command -v dotnet >/dev/null 2>&1; then
-  echo "dotnet was not found on PATH."
-  exit 1
-fi
-
 python_cmd="$(find_python)"
 if [ -z "$python_cmd" ]; then
   echo "Python was not found. Create .venv or install Python before committing."
@@ -37,7 +32,3 @@ fi
 echo "Running Python lint..."
 "$python_cmd" -m ruff check worker/src worker/tests
 "$python_cmd" -m ruff format --check worker/src worker/tests
-
-echo "Running .NET lint..."
-dotnet format web/TimelineForAudio.Web.csproj --verify-no-changes --verbosity minimal
-dotnet format tests/TimelineForAudio.E2E/TimelineForAudio.E2E.csproj --verify-no-changes --verbosity minimal

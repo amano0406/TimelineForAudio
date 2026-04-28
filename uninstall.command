@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-COMPOSE_PROJECT="TimelineForAudio"
+COMPOSE_PROJECT="timeline-for-audio"
 APPDATA_VOLUME="${COMPOSE_PROJECT}_app-data"
 OUTPUTS_VOLUME="${COMPOSE_PROJECT}_outputs"
 UPLOADS_VOLUME="${COMPOSE_PROJECT}_uploads"
@@ -27,7 +27,7 @@ echo
 echo "This will remove:"
 echo "  - Docker containers for this project"
 echo "  - Docker images built for this project"
-echo "  - temporary Docker volumes for this project"
+echo "  - Docker volumes for this project"
 echo "  - Docker network for this project"
 echo
 echo "Optional:"

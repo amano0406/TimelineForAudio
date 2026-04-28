@@ -99,8 +99,5 @@ Typical follow-up use cases:
 
 ## Public Samples
 
-The sample timelines in this repository are based on real generated output, but names and sensitive details are redacted.
-
-- English sample: [docs/examples/sample-timeline.en.md](docs/examples/sample-timeline.en.md)
-- Japanese sample: [docs/examples/sample-timeline.ja.md](docs/examples/sample-timeline.ja.md)
+Public sample artifacts are not bundled at the moment. If samples are added later, they should use the current IPA / readable-text output shape and must not include private recordings or identifying details.
 

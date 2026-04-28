@@ -3,7 +3,7 @@ setlocal EnableExtensions EnableDelayedExpansion
 
 cd /d "%~dp0"
 
-set "COMPOSE_PROJECT=TimelineForAudio"
+set "COMPOSE_PROJECT=timeline-for-audio"
 set "APPDATA_VOLUME=%COMPOSE_PROJECT%_app-data"
 set "OUTPUTS_VOLUME=%COMPOSE_PROJECT%_outputs"
 set "UPLOADS_VOLUME=%COMPOSE_PROJECT%_uploads"
@@ -30,7 +30,7 @@ echo.
 echo This will remove:
 echo   - Docker containers for this project
 echo   - Docker images built for this project
-echo   - temporary Docker volumes for this project
+echo   - Docker volumes for this project
 echo   - Docker network for this project
 echo.
 echo Optional:

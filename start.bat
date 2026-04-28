@@ -14,128 +14,62 @@ if errorlevel 1 (
   if defined DOCKER_DESKTOP_EXE (
     echo Docker Desktop appears to be installed, but docker.exe is not available from this command prompt.
     echo Open Docker Desktop once, then reopen this start.bat.
-    if /I not "%TIMELINE_FOR_AUDIO_SKIP_HELP_LINK%"=="1" start "" "!DOCKER_DESKTOP_EXE!" >nul 2>&1
+    start "" "!DOCKER_DESKTOP_EXE!" >nul 2>&1
   ) else (
     echo Docker Desktop is not installed, or docker.exe is not on PATH.
     echo Download and install Docker Desktop here:
     echo   %DOCKER_DESKTOP_URL%
-    if /I not "%TIMELINE_FOR_AUDIO_SKIP_HELP_LINK%"=="1" start "" "%DOCKER_DESKTOP_URL%" >nul 2>&1
-    echo Install Docker Desktop, start it, and try again.
+    start "" "%DOCKER_DESKTOP_URL%" >nul 2>&1
   )
   exit /b 1
 )
 
 docker info >nul 2>&1
 if errorlevel 1 (
-  call :CheckDockerDesktopRunning
-  if not defined DOCKER_DESKTOP_RUNNING (
-    echo Docker Desktop is installed, but it is not running.
-    if defined DOCKER_DESKTOP_EXE (
-      echo Starting Docker Desktop. This can take a minute...
-      start "" "!DOCKER_DESKTOP_EXE!" >nul 2>&1
-      call :WaitForDockerEngine
-      if not errorlevel 1 goto docker_ready
+  if defined DOCKER_DESKTOP_EXE (
+    echo Starting Docker Desktop. This can take a minute...
+    start "" "!DOCKER_DESKTOP_EXE!" >nul 2>&1
+    call :WaitForDockerEngine
+    if errorlevel 1 (
+      echo Docker Desktop did not become ready in time.
+      exit /b 1
     )
-    echo Start Docker Desktop and wait until it shows the engine is running, then try again.
-    exit /b 1
-  )
-
-  echo Docker Desktop is running, but the Docker engine is not ready yet.
-  echo Waiting for Docker Desktop to finish starting...
-  call :WaitForDockerEngine
-  if errorlevel 1 (
-    echo Docker Desktop did not become ready in time.
-    echo If this is the first run, wait until Docker Desktop finishes setup and try again.
+  ) else (
+    echo Docker Desktop is installed but the Docker engine is not ready.
     exit /b 1
   )
 )
-
-:docker_ready
 
 if not exist ".env" (
   copy ".env.example" ".env" >nul
   echo Created .env from .env.example.
 )
 
-set "WEB_PORT=19100"
-set "HAS_WEB_PORT="
-set "LEGACY_WEB_PORT="
-
-for /f "usebackq tokens=1,* delims==" %%A in (".env") do (
-  if /I "%%A"=="TIMELINE_FOR_AUDIO_WEB_PORT" (
-    set "WEB_PORT=%%B"
-    set "HAS_WEB_PORT=1"
-  )
-  if /I "%%A"=="VIDEO2TIMELINE_WEB_PORT" set "LEGACY_WEB_PORT=%%B"
-)
-
-if not defined HAS_WEB_PORT (
-  if defined LEGACY_WEB_PORT (
-    set "WEB_PORT=!LEGACY_WEB_PORT!"
-    powershell -NoLogo -NoProfile -Command "$path = '.env'; $lines = @(Get-Content $path -ErrorAction SilentlyContinue) | Where-Object { $_ -notmatch '^(TIMELINE_FOR_AUDIO|VIDEO2TIMELINE)_WEB_PORT=' }; $lines + 'TIMELINE_FOR_AUDIO_WEB_PORT=!WEB_PORT!' | Set-Content $path -Encoding ascii"
-    echo Updated .env to use TIMELINE_FOR_AUDIO_WEB_PORT=!WEB_PORT!.
-  ) else (
-    >> ".env" echo TIMELINE_FOR_AUDIO_WEB_PORT=%WEB_PORT%
-    echo Added TIMELINE_FOR_AUDIO_WEB_PORT=%WEB_PORT% to .env.
-  )
-)
-
-echo Starting web and worker containers...
 set "COMPOSE_GPU_FILE="
 where nvidia-smi >nul 2>&1
 if not errorlevel 1 (
   set "COMPOSE_GPU_FILE=-f docker-compose.gpu.yml"
-  echo NVIDIA GPU detected. Starting worker with GPU support enabled.
+  echo NVIDIA GPU detected. Starting GPU worker image.
 )
-docker compose -f docker-compose.yml %COMPOSE_GPU_FILE% up --build -d
+
+echo Building and starting the worker container...
+docker compose -f docker-compose.yml %COMPOSE_GPU_FILE% up --build -d worker
 if errorlevel 1 (
-  echo docker compose failed before the app became ready.
+  echo docker compose failed.
   exit /b 1
 )
 
-echo Waiting for containers and web health check...
-set /a ATTEMPT=0
-
-:wait_loop
-set /a ATTEMPT+=1
-set "WEB_RUNNING="
-set "WORKER_RUNNING="
-
-for /f %%S in ('docker compose ps --services --status running 2^>nul') do (
-  if /I "%%S"=="web" set "WEB_RUNNING=1"
-  if /I "%%S"=="worker" set "WORKER_RUNNING=1"
-)
-
-if defined WEB_RUNNING if defined WORKER_RUNNING (
-  powershell -NoLogo -NoProfile -Command "try { $response = Invoke-WebRequest -Uri 'http://localhost:%WEB_PORT%' -UseBasicParsing -TimeoutSec 5; if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
-  if not errorlevel 1 goto ready
-)
-
-if !ATTEMPT! GEQ 45 goto failed
-
-powershell -NoLogo -NoProfile -Command "Start-Sleep -Seconds 2" >nul 2>&1
-goto wait_loop
-
-:ready
-echo TimelineForAudio is ready at http://localhost:%WEB_PORT%
-if /I "%TIMELINE_FOR_AUDIO_SKIP_BROWSER_OPEN%"=="1" exit /b 0
-
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\open-app-window.ps1" -Url "http://localhost:%WEB_PORT%" -Width 960 -Height 640
-exit /b %ERRORLEVEL%
-
-:failed
-echo TimelineForAudio did not become ready in time.
 echo.
+echo TimelineForAudio worker is running.
+echo.
+echo CLI examples:
+echo   set PYTHONPATH=worker\src
+echo   python -m timeline_for_audio_worker settings status
+echo   python -m timeline_for_audio_worker jobs create --file "C:\path\to\audio.mp3"
+echo   python -m timeline_for_audio_worker jobs list
+echo.
+echo Docker status:
 docker compose ps
-echo.
-echo Last container logs:
-docker compose logs --tail 40 web worker
-exit /b 1
-
-:CheckDockerDesktopRunning
-set "DOCKER_DESKTOP_RUNNING="
-tasklist /FI "IMAGENAME eq Docker Desktop.exe" 2>nul | find /I "Docker Desktop.exe" >nul 2>&1
-if not errorlevel 1 set "DOCKER_DESKTOP_RUNNING=1"
 exit /b 0
 
 :WaitForDockerEngine

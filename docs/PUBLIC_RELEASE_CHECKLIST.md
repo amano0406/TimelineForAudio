@@ -5,47 +5,45 @@ Use this checklist before switching the repository from private to public.
 ## Repository Safety
 
 - no real Hugging Face token is committed
-- `.env`, `runs/`, `uploads/`, `app-data/`, and local caches are ignored
-- sample timelines are redacted
-- screenshots do not show local private data
+- `.env`, `runs/`, `uploads/`, `app-data/`, `outputs/`, and local caches are ignored
 - config samples use generic placeholder paths instead of personal paths
-- generated ZIPs or run outputs are not tracked
+- generated ZIPs, artifacts, or job outputs are not tracked
 
 ## Build And Test
 
-- `dotnet build web/TimelineForAudio.Web.csproj`
 - `python -m unittest discover worker/tests` with `PYTHONPATH=worker/src`
-- `scripts/test-e2e.ps1`
+- `scripts/lint.ps1` on Windows or `scripts/lint.sh` on Unix
 - at least one real local smoke run still completes
-- ZIP download still works in the GUI
+- `jobs archive` produces the expected IPA and readable-text ZIP files
 
 ## Runtime Checks
 
-- app starts from `start.bat` on Windows
-- `start.command` still works as an experimental source-based path on macOS
-- settings page loads without a token
-- token save flow still works
-- gated-model approval links still open the correct Hugging Face pages
-- one uploaded file can complete end-to-end
-- one completed run can be deleted
+- `start.bat` starts the worker container on Windows
+- `start.command` starts the worker container on macOS or Linux
+- `settings status` works without a token
+- `settings save` can store language, compute mode, and Hugging Face token
+- `jobs create` can create a job from one local audio file
+- `jobs create --ipa-only` skips readable-text reconstruction
+- `jobs archive` works for a completed job
+- manual cleanup guidance is clear and does not require deleting original input audio
 
 ## Documentation
 
 - README is accurate for the current startup flow
 - Japanese README is still consistent with English README
-- sample timeline files reflect the current output shape
 - third-party notices and model/runtime notes match current dependencies
 - the current `TimelineForAudio v0.x.y Tech Preview` wording is consistent where needed
 - `Windows primary / macOS experimental` wording is consistent where needed
 - `Docker Desktop required`, `first-run downloads`, and `GPU compose overlay` wording are consistent where needed
 - speaker diarization is clearly described as optional and gated by token + approval
+- all public docs describe CLI usage, not a web UI
 
 ## Release Package
 
 - `scripts/build-release-bundle.ps1 -Version 0.3.x` produces `TimelineForAudio-windows-local.zip`
 - `SHA256SUMS.txt` is generated for the release bundle
 - the bundle top folder is `TimelineForAudio-v0.x.y`
-- the bundle does not include generated runs, uploads, app-data, tests, or local caches
+- the bundle does not include generated runs, uploads, app-data, web assets, tests, screenshots, or local caches
 
 ## Before Making The Repo Public
 

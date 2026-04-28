@@ -40,7 +40,6 @@ function Test-IsExcludedPath {
         ".ruff_cache",
         "__pycache__",
         ".pytest_cache",
-        "node_modules",
         "bin",
         "obj"
     )
@@ -78,15 +77,11 @@ function Copy-ReleaseFiles {
     $exactFiles = @(
         ".dockerignore",
         ".env.example",
-        "Directory.Build.props",
         "LICENSE",
         "MODEL_AND_RUNTIME_NOTES.md",
-        "package.json",
-        "package-lock.json",
         "README.md",
         "README.ja.md",
         "THIRD_PARTY_NOTICES.md",
-        "tailwind.config.cjs",
         "docker-compose.yml",
         "docker-compose.gpu.yml",
         "start.bat",
@@ -97,18 +92,15 @@ function Copy-ReleaseFiles {
         "uninstall.command",
         "worker/pyproject.toml",
         "worker/requirements-cpu.txt",
+        "worker/requirements-gpu.txt",
         "docs/PUBLIC_RELEASE_CHECKLIST.md",
-        "docs/SECURITY_AND_SAFETY.md",
-        "scripts/open-app-window.ps1"
+        "docs/SECURITY_AND_SAFETY.md"
     )
 
     $directories = @(
         "configs",
         "docker",
-        "web",
-        "worker/src",
-        "docs/examples",
-        "docs/screenshots"
+        "worker/src"
     )
 
     foreach ($relativePath in $exactFiles) {

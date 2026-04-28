@@ -517,6 +517,7 @@ def create_job(
     output_root_id: str | None = None,
     reprocess_duplicates: bool = False,
     readable_text_enabled: bool = True,
+    supplemental_context_text: str | None = None,
 ) -> tuple[str, Path]:
     settings = settings or load_settings()
     if not input_items:
@@ -536,6 +537,11 @@ def create_job(
         settings.get("huggingfaceTermsConfirmed", False)
     )
     language_hint = str(settings.get("uiLanguage") or "en").strip() or "en"
+    supplemental_context_text = (
+        supplemental_context_text.strip()
+        if supplemental_context_text and supplemental_context_text.strip()
+        else None
+    )
     compute_mode = normalize_compute_mode(settings.get("computeMode"))
     request = JobRequest(
         schema_version=1,
@@ -550,13 +556,13 @@ def create_job(
             compute_mode=settings.get("computeMode"),
             diarization_enabled=diarization_enabled,
             language_hint=language_hint,
-            supplemental_context_text=None,
+            supplemental_context_text=supplemental_context_text,
             context_builder_version=SIGNATURE_CONTEXT_BUILDER_VERSION,
             readable_text_enabled=readable_text_enabled,
         ),
         transcription_backend=TRANSCRIPTION_BACKEND,
         transcription_model_id=resolve_transcription_model_id(),
-        supplemental_context_text=None,
+        supplemental_context_text=supplemental_context_text,
         context_builder_version=CONTEXT_BUILDER_VERSION,
         diarization_enabled=diarization_enabled,
         diarization_model_id=DIARIZATION_MODEL_ID if diarization_enabled else None,

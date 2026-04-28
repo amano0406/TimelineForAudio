@@ -55,7 +55,7 @@ Defer now:
 - always-on `pyopenjtalk` dependency rollout
 - direct audio-to-IPA backend
 - diarization model swap
-- full signature/settings/UI plumbing for backend selection
+- full signature/settings/CLI plumbing for backend selection
 
 ## 5. First repo implementation unit
 
@@ -64,6 +64,6 @@ The first implementation unit is not a pipeline-wide switch. It is:
 1. make `worker/src/timeline_for_audio_worker/ipa_backend.py` accept a pluggable backend choice
 2. keep current behavior as default
 3. add an experimental `pyopenjtalk` path with safe fallback
-4. verify the seam in unit tests before touching `processor`, `signature`, or UI
+4. verify the seam in unit tests before touching `processor`, `signature`, or CLI options
 
 This keeps the v2 decision reversible while making the main backend question testable inside the repo.

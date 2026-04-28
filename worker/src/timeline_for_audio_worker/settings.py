@@ -8,8 +8,15 @@ from typing import Any
 from .signature import CONTEXT_BUILDER_VERSION
 
 
+def _default_appdata_root() -> Path:
+    local_appdata = os.getenv("LOCALAPPDATA")
+    if local_appdata:
+        return Path(local_appdata) / "TimelineForAudio"
+    return Path.home() / ".timeline-for-audio"
+
+
 def appdata_root() -> Path:
-    return Path(os.getenv("TIMELINE_FOR_AUDIO_APPDATA_ROOT", "/shared/app-data"))
+    return Path(os.getenv("TIMELINE_FOR_AUDIO_APPDATA_ROOT", str(_default_appdata_root())))
 
 
 def uploads_root() -> Path:

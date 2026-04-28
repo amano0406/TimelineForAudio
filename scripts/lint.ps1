@@ -37,16 +37,8 @@ function Resolve-Python {
     throw "Python was not found. Create .venv or install Python before linting."
 }
 
-if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
-    throw "dotnet was not found on PATH."
-}
-
 $python = Resolve-Python
 
 Write-Host "Running Python lint..."
 Invoke-CheckedCommand $python -m ruff check worker/src worker/tests
 Invoke-CheckedCommand $python -m ruff format --check worker/src worker/tests
-
-Write-Host "Running .NET lint..."
-Invoke-CheckedCommand dotnet format web/TimelineForAudio.Web.csproj --verify-no-changes --verbosity minimal
-Invoke-CheckedCommand dotnet format tests/TimelineForAudio.E2E/TimelineForAudio.E2E.csproj --verify-no-changes --verbosity minimal

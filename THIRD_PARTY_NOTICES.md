@@ -1,23 +1,12 @@
 # Third-Party Notices
 
-This repository includes or depends on third-party software. The list below is intended to make the main runtime and bundled components easy to review before sharing or publishing the project.
+This repository includes or depends on third-party software. This file lists the main runtime dependencies that matter for local CLI and worker use.
 
 It is not a substitute for each dependency's original license text. If you redistribute binaries, Docker images, or bundled assets, review the upstream license terms again for the exact versions you ship.
 
 ## Application License
 
 - `TimelineForAudio` application code: MIT
-
-## Bundled Frontend Libraries
-
-These files are vendored under `web/wwwroot/lib/`.
-
-| Component | Version source | License |
-| --- | --- | --- |
-| Bootstrap | bundled in repo | MIT |
-| jQuery | bundled in repo | MIT |
-| jQuery Validation | bundled in repo | MIT |
-| jQuery Validation Unobtrusive | bundled in repo | MIT |
 
 ## Direct Python Dependencies
 
@@ -44,8 +33,6 @@ These are the direct worker dependencies currently pinned in `worker/requirement
 
 Model weights are not stored in this repository. They are downloaded on demand at runtime.
 
-Important model-specific conditions currently used by the app:
-
 | Model / Asset | Purpose | License / Access |
 | --- | --- | --- |
 | `pyannote/speaker-diarization-community-1` | optional speaker diarization | CC-BY-4.0, plus gated-access approval and Hugging Face token required |
@@ -55,8 +42,7 @@ See [MODEL_AND_RUNTIME_NOTES.md](MODEL_AND_RUNTIME_NOTES.md) for operational not
 
 ## Notes for Redistribution
 
-- The initial public release line ships a source-based Windows launcher bundle. It does not publish an official Docker image or native installer.
-- The release bundle should contain launch scripts and source needed for local Docker builds, not generated runs, model caches, or private artifacts.
+- The release bundle should contain launch scripts, Docker worker files, and Python worker source.
+- Do not include generated runs, model caches, private artifacts, or tokens.
 - If you publish Docker images, confirm the exact FFmpeg package and its license conditions for that image.
 - If you upgrade pinned Python dependencies, review the resulting license set again.
-- Transitive dependencies pulled by `pip` or `dotnet restore` are not exhaustively listed here.

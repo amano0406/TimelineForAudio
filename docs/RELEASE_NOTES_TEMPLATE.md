@@ -1,6 +1,6 @@
 # TimelineForAudio v0.x.y Tech Preview
 
-Local-first audio-to-timeline packaging tool for LLM workflows.
+Local-first audio-to-IPA packaging tool for LLM workflows.
 This is a desktop-style local tool, not a hosted SaaS product.
 
 ## Baseline Support
@@ -30,13 +30,12 @@ This is a desktop-style local tool, not a hosted SaaS product.
 - first run downloads models and takes time
 - macOS is experimental
 - GPU is supported, but still requires NVIDIA + Docker GPU access
-- GUI is the primary supported path
+- the web UI has been removed; CLI is the supported path
 - Docker Desktop is required
 
 ## Verification
 
-- `dotnet build web/TimelineForAudio.Web.csproj`
 - `python -m unittest discover worker/tests` with `PYTHONPATH=worker/src`
-- `scripts/test-e2e.ps1`
+- `scripts/lint.ps1` or `scripts/lint.sh`
 - one real local smoke run
-- GUI ZIP download confirmed
+- `jobs archive` ZIP output confirmed

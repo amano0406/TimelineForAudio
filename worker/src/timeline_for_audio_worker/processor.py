@@ -466,7 +466,7 @@ def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
             f"- Input Count: `{len(request.input_items)}`",
             f"- Reprocess Duplicates: `{request.reprocess_duplicates}`",
             "",
-            "This run uses file-based coordination between the ASP.NET Core web app and the Python worker.",
+            "This run uses file-based coordination between CLI-created job files and the Python worker.",
             "",
         ]
     )
@@ -491,7 +491,7 @@ def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
             "  - `Readable Text` is reconstructed from `IPA` by the configured local backend when enabled and supported.",
             "  - Explicitly unsupported language hints currently fall back to deterministic aligned text during the migration.",
             "  - `IPA.md` and `CONVERSION_INFO.md` are always user-facing outputs. `Readable Text.md` is included when enabled for the job.",
-            "  - The current app display language is used as the reconstruction language hint for new jobs.",
+            "  - The configured CLI language is used as the reconstruction language hint for new jobs.",
             "  - Each audio file name is included automatically as reconstruction context when available.",
             "  - Audio files are not included in the export packages.",
             "  - Optional audio analysis does not fail the main transcription job.",

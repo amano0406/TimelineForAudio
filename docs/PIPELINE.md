@@ -2,7 +2,7 @@
 
 ## 1. Request Creation
 
-The web app writes `request.json` into a new `job-*` directory under the selected output root.
+The CLI writes `request.json` into a new `job-*` directory under the selected output root.
 
 The request contains:
 
@@ -12,7 +12,7 @@ The request contains:
 - token-enabled flag
 - fully expanded input items
 - compute mode
-- UI language, which is reused as the language hint
+- language hint
 - job-level supplemental context text
 - generation signature
 
@@ -46,7 +46,7 @@ In the current audio-only pipeline, `cut_map.json` is present for contract stabi
 
 The worker calls `faster-whisper` to generate cleanup-oriented source text from the full recording.
 
-- language: derived from the current UI language when available
+- language: derived from the CLI language setting when available
 - device: `cpu` or `cuda`
 - built-in VAD filtering
 - no user-visible prompt injection at this stage
