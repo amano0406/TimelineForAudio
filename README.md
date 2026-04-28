@@ -143,6 +143,8 @@ Windows:
 
 This is the primary supported path for the `v0.4.1` public release line.
 
+Docker Compose publishes the web UI on `localhost` only, using `TIMELINE_FOR_AUDIO_WEB_PORT` from `.env`.
+
 The web UI now builds Tailwind CSS and TW Elements assets locally inside Docker. It no longer depends on the Tailwind CDN at runtime.
 
 macOS:

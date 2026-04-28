@@ -89,6 +89,38 @@ Reduced export packaging writes:
 - `ipa/*.md` for IPA export
 - `readable-text/*.md` for Readable Text export
 
+Current run layout:
+
+```text
+<configured-output-root>/
+  job-YYYYMMDD-HHMMSS-xxxxxxxx/
+    request.json
+    status.json
+    result.json
+    manifest.json
+    RUN_INFO.md
+    CONVERSION_INFO.md
+    NOTICE.md
+    logs/
+    media/
+      <audio-id>/
+        source.json
+        audio/
+        transcript/
+        analysis/
+        ipa/
+        readable-text/
+```
+
+This is the current product contract. It intentionally has not yet been migrated to the shared Timeline baseline shaped like `data/output/runs/timeline-for-audio/<job-id>/run_001/...`.
+
+Legacy helper inventory:
+
+- `configs/local.json` and `configs/docker.json` are legacy scan configs. They still contain audio source roots, but also include image-style `change_detection` thresholds.
+- `scripts/scan.ps1` calls the worker `scan` command and writes a discovery JSON file. It is not the primary GUI flow.
+- `timeline_for_audio_worker compare-images` and `worker/src/timeline_for_audio_worker/change_detection.py` are image-diff helpers and are not part of the current audio processing pipeline.
+- These files are retained for now. Removing or repurposing them needs explicit product approval because it changes the available CLI surface.
+
 ## Progress Model
 
 The GUI shows:
