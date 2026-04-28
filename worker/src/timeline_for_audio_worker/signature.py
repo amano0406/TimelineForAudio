@@ -9,11 +9,17 @@ from .reconstruction import (
     resolve_reconstruction_model_id,
     resolve_reconstruction_prompt_version,
 )
+from .ipa_backend import (
+    DEFAULT_IPA_BACKEND,
+    EXPERIMENTAL_PYOPENJTALK_IPA_BACKEND,
+    resolve_ipa_backend,
+)
 from .runtime_profile import (
     TRANSCRIPTION_LANGUAGE,
     normalize_compute_mode,
     resolve_transcription_model_id as _resolve_transcription_model_id,
 )
+from .vad_profile import vad_config_for_profile
 
 PIPELINE_VERSION = "2026-04-21-v2-ipa1"
 TRANSCRIPTION_BACKEND = "faster-whisper"
@@ -22,7 +28,7 @@ VAD_BACKEND = "faster-whisper-builtin"
 VAD_MODEL_ID = "faster-whisper-default"
 CONTEXT_BUILDER_VERSION = "context-builder-v2"
 READABLE_TEXT_MARKDOWN_SCHEMA = "turn-markdown-v2"
-IPA_BACKEND = "sudachi-reading-ipa-v1"
+IPA_BACKEND = DEFAULT_IPA_BACKEND
 IPA_READING_BACKEND = "sudachipy-core"
 IPA_ASCII_FALLBACK = "latin-heuristic-v1"
 IPA_MARKDOWN_SCHEMA = "turn-markdown-v1"
@@ -62,6 +68,8 @@ def build_conversion_signature(
     supplemental_context_text: str | None = None,
     context_builder_version: str | None = None,
     readable_text_enabled: bool = True,
+    ipa_backend: str | None = None,
+    vad_profile: str | None = None,
 ) -> str:
     return build_generation_signature(
         compute_mode=compute_mode,
@@ -70,6 +78,8 @@ def build_conversion_signature(
         supplemental_context_text=supplemental_context_text,
         context_builder_version=context_builder_version,
         readable_text_enabled=readable_text_enabled,
+        ipa_backend=ipa_backend,
+        vad_profile=vad_profile,
     )
 
 
@@ -81,7 +91,16 @@ def build_generation_signature(
     supplemental_context_text: str | None = None,
     context_builder_version: str | None = None,
     readable_text_enabled: bool = True,
+    ipa_backend: str | None = None,
+    vad_profile: str | None = None,
 ) -> str:
+    resolved_ipa_backend = resolve_ipa_backend(ipa_backend)
+    ipa_reading_backend = (
+        "pyopenjtalk"
+        if resolved_ipa_backend == EXPERIMENTAL_PYOPENJTALK_IPA_BACKEND
+        else IPA_READING_BACKEND
+    )
+    vad_config = vad_config_for_profile(vad_profile)
     reconstruction_payload: dict[str, object | None]
     if readable_text_enabled:
         reconstruction_payload = {
@@ -106,8 +125,8 @@ def build_generation_signature(
         },
         "reconstruction": reconstruction_payload,
         "ipa": {
-            "backend": IPA_BACKEND,
-            "reading_backend": IPA_READING_BACKEND,
+            "backend": resolved_ipa_backend,
+            "reading_backend": ipa_reading_backend,
             "ascii_fallback": IPA_ASCII_FALLBACK,
             "ipa_schema": IPA_MARKDOWN_SCHEMA,
         },
@@ -118,6 +137,9 @@ def build_generation_signature(
         "vad": {
             "backend": VAD_BACKEND,
             "model_id": VAD_MODEL_ID,
+            "profile": vad_config["profile"],
+            "filter": vad_config["vad_filter"],
+            "parameters": vad_config["vad_parameters"],
         },
         "audio_features": {
             "pause": True,

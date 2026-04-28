@@ -12,9 +12,12 @@ from timeline_for_audio_worker.job_store import (
     build_run_archive,
     collect_input_items,
     create_job,
+    create_refresh_job,
+    generation_signature_for_settings,
     list_runs,
     settings_snapshot,
 )
+from timeline_for_audio_worker.hashing import sha256_file
 from timeline_for_audio_worker.settings import save_huggingface_token, save_settings
 
 
@@ -22,6 +25,8 @@ from timeline_for_audio_worker.settings import save_huggingface_token, save_sett
 def isolated_settings_environment(root: Path):
     previous_appdata = os.environ.get("TIMELINE_FOR_AUDIO_APPDATA_ROOT")
     previous_defaults = os.environ.get("TIMELINE_FOR_AUDIO_RUNTIME_DEFAULTS")
+    previous_settings = os.environ.get("TIMELINE_FOR_AUDIO_SETTINGS_PATH")
+    previous_settings_example = os.environ.get("TIMELINE_FOR_AUDIO_SETTINGS_EXAMPLE_PATH")
     appdata_root = root / "app-data"
     appdata_root.mkdir(parents=True, exist_ok=True)
     (appdata_root / "secrets").mkdir(parents=True, exist_ok=True)
@@ -29,6 +34,8 @@ def isolated_settings_environment(root: Path):
     defaults_path.write_text("{}", encoding="utf-8")
     os.environ["TIMELINE_FOR_AUDIO_APPDATA_ROOT"] = str(appdata_root)
     os.environ["TIMELINE_FOR_AUDIO_RUNTIME_DEFAULTS"] = str(defaults_path)
+    os.environ["TIMELINE_FOR_AUDIO_SETTINGS_PATH"] = str(root / "settings.json")
+    os.environ["TIMELINE_FOR_AUDIO_SETTINGS_EXAMPLE_PATH"] = str(root / "settings.example.json")
     try:
         yield
     finally:
@@ -40,6 +47,14 @@ def isolated_settings_environment(root: Path):
             os.environ.pop("TIMELINE_FOR_AUDIO_RUNTIME_DEFAULTS", None)
         else:
             os.environ["TIMELINE_FOR_AUDIO_RUNTIME_DEFAULTS"] = previous_defaults
+        if previous_settings is None:
+            os.environ.pop("TIMELINE_FOR_AUDIO_SETTINGS_PATH", None)
+        else:
+            os.environ["TIMELINE_FOR_AUDIO_SETTINGS_PATH"] = previous_settings
+        if previous_settings_example is None:
+            os.environ.pop("TIMELINE_FOR_AUDIO_SETTINGS_EXAMPLE_PATH", None)
+        else:
+            os.environ["TIMELINE_FOR_AUDIO_SETTINGS_EXAMPLE_PATH"] = previous_settings_example
 
 
 class JobStoreTests(unittest.TestCase):
@@ -67,6 +82,98 @@ class JobStoreTests(unittest.TestCase):
             self.assertEqual(2, len(items))
             self.assertEqual({"a.wav", "b.mp3"}, {item.display_name for item in items})
 
+    def test_create_refresh_job_uses_configured_input_roots(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_dir = root / "audio"
+            runs_root = root / "runs"
+            source_dir.mkdir()
+            (source_dir / "a.wav").write_bytes(b"a")
+            (source_dir / "ignored.txt").write_text("x", encoding="utf-8")
+            settings = {
+                "audioExtensions": [".wav"],
+                "inputRoots": [
+                    {
+                        "id": "meetings",
+                        "displayName": "Meetings",
+                        "path": str(source_dir),
+                        "enabled": True,
+                    }
+                ],
+                "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
+                "huggingfaceTermsConfirmed": False,
+                "computeMode": "cpu",
+                "uiLanguage": "ja",
+            }
+
+            job_id, run_dir, summary = create_refresh_job(settings=settings)
+
+            self.assertIsNotNone(job_id)
+            self.assertIsNotNone(run_dir)
+            self.assertEqual(1, summary["total_discovered"])
+            self.assertEqual(1, summary["queued_count"])
+            self.assertEqual(0, summary["skipped_count"])
+            request = json.loads((Path(str(run_dir)) / "request.json").read_text(encoding="utf-8"))
+            self.assertEqual("ja", request["language_hint"])
+
+    def test_create_refresh_job_skips_unchanged_catalog_items(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_dir = root / "audio"
+            runs_root = root / "runs"
+            source_dir.mkdir()
+            audio_file = source_dir / "2026-04-01 12-00-00.wav"
+            audio_file.write_bytes(b"stable-audio")
+            settings = {
+                "audioExtensions": [".wav"],
+                "inputRoots": [
+                    {
+                        "id": "meetings",
+                        "displayName": "Meetings",
+                        "path": str(source_dir),
+                        "enabled": True,
+                    }
+                ],
+                "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
+                "huggingfaceTermsConfirmed": False,
+                "computeMode": "cpu",
+                "uiLanguage": "ja",
+            }
+            signature = generation_signature_for_settings(
+                settings=settings,
+                readable_text_enabled=False,
+            )
+            prior_media = runs_root / "job-prior" / "media" / "media-0001" / "ipa"
+            prior_media.mkdir(parents=True)
+            (prior_media / "IPA.md").write_text("# IPA\n", encoding="utf-8")
+            catalog_dir = runs_root / ".timeline-for-audio"
+            catalog_dir.mkdir(parents=True)
+            (catalog_dir / "catalog.jsonl").write_text(
+                json.dumps(
+                    {
+                        "job_id": "job-prior",
+                        "run_dir": str(runs_root / "job-prior"),
+                        "audio_id": "media-0001",
+                        "source_hash": sha256_file(audio_file),
+                        "conversion_signature": signature,
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            job_id, run_dir, summary = create_refresh_job(
+                settings=settings,
+                readable_text_enabled=False,
+            )
+
+            self.assertIsNone(job_id)
+            self.assertIsNone(run_dir)
+            self.assertEqual(1, summary["total_discovered"])
+            self.assertEqual(0, summary["queued_count"])
+            self.assertEqual(1, summary["skipped_count"])
+            self.assertEqual("unchanged", summary["skipped"][0]["reason"])
+
     def test_create_job_writes_pending_contract_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -78,6 +185,8 @@ class JobStoreTests(unittest.TestCase):
                     "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
                     "huggingfaceTermsConfirmed": True,
                     "computeMode": "gpu",
+                    "ipaBackend": "pyopenjtalk",
+                    "vadProfile": "loose",
                 }
                 save_settings(settings)
                 save_huggingface_token("hf_test_value")
@@ -94,6 +203,8 @@ class JobStoreTests(unittest.TestCase):
                 self.assertEqual(job_id, request["job_id"])
                 self.assertTrue(request["token_enabled"])
                 self.assertEqual("gpu", request["compute_mode"])
+                self.assertEqual("pyopenjtalk-g2p-v1", request["ipa_backend"])
+                self.assertEqual("loose", request["vad_profile"])
                 self.assertEqual(request["conversion_signature"], request["generation_signature"])
                 self.assertEqual("en", request["language_hint"])
                 self.assertEqual("context-builder-v2", request["context_builder_version"])

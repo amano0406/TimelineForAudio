@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "inputRoots": [
+    {
+      "id": "videos",
+      "displayName": "Videos",
+      "path": "C:\\Users\\amano\\Videos\\",
+      "enabled": true
+    },
+    {
+      "id": "f-video",
+      "displayName": "F Video",
+      "path": "F:\\Video\\",
+      "enabled": true
+    }
+  ],
+  "outputRoots": [
+    {
+      "id": "runs",
+      "displayName": "Runs",
+      "path": "C:\\Users\\amano\\video\\",
+      "enabled": true
+    }
+  ],
+  "audioExtensions": [
+    ".mp3",
+    ".wav",
+    ".m4a",
+    ".aac",
+    ".flac"
+  ],
+  "huggingfaceTermsConfirmed": false,
+  "computeMode": "cpu",
+  "contextBuilderVersion": "context-builder-v2",
+  "ipaBackend": "sudachi-reading-ipa-v1",
+  "vadProfile": "default",
+  "uiLanguage": "ja"
+}

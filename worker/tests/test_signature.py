@@ -50,6 +50,38 @@ class SignatureTests(unittest.TestCase):
 
         self.assertNotEqual(full_output, ipa_only)
 
+    def test_generation_signature_changes_when_ipa_backend_changes(self) -> None:
+        sudachi = build_generation_signature(
+            compute_mode="cpu",
+            diarization_enabled=False,
+            language_hint="ja",
+            ipa_backend="sudachi",
+        )
+        pyopenjtalk = build_generation_signature(
+            compute_mode="cpu",
+            diarization_enabled=False,
+            language_hint="ja",
+            ipa_backend="pyopenjtalk",
+        )
+
+        self.assertNotEqual(sudachi, pyopenjtalk)
+
+    def test_generation_signature_changes_when_vad_profile_changes(self) -> None:
+        default = build_generation_signature(
+            compute_mode="cpu",
+            diarization_enabled=False,
+            language_hint="ja",
+            vad_profile="default",
+        )
+        loose = build_generation_signature(
+            compute_mode="cpu",
+            diarization_enabled=False,
+            language_hint="ja",
+            vad_profile="loose",
+        )
+
+        self.assertNotEqual(default, loose)
+
 
 if __name__ == "__main__":
     unittest.main()

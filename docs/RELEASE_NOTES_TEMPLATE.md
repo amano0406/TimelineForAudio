@@ -17,7 +17,7 @@ This is a desktop-style local tool, not a hosted SaaS product.
 ## Download
 
 - Windows: `TimelineForAudio-windows-local.zip`
-- macOS: source-based, experimental path
+- WSL/Unix: backdoor Docker wrapper path
 
 ## What's New
 
@@ -28,14 +28,14 @@ This is a desktop-style local tool, not a hosted SaaS product.
 ## Known Limitations
 
 - first run downloads models and takes time
-- macOS is experimental
+- WSL/Unix wrappers are backdoor paths, not the Windows front door
 - GPU is supported, but still requires NVIDIA + Docker GPU access
-- the web UI has been removed; CLI is the supported path
+- the web UI has been removed; Docker CLI is the supported path
 - Docker Desktop is required
 
 ## Verification
 
-- `python -m unittest discover worker/tests` with `PYTHONPATH=worker/src`
+- `python -m unittest discover worker/tests` with `PYTHONPATH=worker/src` and `TIMELINE_FOR_AUDIO_ALLOW_HOST_CLI=1`
 - `scripts/lint.ps1` or `scripts/lint.sh`
 - one real local smoke run
 - `jobs archive` ZIP output confirmed

@@ -10,10 +10,14 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from .catalog import catalog_key, load_catalog
 from .contracts import InputItem, JobRequest, JobResult, JobStatus
 from .context_builder import CONTEXT_BUILDER_VERSION
 from .discovery import discover_audio
 from .fs_utils import ensure_dir, now_iso, slugify, write_text
+from .hashing import sha256_file
+from .ipa_backend import resolve_ipa_backend
+from .vad_profile import resolve_vad_profile
 from .reconstruction import (
     resolve_reconstruction_backend,
     resolve_reconstruction_model_id,
@@ -30,7 +34,7 @@ from .signature import (
     normalize_compute_mode,
     resolve_transcription_model_id,
 )
-from .settings import load_huggingface_token, load_settings
+from .settings import configured_path, load_huggingface_token, load_settings
 
 _DATETIME_PATTERNS = [
     re.compile(
@@ -74,6 +78,24 @@ def _enabled_input_roots(settings: dict[str, Any]) -> list[dict[str, Any]]:
         for root in settings.get("inputRoots", [])
         if root.get("enabled", True) and root.get("path")
     ]
+
+
+def app_config_from_settings(settings: dict[str, Any]) -> Any:
+    from .config import AppConfig, SourceDirectory
+
+    return AppConfig(
+        project_name="TimelineForAudio",
+        source_directories=[
+            SourceDirectory(
+                name=str(root.get("id") or root.get("displayName") or "source"),
+                path=str(configured_path(str(root.get("path") or ""))),
+                recursive=bool(root.get("recursive", True)),
+            )
+            for root in _enabled_input_roots(settings)
+        ],
+        output_root=str(configured_path(str(_enabled_output_root(settings).get("path") or ""))),
+        audio_extensions=sorted(_allowed_extensions(settings)),
+    )
 
 
 def _iter_audio_files(directory: Path, allowed_extensions: set[str]) -> list[Path]:
@@ -133,10 +155,8 @@ def collect_input_items(
             add_path(file_path, "local_directory", str(resolved_directory))
 
     if source_ids:
-        from .cli import _runtime_config  # local import to avoid circular top-level import
-
         selected_ids = {value.lower() for value in source_ids}
-        config = _runtime_config()
+        config = app_config_from_settings(settings)
         discovered = discover_audio(config)
         for row in discovered.get("audio_files", []):
             source_name = str(row.get("source_name") or "")
@@ -163,7 +183,7 @@ def list_runs(settings: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     settings = settings or load_settings()
     rows: list[dict[str, Any]] = []
     for root in _enabled_output_root_list(settings):
-        output_path = Path(str(root["path"]))
+        output_path = configured_path(str(root["path"]))
         if not output_path.exists():
             continue
         for run_dir in _iter_job_dirs(output_path):
@@ -219,7 +239,7 @@ def get_active_run(settings: dict[str, Any] | None = None) -> dict[str, Any] | N
 def find_run_dir(job_id: str, settings: dict[str, Any] | None = None) -> Path:
     settings = settings or load_settings()
     for root in _enabled_output_root_list(settings):
-        candidate = Path(str(root["path"])) / job_id
+        candidate = configured_path(str(root["path"])) / job_id
         if candidate.exists():
             return candidate
     raise ValueError(f"Job not found: {job_id}")
@@ -518,13 +538,15 @@ def create_job(
     reprocess_duplicates: bool = False,
     readable_text_enabled: bool = True,
     supplemental_context_text: str | None = None,
+    ipa_backend: str | None = None,
+    vad_profile: str | None = None,
 ) -> tuple[str, Path]:
     settings = settings or load_settings()
     if not input_items:
         raise ValueError("No input audio files were selected.")
 
     output_root = _enabled_output_root(settings, output_root_id)
-    output_root_path = Path(str(output_root["path"]))
+    output_root_path = configured_path(str(output_root["path"]))
     ensure_dir(output_root_path)
 
     job_id = f"job-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:8]}"
@@ -543,6 +565,8 @@ def create_job(
         else None
     )
     compute_mode = normalize_compute_mode(settings.get("computeMode"))
+    requested_ipa_backend = resolve_ipa_backend(ipa_backend or str(settings.get("ipaBackend") or ""))
+    requested_vad_profile = resolve_vad_profile(vad_profile or str(settings.get("vadProfile") or ""))
     request = JobRequest(
         schema_version=1,
         job_id=job_id,
@@ -559,6 +583,8 @@ def create_job(
             supplemental_context_text=supplemental_context_text,
             context_builder_version=SIGNATURE_CONTEXT_BUILDER_VERSION,
             readable_text_enabled=readable_text_enabled,
+            ipa_backend=requested_ipa_backend,
+            vad_profile=requested_vad_profile,
         ),
         transcription_backend=TRANSCRIPTION_BACKEND,
         transcription_model_id=resolve_transcription_model_id(),
@@ -568,11 +594,13 @@ def create_job(
         diarization_model_id=DIARIZATION_MODEL_ID if diarization_enabled else None,
         vad_backend=VAD_BACKEND,
         vad_model_id=VAD_MODEL_ID,
+        vad_profile=requested_vad_profile,
         reprocess_duplicates=reprocess_duplicates,
         token_enabled=bool(load_huggingface_token()),
         input_items=input_items,
         language_hint=language_hint,
         readable_text_enabled=readable_text_enabled,
+        ipa_backend=requested_ipa_backend,
         reconstruction_backend=resolve_reconstruction_backend(language_hint, compute_mode)
         if readable_text_enabled
         else None,
@@ -625,6 +653,147 @@ def create_job(
     return job_id, run_dir
 
 
+def _artifact_path_from_catalog_row(row: dict[str, Any] | None) -> Path | None:
+    if not row:
+        return None
+    run_dir = row.get("run_dir")
+    media_id = row.get("audio_id") or row.get("media_id")
+    if not run_dir or not media_id:
+        return None
+    media_dir = Path(str(run_dir)) / "media" / str(media_id)
+    for candidate in (
+        media_dir / "readable-text" / "Readable Text.md",
+        media_dir / "ipa" / "IPA.md",
+    ):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def generation_signature_for_settings(
+    *,
+    settings: dict[str, Any],
+    readable_text_enabled: bool,
+    supplemental_context_text: str | None = None,
+    ipa_backend: str | None = None,
+    vad_profile: str | None = None,
+) -> str:
+    diarization_enabled = bool(load_huggingface_token()) and bool(
+        settings.get("huggingfaceTermsConfirmed", False)
+    )
+    language_hint = str(settings.get("uiLanguage") or "en").strip() or "en"
+    normalized_context = (
+        supplemental_context_text.strip()
+        if supplemental_context_text and supplemental_context_text.strip()
+        else None
+    )
+    requested_ipa_backend = resolve_ipa_backend(ipa_backend or str(settings.get("ipaBackend") or ""))
+    requested_vad_profile = resolve_vad_profile(vad_profile or str(settings.get("vadProfile") or ""))
+    return build_conversion_signature(
+        compute_mode=settings.get("computeMode"),
+        diarization_enabled=diarization_enabled,
+        language_hint=language_hint,
+        supplemental_context_text=normalized_context,
+        context_builder_version=SIGNATURE_CONTEXT_BUILDER_VERSION,
+        readable_text_enabled=readable_text_enabled,
+        ipa_backend=requested_ipa_backend,
+        vad_profile=requested_vad_profile,
+    )
+
+
+def create_refresh_job(
+    *,
+    settings: dict[str, Any] | None = None,
+    source_ids: list[str] | None = None,
+    output_root_id: str | None = None,
+    reprocess_duplicates: bool = False,
+    readable_text_enabled: bool = True,
+    supplemental_context_text: str | None = None,
+    ipa_backend: str | None = None,
+    vad_profile: str | None = None,
+) -> tuple[str | None, Path | None, dict[str, Any]]:
+    settings = settings or load_settings()
+    config = app_config_from_settings(settings)
+    discovered = discover_audio(config)
+    selected_source_ids = {value.lower() for value in source_ids or []}
+    output_root = _enabled_output_root(settings, output_root_id)
+    output_root_path = configured_path(str(output_root["path"]))
+    ensure_dir(output_root_path)
+    generation_signature = generation_signature_for_settings(
+        settings=settings,
+        readable_text_enabled=readable_text_enabled,
+        supplemental_context_text=supplemental_context_text,
+        ipa_backend=ipa_backend,
+        vad_profile=vad_profile,
+    )
+    catalog = load_catalog(output_root_path)
+    input_items: list[InputItem] = []
+    skipped_rows: list[dict[str, Any]] = []
+
+    for row in discovered.get("audio_files", []):
+        source_name = str(row.get("source_name") or "")
+        if selected_source_ids and source_name.lower() not in selected_source_ids:
+            continue
+        source_path = Path(str(row.get("path") or ""))
+        if not source_path.exists() or not source_path.is_file():
+            continue
+        file_hash = sha256_file(source_path)
+        duplicate = catalog.get(catalog_key(file_hash, generation_signature))
+        if (
+            duplicate
+            and not reprocess_duplicates
+            and _artifact_path_from_catalog_row(duplicate) is not None
+        ):
+            skipped_rows.append(
+                {
+                    "path": str(source_path),
+                    "source_id": source_name,
+                    "reason": "unchanged",
+                    "source_hash": file_hash,
+                    "duplicate_of": duplicate.get("audio_id") or duplicate.get("media_id"),
+                    "job_id": duplicate.get("job_id"),
+                }
+            )
+            continue
+        input_items.append(
+            InputItem(
+                input_id=f"ref-{len(input_items) + 1:04d}",
+                source_kind="configured_directory",
+                source_id=source_name,
+                original_path=str(source_path.resolve()),
+                display_name=source_path.name,
+                size_bytes=int(row.get("size_bytes") or source_path.stat().st_size),
+            )
+        )
+
+    summary: dict[str, Any] = {
+        "total_discovered": int(discovered.get("total_audio_files") or 0),
+        "missing_sources": discovered.get("missing_sources", []),
+        "selected_count": len(input_items) + len(skipped_rows),
+        "queued_count": len(input_items),
+        "skipped_count": len(skipped_rows),
+        "skipped": skipped_rows,
+        "generation_signature": generation_signature,
+        "ipa_backend": resolve_ipa_backend(ipa_backend or str(settings.get("ipaBackend") or "")),
+        "vad_profile": resolve_vad_profile(vad_profile or str(settings.get("vadProfile") or "")),
+    }
+    if not input_items:
+        return None, None, summary
+    job_id, run_dir = create_job(
+        settings=settings,
+        input_items=input_items,
+        output_root_id=output_root_id,
+        reprocess_duplicates=reprocess_duplicates,
+        readable_text_enabled=readable_text_enabled,
+        supplemental_context_text=supplemental_context_text,
+        ipa_backend=ipa_backend,
+        vad_profile=vad_profile,
+    )
+    summary["job_id"] = job_id
+    summary["run_dir"] = str(run_dir)
+    return job_id, run_dir, summary
+
+
 def _iter_job_dirs(output_path: Path) -> list[Path]:
     rows = list(output_path.glob("job-*"))
     rows.extend(output_path.glob("run-*"))
@@ -639,6 +808,8 @@ def settings_snapshot(settings: dict[str, Any] | None = None) -> dict[str, Any]:
         "terms_confirmed": bool(settings.get("huggingfaceTermsConfirmed", False)),
         "ready": bool(token) and bool(settings.get("huggingfaceTermsConfirmed", False)),
         "compute_mode": str(settings.get("computeMode") or "cpu"),
+        "ipa_backend": resolve_ipa_backend(str(settings.get("ipaBackend") or "")),
+        "vad_profile": resolve_vad_profile(str(settings.get("vadProfile") or "")),
         "context_builder_version": str(
             settings.get("contextBuilderVersion") or CONTEXT_BUILDER_VERSION
         ),

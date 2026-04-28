@@ -15,6 +15,7 @@ from .runtime_profile import (
     resolve_transcription_model_id as _resolve_transcription_model_id,
 )
 from .settings import load_huggingface_token, load_settings
+from .vad_profile import vad_config_for_profile
 
 
 def resolve_transcription_model_id() -> str:
@@ -319,8 +320,10 @@ def _error_payload(
     context_prompt: str | None,
     diarization_requested: bool,
     word_timestamps: bool,
+    vad_profile: str | None = None,
 ) -> dict[str, Any]:
     resolved_context_prompt = _normalize_prompt(context_prompt)
+    vad_config = vad_config_for_profile(vad_profile)
     payload = {
         "status": "error",
         "artifact_stem": artifact_stem,
@@ -338,6 +341,10 @@ def _error_payload(
         "batch_size": 4,
         "language": TRANSCRIPTION_LANGUAGE,
         "language_probability": None,
+        "vad_backend": "faster-whisper-builtin",
+        "vad_filter": vad_config["vad_filter"],
+        "vad_profile": vad_config["profile"],
+        "vad_parameters": vad_config["vad_parameters"],
         "alignment_used": word_timestamps,
         "context_prompt_configured": bool(resolved_context_prompt),
         "context_prompt_sha256": (
@@ -377,8 +384,10 @@ def transcribe_audio(
     initial_prompt: str | None = None,
     diarization_enabled: bool = True,
     word_timestamps: bool = False,
+    vad_profile: str | None = None,
 ) -> dict[str, Any]:
     settings = load_settings()
+    vad_config = vad_config_for_profile(vad_profile or str(settings.get("vadProfile") or ""))
 
     try:
         from faster_whisper import BatchedInferencePipeline, WhisperModel
@@ -392,6 +401,7 @@ def transcribe_audio(
             context_prompt=initial_prompt,
             diarization_requested=diarization_enabled,
             word_timestamps=word_timestamps,
+            vad_profile=vad_config["profile"],
         )
 
     try:
@@ -454,8 +464,8 @@ def transcribe_audio(
                 language=language,
                 batch_size=candidate_batch_size,
                 beam_size=5,
-                vad_filter=True,
-                vad_parameters={"min_silence_duration_ms": 500},
+                vad_filter=vad_config["vad_filter"],
+                vad_parameters=vad_config["vad_parameters"],
                 initial_prompt=resolved_initial_prompt,
                 word_timestamps=word_timestamps,
             )
@@ -515,8 +525,8 @@ def transcribe_audio(
             language=language,
             batch_size=batch_size,
             beam_size=5,
-            vad_filter=True,
-            vad_parameters={"min_silence_duration_ms": 500},
+            vad_filter=vad_config["vad_filter"],
+            vad_parameters=vad_config["vad_parameters"],
             initial_prompt=resolved_initial_prompt,
             word_timestamps=word_timestamps,
         )
@@ -561,6 +571,10 @@ def transcribe_audio(
         "batch_size": batch_size,
         "language": getattr(info, "language", None) or language,
         "language_probability": getattr(info, "language_probability", None),
+        "vad_backend": "faster-whisper-builtin",
+        "vad_filter": vad_config["vad_filter"],
+        "vad_profile": vad_config["profile"],
+        "vad_parameters": vad_config["vad_parameters"],
         "context_prompt_configured": bool(resolved_initial_prompt),
         "context_prompt_sha256": (
             hashlib.sha256(resolved_initial_prompt.encode("utf-8")).hexdigest()

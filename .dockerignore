@@ -1,7 +1,9 @@
 .git
 .gitignore
 .env
+settings.json
 .venv
+.docker
 app-data
 uploads
 runs

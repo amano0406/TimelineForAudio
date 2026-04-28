@@ -1,14 +1,18 @@
 param(
-    [string]$Config = "C:\apps\TimelineForAudio\configs\local.json",
-    [string]$Output = "C:\apps\TimelineForAudio\runs\discovery.json"
+    [string]$Config = "",
+    [string]$Output = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
-$venvPython = Join-Path $root ".venv\Scripts\python.exe"
-$python = if (Test-Path $venvPython) { $venvPython } else { "python" }
+$tfa = Join-Path $root "tfa.ps1"
+$arguments = @("scan")
+if ($Config) {
+    $arguments += @("--config", $Config)
+}
+if ($Output) {
+    $arguments += @("--output", $Output)
+}
 
-$env:PYTHONPATH = Join-Path $root "worker\src"
-
-& $python -m timeline_for_audio_worker scan --config $Config --output $Output
+& $tfa @arguments

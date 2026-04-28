@@ -7,7 +7,7 @@ This document explains what `TimelineForAudio` downloads or expects at runtime a
 The current public release line is `TimelineForAudio v0.4.0 Tech Preview`.
 
 - baseline support is Windows + Docker Desktop + CPU mode
-- macOS is an experimental source-based path
+- WSL/Unix command scripts are kept as a backdoor path, not the primary Windows entrypoint
 - GPU mode is available on supported NVIDIA + Docker GPU setups through a dedicated GPU worker image
 - this app is local-first and desktop-style, not a hosted SaaS service
 

@@ -49,6 +49,8 @@ class ContractsTests(unittest.TestCase):
         self.assertEqual("sig-123", payload["generation_signature"])
         self.assertEqual("sig-123", restored.conversion_signature)
         self.assertEqual("sig-123", restored.generation_signature)
+        self.assertEqual("sudachi-reading-ipa-v1", payload["ipa_backend"])
+        self.assertEqual("default", payload["vad_profile"])
         self.assertEqual("ja", restored.language_hint)
         self.assertEqual("local-transformers-japanese-p2g-v1", restored.reconstruction_backend)
         self.assertEqual(
@@ -57,11 +59,15 @@ class ContractsTests(unittest.TestCase):
         )
         self.assertEqual("ipa-turn-reconstruction-ja-v3", restored.reconstruction_prompt_version)
         self.assertTrue(restored.readable_text_enabled)
+        self.assertEqual("sudachi-reading-ipa-v1", restored.ipa_backend)
+        self.assertEqual("default", restored.vad_profile)
         self.assertEqual(
             "Known names: TimelineForAudio, WhisperX",
             restored.supplemental_context_text,
         )
         self.assertEqual("context-builder-v2", restored.context_builder_version)
+        self.assertEqual("sudachi-reading-ipa-v1", restored.ipa_backend)
+        self.assertEqual("default", restored.vad_profile)
         self.assertTrue(restored.diarization_enabled)
         self.assertEqual(1, len(restored.input_items))
         self.assertEqual("example.wav", restored.input_items[0].display_name)

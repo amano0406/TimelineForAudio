@@ -1109,6 +1109,9 @@ class ProcessorQueueTests(unittest.TestCase):
                 "turns_source",
                 generate_ipa_turns.call_args.kwargs["transcript_payload"]["transcript_label"],
             )
+            self.assertIsNone(generate_ipa_turns.call_args.kwargs["preferred_backend"])
+            self.assertIsNone(transcribe_calls[0]["vad_profile"])
+            self.assertIsNone(transcribe_calls[1]["vad_profile"])
             self.assertEqual(
                 "turns_source",
                 reconstruct_readable_text.call_args.kwargs["transcript_payload"]["transcript_label"],
@@ -1122,6 +1125,21 @@ class ProcessorQueueTests(unittest.TestCase):
             self.assertIsNone(manifest_item.speaker_count_note)
             self.assertTrue((job_dir / "media" / manifest_item.media_id / "ipa" / "IPA.md").exists())
             self.assertTrue((job_dir / "media" / manifest_item.media_id / "readable-text" / "Readable Text.md").exists())
+            self.assertTrue((job_dir / "media" / manifest_item.media_id / "ipa" / "ipa_turns.json").exists())
+            source_info = json.loads(
+                (job_dir / "media" / manifest_item.media_id / "source.json").read_text(encoding="utf-8")
+            )
+            self.assertIsNone(source_info["requested_ipa_backend"])
+            self.assertEqual("stub-ipa", source_info["effective_ipa_backend"])
+            self.assertTrue(
+                (
+                    job_dir
+                    / "media"
+                    / manifest_item.media_id
+                    / "readable-text"
+                    / "readable_text_turns.json"
+                ).exists()
+            )
 
 
 if __name__ == "__main__":

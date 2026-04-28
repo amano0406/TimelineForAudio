@@ -11,20 +11,21 @@ Use this checklist before switching the repository from private to public.
 
 ## Build And Test
 
-- `python -m unittest discover worker/tests` with `PYTHONPATH=worker/src`
+- `python -m unittest discover worker/tests` with `PYTHONPATH=worker/src` and `TIMELINE_FOR_AUDIO_ALLOW_HOST_CLI=1`
 - `scripts/lint.ps1` on Windows or `scripts/lint.sh` on Unix
 - at least one real local smoke run still completes
 - `jobs archive` produces the expected IPA and readable-text ZIP files
 
 ## Runtime Checks
 
-- `start.bat` starts the worker container on Windows
-- `start.command` starts the worker container on macOS or Linux
-- `settings status` works without a token
-- `settings save` can store language, compute mode, and Hugging Face token
-- `jobs create` can create a job from one local audio file
-- `jobs create --ipa-only` skips readable-text reconstruction
-- `jobs archive` works for a completed job
+- `start.ps1` starts the worker container on Windows
+- `start.command` still works as the WSL/Unix backdoor
+- `tfa.ps1 settings status` works without a token
+- `tfa.ps1 settings save` can store language, compute mode, and Hugging Face token
+- `tfa.ps1 jobs create` can create a job from one local audio file
+- `tfa.ps1 jobs create --ipa-only` skips readable-text reconstruction
+- `tfa.ps1 jobs archive` works for a completed job
+- generated `.docker/docker-compose.paths.yml` maps configured input/output directories correctly
 - manual cleanup guidance is clear and does not require deleting original input audio
 
 ## Documentation
@@ -33,8 +34,9 @@ Use this checklist before switching the repository from private to public.
 - Japanese README is still consistent with English README
 - third-party notices and model/runtime notes match current dependencies
 - the current `TimelineForAudio v0.x.y Tech Preview` wording is consistent where needed
-- `Windows primary / macOS experimental` wording is consistent where needed
+- `Windows PowerShell front door / WSL backdoor` wording is consistent where needed
 - `Docker Desktop required`, `first-run downloads`, and `GPU compose overlay` wording are consistent where needed
+- public docs do not instruct normal users to run `python -m timeline_for_audio_worker` on the host
 - speaker diarization is clearly described as optional and gated by token + approval
 - all public docs describe CLI usage, not a web UI
 

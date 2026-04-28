@@ -24,6 +24,7 @@ RUN pip install --no-cache-dir -r /app/requirements-gpu.txt
 
 COPY worker/ /app/worker/
 COPY configs/ /app/config/
+COPY settings.example.json /app/settings.example.json
 
 ENV PYTHONPATH=/app/worker/src
 ENTRYPOINT ["python", "-m", "timeline_for_audio_worker", "daemon", "--poll-interval", "5"]

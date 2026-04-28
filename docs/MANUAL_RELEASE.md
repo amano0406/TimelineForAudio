@@ -8,8 +8,8 @@ This document defines the first public GitHub Release line for `TimelineForAudio
 - tag format: `v0.x.y`
 - first tag: `v0.3.0`
 - initial support contract:
-  - Windows primary
-  - macOS experimental
+  - Windows PowerShell primary
+  - WSL/Unix command scripts as a backdoor path
   - Docker Desktop required
   - CPU baseline
   - GPU supported through the compose GPU overlay

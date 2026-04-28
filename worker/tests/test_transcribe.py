@@ -261,6 +261,71 @@ class TranscribeHelpersTests(unittest.TestCase):
         self.assertEqual("SPEAKER_00", payload["segments"][0]["speaker"])
         self.assertIsNone(payload["diarization_error"])
 
+    @patch("timeline_for_audio_worker.transcribe.load_huggingface_token")
+    @patch("timeline_for_audio_worker.transcribe.load_settings")
+    def test_transcribe_audio_applies_vad_profile(
+        self,
+        mock_load_settings,
+        mock_load_token,
+    ) -> None:
+        mock_load_settings.return_value = {"huggingfaceTermsConfirmed": False}
+        mock_load_token.return_value = None
+        transcribe_kwargs: dict[str, object] = {}
+
+        class FakeSegment:
+            def __init__(self, start: float, end: float, text: str) -> None:
+                self.start = start
+                self.end = end
+                self.text = text
+
+        class FakeInfo:
+            language = "ja"
+            language_probability = 0.99
+
+        class FakeWhisperModel:
+            def __init__(self, *args, **kwargs) -> None:
+                return None
+
+        class FakeBatchedInferencePipeline:
+            def __init__(self, model) -> None:
+                self.model = model
+
+            def transcribe(self, *args, **kwargs):
+                transcribe_kwargs.update(kwargs)
+                return [FakeSegment(0.0, 1.0, "hello world")], FakeInfo()
+
+        fake_faster_whisper = types.SimpleNamespace(
+            BatchedInferencePipeline=FakeBatchedInferencePipeline,
+            WhisperModel=FakeWhisperModel,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(
+            sys.modules,
+            {"faster_whisper": fake_faster_whisper},
+            clear=False,
+        ):
+            payload = transcribe_audio(
+                source_name="sample.wav",
+                audio_path=Path(temp_dir) / "audio.wav",
+                transcript_dir=Path(temp_dir) / "transcript",
+                artifact_stem="turns-source",
+                transcript_label="turns_source",
+                cut_map=[],
+                compute_mode="cpu",
+                initial_prompt=None,
+                diarization_enabled=False,
+                word_timestamps=True,
+                vad_profile="strict",
+            )
+
+        self.assertEqual("strict", payload["vad_profile"])
+        self.assertEqual({"min_silence_duration_ms": 250}, payload["vad_parameters"])
+        self.assertTrue(transcribe_kwargs["vad_filter"])
+        self.assertEqual(
+            {"min_silence_duration_ms": 250},
+            transcribe_kwargs["vad_parameters"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

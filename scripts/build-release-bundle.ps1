@@ -84,17 +84,25 @@ function Copy-ReleaseFiles {
         "THIRD_PARTY_NOTICES.md",
         "docker-compose.yml",
         "docker-compose.gpu.yml",
+        "start.ps1",
         "start.bat",
         "start.command",
+        "tfa.ps1",
+        "tfa.bat",
+        "tfa.command",
+        "stop.ps1",
         "stop.bat",
         "stop.command",
+        "settings.example.json",
         "uninstall.bat",
         "uninstall.command",
         "worker/pyproject.toml",
         "worker/requirements-cpu.txt",
         "worker/requirements-gpu.txt",
         "docs/PUBLIC_RELEASE_CHECKLIST.md",
-        "docs/SECURITY_AND_SAFETY.md"
+        "docs/SECURITY_AND_SAFETY.md",
+        "scripts/docker-runtime.ps1",
+        "scripts/prepare-docker-paths.ps1"
     )
 
     $directories = @(

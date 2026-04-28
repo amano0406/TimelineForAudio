@@ -4,9 +4,11 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
+.docker/
 /runs/
 /outputs/
 .env
+settings.json
 app-data/
 uploads/
 worker/.venv/

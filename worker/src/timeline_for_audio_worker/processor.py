@@ -36,11 +36,12 @@ from .fs_utils import (
     write_text,
 )
 from .hashing import sha256_file
-from .ipa_backend import generate_ipa_turns
+from .ipa_backend import EXPERIMENTAL_PYOPENJTALK_IPA_BACKEND, generate_ipa_turns
 from .pass_diff import write_transcript_delta
 from .reconstruction import reconstruct_readable_text
 from .settings import load_settings, uploads_root
 from .transcribe import transcribe_audio
+from .vad_profile import vad_config_for_profile
 
 _ITEM_STAGE_BOUNDS: dict[str, tuple[float, float]] = {
     "extract_audio": (0.0, 0.12),
@@ -454,6 +455,7 @@ def _completed_progress_percent(
 
 
 def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
+    vad_config = vad_config_for_profile(request.vad_profile)
     run_info = "\n".join(
         [
             "# Run Info",
@@ -463,6 +465,8 @@ def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
             f"- Profile: `{request.profile}`",
             f"- Compute Mode: `{request.compute_mode}`",
             f"- Language Hint: `{request.language_hint or ''}`",
+            f"- IPA Backend: `{request.ipa_backend or ''}`",
+            f"- VAD Profile: `{request.vad_profile or ''}`",
             f"- Input Count: `{len(request.input_items)}`",
             f"- Reprocess Duplicates: `{request.reprocess_duplicates}`",
             "",
@@ -475,6 +479,7 @@ def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
             "# Conversion Info",
             "",
             f"- Audio to IPA base: `{request.transcription_backend}` with `{request.transcription_model_id}`, compute `{request.compute_mode}`",
+            f"- Requested IPA backend: `{request.ipa_backend or ''}`",
             f"- Readable text: `{'enabled' if request.readable_text_enabled else 'disabled'}`",
             f"- Readable text reconstruction: `{request.reconstruction_backend or ''}` / `{request.reconstruction_model_id or ''}`",
             f"- Reconstruction prompt version: `{request.reconstruction_prompt_version or ''}`",
@@ -485,6 +490,8 @@ def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
             f"- Diarization enabled: `{request.diarization_enabled}`",
             f"- Diarization model: `{request.diarization_model_id or ''}`",
             f"- VAD backend: `{request.vad_backend}` / `{request.vad_model_id}`",
+            f"- VAD profile: `{request.vad_profile or ''}`",
+            f"- VAD parameters: `{vad_config['vad_parameters']}`",
             f"- Pipeline version: `{request.pipeline_version}`",
             f"- Generation signature: `{request.generation_signature}`",
             "- Notes:",
@@ -621,12 +628,17 @@ def _process_one_item(
         "language_hint": request.language_hint,
         "supplemental_context_configured": bool(request.supplemental_context_text),
         "ipa_cleanup_rules_version": request.context_builder_version or CONTEXT_BUILDER_VERSION,
+        "requested_ipa_backend": request.ipa_backend,
         "readable_text_enabled": request.readable_text_enabled,
         "reconstruction_backend": request.reconstruction_backend,
         "reconstruction_model_id": request.reconstruction_model_id,
         "reconstruction_prompt_version": request.reconstruction_prompt_version,
         "diarization_enabled": request.diarization_enabled,
         "diarization_model_id": request.diarization_model_id,
+        "vad_backend": request.vad_backend,
+        "vad_model_id": request.vad_model_id,
+        "vad_profile": request.vad_profile,
+        "vad_parameters": vad_config_for_profile(request.vad_profile)["vad_parameters"],
     }
     write_json_atomic(media_dir / "source.json", source_info)
 
@@ -657,6 +669,7 @@ def _process_one_item(
         initial_prompt=None,
         diarization_enabled=False,
         word_timestamps=False,
+        vad_profile=request.vad_profile,
     )
     if ensure_not_delete_requested:
         ensure_not_delete_requested("transcribe_cleanup_source")
@@ -690,6 +703,7 @@ def _process_one_item(
         initial_prompt=merged_context,
         diarization_enabled=request.diarization_enabled,
         word_timestamps=True,
+        vad_profile=request.vad_profile,
     )
     if ensure_not_delete_requested:
         ensure_not_delete_requested("transcribe_turns")
@@ -753,8 +767,31 @@ def _process_one_item(
             if request.readable_text_enabled
             else "Writing IPA artifacts.",
         )
-    ipa_result = generate_ipa_turns(transcript_payload=turns_source_payload)
+    ipa_result = generate_ipa_turns(
+        transcript_payload=turns_source_payload,
+        preferred_backend=request.ipa_backend,
+    )
+    if (
+        request.ipa_backend == EXPERIMENTAL_PYOPENJTALK_IPA_BACKEND
+        and ipa_result.backend_name
+        not in {EXPERIMENTAL_PYOPENJTALK_IPA_BACKEND, "segment-ipa-passthrough"}
+    ):
+        raise RuntimeError(
+            "Requested pyopenjtalk IPA backend did not run. Install pyopenjtalk or use --ipa-backend sudachi."
+        )
+    source_info["effective_ipa_backend"] = ipa_result.backend_name
+    write_json_atomic(media_dir / "source.json", source_info)
     ipa_path = ipa_dir / "IPA.md"
+    ipa_turn_rows = [
+        {
+            "index": turn.index,
+            "start": turn.start,
+            "end": turn.end,
+            "speaker": turn.speaker,
+            "ipa": turn.ipa,
+        }
+        for turn in ipa_result.turns
+    ]
     render_ipa(
         output_path=ipa_path,
         source_info=source_info,
@@ -764,15 +801,19 @@ def _process_one_item(
         speaker_count=manifest_item.speaker_count,
         speaker_count_status=manifest_item.speaker_count_status,
         speaker_count_note=manifest_item.speaker_count_note,
-        turns=[
-            {
-                "start": turn.start,
-                "end": turn.end,
-                "speaker": turn.speaker,
-                "ipa": turn.ipa,
-            }
-            for turn in ipa_result.turns
-        ],
+        turns=ipa_turn_rows,
+    )
+    write_json_atomic(
+        ipa_dir / "ipa_turns.json",
+        {
+            "requested_backend": request.ipa_backend,
+            "backend": ipa_result.backend_name,
+            "status": ipa_result.status,
+            "warning_count": len(ipa_result.warnings),
+            "warnings": ipa_result.warnings,
+            "turn_count": len(ipa_result.turns),
+            "turns": ipa_turn_rows,
+        },
     )
     readable_text_turn_count = 0
     readable_text_warnings: list[str] = []
@@ -790,6 +831,16 @@ def _process_one_item(
         readable_text_status = readable_text_result.status
         readable_text_warnings = list(readable_text_result.warnings)
         readable_text_turn_count = len(readable_text_result.turns)
+        readable_text_turn_rows = [
+            {
+                "index": turn.index,
+                "start": turn.start,
+                "end": turn.end,
+                "speaker": turn.speaker,
+                "text": turn.text,
+            }
+            for turn in readable_text_result.turns
+        ]
         write_json_atomic(
             readable_text_dir / "reconstruction.json",
             {
@@ -805,18 +856,26 @@ def _process_one_item(
                 "turn_count": len(readable_text_result.turns),
             },
         )
+        write_json_atomic(
+            readable_text_dir / "readable_text_turns.json",
+            {
+                "backend": readable_text_result.backend_name,
+                "status": readable_text_result.status,
+                "model_id": readable_text_result.model_id,
+                "prompt_version": readable_text_result.prompt_version,
+                "requested_compute_mode": readable_text_result.requested_compute_mode,
+                "effective_device": readable_text_result.effective_device,
+                "decoding": readable_text_result.decoding,
+                "warning_count": len(readable_text_result.warnings),
+                "warnings": readable_text_result.warnings,
+                "turn_count": len(readable_text_result.turns),
+                "turns": readable_text_turn_rows,
+            },
+        )
         render_readable_text(
             output_path=readable_text_path,
             source_info=source_info,
-            turns=[
-                {
-                    "start": turn.start,
-                    "end": turn.end,
-                    "speaker": turn.speaker,
-                    "text": turn.text,
-                }
-                for turn in readable_text_result.turns
-            ],
+            turns=readable_text_turn_rows,
             warnings=readable_text_result.warnings,
             speaker_count=manifest_item.speaker_count,
             speaker_count_status=manifest_item.speaker_count_status,

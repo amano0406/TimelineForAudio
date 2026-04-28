@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from .ipa_backend import resolve_ipa_backend
+from .vad_profile import resolve_vad_profile
 from .reconstruction import (
     resolve_reconstruction_backend,
     resolve_reconstruction_model_id,
@@ -51,6 +53,8 @@ class JobRequest:
     reconstruction_model_id: str | None = None
     reconstruction_prompt_version: str | None = None
     readable_text_enabled: bool = True
+    ipa_backend: str | None = None
+    vad_profile: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -79,6 +83,8 @@ class JobRequest:
             "reconstruction_model_id": self.reconstruction_model_id,
             "reconstruction_prompt_version": self.reconstruction_prompt_version,
             "readable_text_enabled": self.readable_text_enabled,
+            "ipa_backend": resolve_ipa_backend(self.ipa_backend),
+            "vad_profile": resolve_vad_profile(self.vad_profile),
             "input_items": [item.to_dict() for item in self.input_items],
         }
 
@@ -123,6 +129,8 @@ class JobRequest:
             reprocess_duplicates=bool(payload["reprocess_duplicates"]),
             token_enabled=bool(payload.get("token_enabled", False)),
             input_items=[InputItem(**item) for item in payload.get("input_items", [])],
+            ipa_backend=resolve_ipa_backend(str(payload.get("ipa_backend") or "")),
+            vad_profile=resolve_vad_profile(str(payload.get("vad_profile") or "")),
             readable_text_enabled=readable_text_enabled,
             reconstruction_backend=(
                 str(payload["reconstruction_backend"])
