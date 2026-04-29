@@ -61,9 +61,8 @@ Default shape:
     }
   ],
   "audioExtensions": [".mp3", ".wav", ".m4a", ".aac", ".flac"],
-  "huggingfaceTermsConfirmed": false,
-  "computeMode": "cpu",
-  "vadProfile": "default"
+  "huggingfaceToken": "",
+  "computeMode": "cpu"
 }
 ```
 
@@ -74,7 +73,7 @@ Use PowerShell from the project directory.
 ```powershell
 .\start.ps1
 .\cli.ps1 settings init
-.\cli.ps1 settings save --token <HUGGING_FACE_TOKEN> --terms-confirmed --compute-mode gpu
+.\cli.ps1 settings save --token <HUGGING_FACE_TOKEN> --compute-mode gpu
 .\cli.ps1 refresh
 .\cli.ps1 runs list
 .\cli.ps1 runs show --run-id <RUN_ID>

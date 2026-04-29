@@ -44,10 +44,6 @@ class DiarizationTests(unittest.TestCase):
                 {"pyannote.audio": fake_pyannote_audio, "torchaudio": fake_torchaudio},
             ),
             patch(
-                "timeline_for_audio_worker.diarization.load_settings",
-                return_value={"huggingfaceTermsConfirmed": True},
-            ),
-            patch(
                 "timeline_for_audio_worker.diarization.load_huggingface_token",
                 return_value="hf_test_token",
             ),
@@ -68,10 +64,6 @@ class DiarizationTests(unittest.TestCase):
 
     def test_generate_speaker_turns_fails_when_required_token_is_missing(self) -> None:
         with (
-            patch(
-                "timeline_for_audio_worker.diarization.load_settings",
-                return_value={"huggingfaceTermsConfirmed": True},
-            ),
             patch(
                 "timeline_for_audio_worker.diarization.load_huggingface_token",
                 return_value=None,
@@ -116,10 +108,6 @@ class DiarizationTests(unittest.TestCase):
             patch.dict(
                 "sys.modules",
                 {"pyannote.audio": fake_pyannote_audio, "torchaudio": fake_torchaudio},
-            ),
-            patch(
-                "timeline_for_audio_worker.diarization.load_settings",
-                return_value={"huggingfaceTermsConfirmed": True},
             ),
             patch(
                 "timeline_for_audio_worker.diarization.load_huggingface_token",

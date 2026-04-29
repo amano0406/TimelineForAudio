@@ -11,7 +11,7 @@ from typing import Any
 from uuid import uuid4
 
 from .catalog import catalog_key, load_catalog
-from .contracts import InputItem, JobRequest, JobResult, JobStatus
+from .contracts import InputItem, RunRequest, RunResult, RunStatus
 from .discovery import discover_audio
 from .fs_utils import ensure_dir, now_iso, slugify, write_text
 from .hashing import sha256_file
@@ -36,6 +36,7 @@ _DATETIME_PATTERNS = [
         r"(?P<year>20\d{2})(?P<month>\d{2})(?P<day>\d{2})[-_ ]?(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})"
     ),
 ]
+_FIXED_VAD_PROFILE = resolve_vad_profile(None)
 
 
 def _allowed_extensions(settings: dict[str, Any]) -> set[str]:
@@ -221,7 +222,7 @@ def list_runs(settings: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         output_path = configured_path(str(root["path"]))
         if not output_path.exists():
             continue
-        for run_dir in _iter_job_dirs(output_path):
+        for run_dir in _iter_run_dirs(output_path):
             request_path = run_dir / "request.json"
             status_path = run_dir / "status.json"
             manifest_path = run_dir / "manifest.json"
@@ -237,7 +238,7 @@ def list_runs(settings: dict[str, Any] | None = None) -> list[dict[str, Any]]:
             items = manifest.get("items", [])
             rows.append(
                 {
-                    "job_id": request.get("job_id", run_dir.name),
+                    "run_id": request.get("run_id", run_dir.name),
                     "run_dir": str(run_dir),
                     "state": status.get("state", "unknown"),
                     "current_stage": status.get("current_stage", ""),
@@ -271,25 +272,25 @@ def get_active_run(settings: dict[str, Any] | None = None) -> dict[str, Any] | N
     return None
 
 
-def find_run_dir(job_id: str, settings: dict[str, Any] | None = None) -> Path:
+def find_run_dir(run_id: str, settings: dict[str, Any] | None = None) -> Path:
     settings = settings or load_settings()
     for root in _enabled_output_root_list(settings):
-        candidate = configured_path(str(root["path"])) / job_id
+        candidate = configured_path(str(root["path"])) / run_id
         if candidate.exists():
             return candidate
-    raise ValueError(f"Job not found: {job_id}")
+    raise ValueError(f"Run not found: {run_id}")
 
 
 def build_run_archive(
-    job_id: str,
+    run_id: str,
     *,
     settings: dict[str, Any] | None = None,
     output: Path | None = None,
     artifact_kind: str = "timeline",
 ) -> Path:
-    run_dir = find_run_dir(job_id, settings)
+    run_dir = find_run_dir(run_id, settings)
     normalized_artifact_kind = _normalize_export_artifact_kind(artifact_kind)
-    archive_stem = f"{job_id}-{normalized_artifact_kind}"
+    archive_stem = f"{run_id}-{normalized_artifact_kind}"
     archive_base = (output if output is not None else run_dir.parent / archive_stem).resolve()
     archive_base.parent.mkdir(parents=True, exist_ok=True)
     archive_path = archive_base.with_suffix(".zip")
@@ -300,7 +301,7 @@ def build_run_archive(
         tempfile.mkdtemp(prefix=f"{archive_stem}-export-", dir=str(archive_base.parent))
     )
     try:
-        _build_export_package(run_dir, job_id, staging_root, normalized_artifact_kind)
+        _build_export_package(run_dir, run_id, staging_root, normalized_artifact_kind)
         created = shutil.make_archive(str(archive_base), "zip", root_dir=str(staging_root))
         return Path(created)
     finally:
@@ -339,7 +340,7 @@ def _artifact_export_title(artifact_kind: str) -> str:
 
 def _build_export_package(
     run_dir: Path,
-    job_id: str,
+    run_id: str,
     export_root: Path,
     artifact_kind: str,
 ) -> None:
@@ -404,7 +405,7 @@ def _build_export_package(
 
     _write_export_index_html(
         export_root=export_root,
-        job_id=job_id,
+        run_id=run_id,
         artifact_kind=normalized_artifact_kind,
         exported_rows=exported_rows,
         has_conversion_info=(export_root / "CONVERSION_INFO.md").exists(),
@@ -416,7 +417,7 @@ def _build_export_package(
 def _write_export_index_html(
     *,
     export_root: Path,
-    job_id: str,
+    run_id: str,
     artifact_kind: str,
     exported_rows: list[dict[str, str]],
     has_conversion_info: bool,
@@ -456,7 +457,7 @@ def _write_export_index_html(
             '<html lang="en">',
             "<head>",
             '  <meta charset="utf-8">',
-            f"  <title>TimelineForAudio export {html.escape(job_id)}</title>",
+            f"  <title>TimelineForAudio export {html.escape(run_id)}</title>",
             '  <meta name="viewport" content="width=device-width, initial-scale=1">',
             "  <style>",
             "    :root { color-scheme: light; }",
@@ -476,7 +477,7 @@ def _write_export_index_html(
             "<body>",
             '  <section class="panel">',
             "    <h1>TimelineForAudio export</h1>",
-            f"    <p>Run ID: <code>{html.escape(job_id)}</code></p>",
+            f"    <p>Run ID: <code>{html.escape(run_id)}</code></p>",
             f"    <p>This package contains the {_artifact_export_title(artifact_kind)} export for the selected run.</p>",
             "  </section>",
             '  <section class="panel">',
@@ -567,13 +568,12 @@ def _parse_best_effort_datetime(value: str) -> datetime | None:
     return None
 
 
-def create_job(
+def create_run(
     *,
     settings: dict[str, Any] | None = None,
     input_items: list[InputItem],
     output_root_id: str | None = None,
     reprocess_duplicates: bool = False,
-    vad_profile: str | None = None,
 ) -> tuple[str, Path]:
     settings = settings or load_settings()
     if not input_items:
@@ -583,18 +583,17 @@ def create_job(
     output_root_path = configured_path(str(output_root["path"]))
     ensure_dir(output_root_path)
 
-    job_id = f"job-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:8]}"
-    run_dir = output_root_path / job_id
+    run_id = f"run-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:8]}"
+    run_dir = output_root_path / run_id
     ensure_dir(run_dir / "media")
     ensure_dir(run_dir / "llm")
     ensure_dir(run_dir / "logs")
 
     diarization_enabled = True
     compute_mode = normalize_compute_mode(settings.get("computeMode"))
-    requested_vad_profile = resolve_vad_profile(vad_profile or str(settings.get("vadProfile") or ""))
-    request = JobRequest(
+    request = RunRequest(
         schema_version=1,
-        job_id=job_id,
+        run_id=run_id,
         created_at=now_iso(),
         output_root_id=str(output_root.get("id") or "runs"),
         output_root_path=str(output_root_path),
@@ -604,7 +603,7 @@ def create_job(
         conversion_signature=build_conversion_signature(
             compute_mode=settings.get("computeMode"),
             diarization_enabled=diarization_enabled,
-            vad_profile=requested_vad_profile,
+            vad_profile=_FIXED_VAD_PROFILE,
         ),
         acoustic_unit_backend=ACOUSTIC_UNIT_BACKEND_NAME,
         acoustic_unit_model_id=resolve_acoustic_unit_model_id(),
@@ -612,21 +611,21 @@ def create_job(
         diarization_model_id=DIARIZATION_MODEL_ID,
         vad_backend=VAD_BACKEND,
         vad_model_id=VAD_MODEL_ID,
-        vad_profile=requested_vad_profile,
+        vad_profile=_FIXED_VAD_PROFILE,
         reprocess_duplicates=reprocess_duplicates,
         token_enabled=bool(load_huggingface_token()),
         input_items=input_items,
     )
-    status = JobStatus(
-        job_id=job_id,
+    status = RunStatus(
+        run_id=run_id,
         state="pending",
         current_stage="queued",
         message="Queued for worker pickup.",
         items_total=len(input_items),
         updated_at=now_iso(),
     )
-    result = JobResult(
-        job_id=job_id,
+    result = RunResult(
+        run_id=run_id,
         state="pending",
         run_dir=str(run_dir),
         output_root_id=str(output_root.get("id") or "runs"),
@@ -634,7 +633,7 @@ def create_job(
     )
     manifest = {
         "schema_version": 1,
-        "job_id": job_id,
+        "run_id": run_id,
         "generated_at": now_iso(),
         "items": [],
     }
@@ -656,7 +655,7 @@ def create_job(
     write_text(run_dir / "CONVERSION_INFO.md", conversion_info)
     write_text(run_dir / "NOTICE.md", "# Notice\n\nPending worker pickup.\n")
 
-    return job_id, run_dir
+    return run_id, run_dir
 
 
 def _artifact_path_from_catalog_row(row: dict[str, Any] | None) -> Path | None:
@@ -678,24 +677,21 @@ def _artifact_path_from_catalog_row(row: dict[str, Any] | None) -> Path | None:
 def generation_signature_for_settings(
     *,
     settings: dict[str, Any],
-    vad_profile: str | None = None,
 ) -> str:
     diarization_enabled = True
-    requested_vad_profile = resolve_vad_profile(vad_profile or str(settings.get("vadProfile") or ""))
     return build_conversion_signature(
         compute_mode=settings.get("computeMode"),
         diarization_enabled=diarization_enabled,
-        vad_profile=requested_vad_profile,
+        vad_profile=_FIXED_VAD_PROFILE,
     )
 
 
-def create_refresh_job(
+def create_refresh_run(
     *,
     settings: dict[str, Any] | None = None,
     source_ids: list[str] | None = None,
     output_root_id: str | None = None,
     reprocess_duplicates: bool = False,
-    vad_profile: str | None = None,
 ) -> tuple[str | None, Path | None, dict[str, Any]]:
     settings = settings or load_settings()
     config = app_config_from_settings(settings)
@@ -706,7 +702,6 @@ def create_refresh_job(
     ensure_dir(output_root_path)
     generation_signature = generation_signature_for_settings(
         settings=settings,
-        vad_profile=vad_profile,
     )
     catalog = load_catalog(output_root_path)
     input_items: list[InputItem] = []
@@ -743,7 +738,7 @@ def create_refresh_job(
                     "reason": "unchanged",
                     "source_hash": file_hash,
                     "duplicate_of": duplicate.get("audio_id") or duplicate.get("media_id"),
-                    "job_id": duplicate.get("job_id"),
+                    "run_id": duplicate.get("run_id"),
                 }
             )
             continue
@@ -769,25 +764,22 @@ def create_refresh_job(
         "skipped": skipped_rows,
         "generation_signature": generation_signature,
         "artifact": "speaker-acoustic-units-timeline",
-        "vad_profile": resolve_vad_profile(vad_profile or str(settings.get("vadProfile") or "")),
     }
     if not input_items:
         return None, None, summary
-    job_id, run_dir = create_job(
+    run_id, run_dir = create_run(
         settings=settings,
         input_items=input_items,
         output_root_id=output_root_id,
         reprocess_duplicates=reprocess_duplicates,
-        vad_profile=vad_profile,
     )
-    summary["job_id"] = job_id
+    summary["run_id"] = run_id
     summary["run_dir"] = str(run_dir)
-    return job_id, run_dir, summary
+    return run_id, run_dir, summary
 
 
-def _iter_job_dirs(output_path: Path) -> list[Path]:
-    rows = list(output_path.glob("job-*"))
-    rows.extend(output_path.glob("run-*"))
+def _iter_run_dirs(output_path: Path) -> list[Path]:
+    rows = list(output_path.glob("run-*"))
     return sorted({item.resolve(): item for item in rows}.values(), key=lambda item: item.name, reverse=True)
 
 
@@ -796,11 +788,9 @@ def settings_snapshot(settings: dict[str, Any] | None = None) -> dict[str, Any]:
     token = load_huggingface_token()
     return {
         "has_token": bool(token),
-        "terms_confirmed": bool(settings.get("huggingfaceTermsConfirmed", False)),
-        "ready": bool(token) and bool(settings.get("huggingfaceTermsConfirmed", False)),
+        "ready": bool(token),
         "diarization_required": True,
         "compute_mode": str(settings.get("computeMode") or "cpu"),
-        "vad_profile": resolve_vad_profile(str(settings.get("vadProfile") or "")),
         "input_roots": _enabled_input_roots(settings),
         "output_roots": _enabled_output_root_list(settings),
     }

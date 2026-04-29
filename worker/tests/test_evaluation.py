@@ -8,7 +8,7 @@ from pathlib import Path
 from timeline_for_audio_worker.evaluation import (
     evaluate_turn_artifacts,
     render_evaluation_markdown,
-    resolve_job_prediction_path,
+    resolve_run_prediction_path,
     write_evaluation_report,
 )
 
@@ -92,7 +92,7 @@ class EvaluationTests(unittest.TestCase):
         self.assertIsNone(result["speaker"]["label_accuracy"])
         self.assertIsNone(result["speaker"]["time_mismatch_rate"])
 
-    def test_resolve_job_prediction_path_uses_single_media_item(self) -> None:
+    def test_resolve_run_prediction_path_uses_single_media_item(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             artifact = (
@@ -105,7 +105,7 @@ class EvaluationTests(unittest.TestCase):
             artifact.parent.mkdir(parents=True)
             artifact.write_text('{"turns":[]}', encoding="utf-8")
 
-            resolved = resolve_job_prediction_path(
+            resolved = resolve_run_prediction_path(
                 run_dir=root,
                 media_id=None,
                 artifact_kind="timeline",
@@ -113,7 +113,7 @@ class EvaluationTests(unittest.TestCase):
 
         self.assertEqual(artifact, resolved)
 
-    def test_resolve_job_prediction_path_requires_media_id_for_multiple_items(self) -> None:
+    def test_resolve_run_prediction_path_requires_media_id_for_multiple_items(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             for media_id in ("media-0001", "media-0002"):
@@ -128,7 +128,7 @@ class EvaluationTests(unittest.TestCase):
                 artifact.write_text('{"turns":[]}', encoding="utf-8")
 
             with self.assertRaisesRegex(ValueError, "Media id is required"):
-                resolve_job_prediction_path(
+                resolve_run_prediction_path(
                     run_dir=root,
                     media_id=None,
                     artifact_kind="timeline",

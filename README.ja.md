@@ -74,6 +74,11 @@ repo ルートで実行します。
 - `settings.json`: ローカル設定。Git 管理しない
 
 現在の設定例では、入力ディレクトリは `C:\TimelineData\Audio\`、マスター出力ディレクトリは `C:\TimelineData\AudioMaster\` です。
+Hugging Face token も `settings.json` に保存します。
+
+```powershell
+.\cli.ps1 settings save --token <HUGGING_FACE_TOKEN> --compute-mode gpu
+```
 
 ファイルが同じかどうかは、次で判定します。
 

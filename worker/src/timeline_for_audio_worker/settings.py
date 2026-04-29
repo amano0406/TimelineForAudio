@@ -6,8 +6,6 @@ from pathlib import Path
 import re
 from typing import Any
 
-from .vad_profile import resolve_vad_profile
-
 _WINDOWS_DRIVE_RE = re.compile(r"^(?P<drive>[A-Za-z]):[\\/](?P<rest>.*)$")
 _PATH_MAPPINGS_ENV = "TIMELINE_FOR_AUDIO_PATH_MAPPINGS"
 
@@ -62,10 +60,6 @@ def settings_path() -> Path:
             str(project_root() / "settings.json"),
         )
     )
-
-
-def token_path() -> Path:
-    return appdata_root() / "secrets" / "huggingface.token"
 
 
 def worker_capabilities_path() -> Path:
@@ -147,9 +141,8 @@ def _default_settings_payload() -> dict[str, Any]:
         "audioExtensions": load_runtime_defaults().get(
             "audioExtensions", [".mp3", ".wav", ".m4a", ".aac", ".flac"]
         ),
-        "huggingfaceTermsConfirmed": False,
+        "huggingfaceToken": "",
         "computeMode": "cpu",
-        "vadProfile": resolve_vad_profile(None),
     }
 
 
@@ -228,15 +221,12 @@ def load_settings() -> dict[str, Any]:
     payload.pop("contextBuilderVersion", None)
     payload.pop("ipaBackend", None)
     payload.pop("uiLanguage", None)
-    payload["vadProfile"] = resolve_vad_profile(str(payload.get("vadProfile") or ""))
+    payload["huggingfaceToken"] = str(payload.get("huggingfaceToken") or "").strip()
     return payload
 
 
 def load_huggingface_token() -> str | None:
-    path = token_path()
-    if not path.exists():
-        return None
-    value = path.read_text(encoding="utf-8", errors="replace").strip()
+    value = str(load_settings().get("huggingfaceToken") or "").strip()
     return value or None
 
 
@@ -244,6 +234,7 @@ def save_settings(payload: dict[str, Any]) -> None:
     payload = dict(payload)
     payload.pop("processingQuality", None)
     payload.pop("secondPassEnabled", None)
+    payload["huggingfaceToken"] = str(payload.get("huggingfaceToken") or "").strip()
     settings_path().parent.mkdir(parents=True, exist_ok=True)
     settings_path().write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -266,13 +257,9 @@ def init_settings() -> dict[str, Any]:
 
 
 def save_huggingface_token(token: str | None) -> None:
-    path = token_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if token and token.strip():
-        path.write_text(token.strip(), encoding="utf-8")
-        return
-    if path.exists():
-        path.unlink()
+    settings = load_settings()
+    settings["huggingfaceToken"] = token.strip() if token and token.strip() else ""
+    save_settings(settings)
 
 
 def save_worker_capabilities(payload: dict[str, Any]) -> None:

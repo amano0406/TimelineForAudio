@@ -39,8 +39,8 @@ class SettingsTests(unittest.TestCase):
                             }
                         ],
                         "audioExtensions": [".mp3"],
+                        "huggingfaceToken": "",
                         "computeMode": "cpu",
-                        "vadProfile": "default",
                     }
                 ),
                 encoding="utf-8",

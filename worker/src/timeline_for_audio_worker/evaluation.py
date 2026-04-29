@@ -28,7 +28,7 @@ def normalize_evaluation_artifact_kind(value: str | None) -> str:
     raise ValueError(f"Unsupported evaluation artifact kind: {value}")
 
 
-def resolve_job_prediction_path(
+def resolve_run_prediction_path(
     *,
     run_dir: Path,
     media_id: str | None,

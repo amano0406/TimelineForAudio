@@ -12,15 +12,15 @@ from timeline_for_audio_worker.eta import build_eta_predictor, estimate_remainin
 def _write_run(
     root: Path,
     *,
-    job_id: str,
+    run_id: str,
     compute_mode: str,
     items: list[dict[str, object]],
 ) -> None:
-    run_dir = root / job_id
+    run_dir = root / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     request = {
         "schema_version": 1,
-        "job_id": job_id,
+        "run_id": run_id,
         "created_at": "2026-04-01T10:00:00+09:00",
         "output_root_id": "runs",
         "output_root_path": str(root),
@@ -32,7 +32,7 @@ def _write_run(
     }
     manifest = {
         "schema_version": 1,
-        "job_id": job_id,
+        "run_id": run_id,
         "generated_at": "2026-04-01T10:00:00+09:00",
         "items": items,
     }
@@ -82,7 +82,7 @@ class EtaPredictorTests(unittest.TestCase):
             root = Path(tmp)
             _write_run(
                 root,
-                job_id="job-old-mono",
+                run_id="run-old-mono",
                 compute_mode="cpu",
                 items=[
                     {
@@ -99,7 +99,7 @@ class EtaPredictorTests(unittest.TestCase):
             )
             _write_run(
                 root,
-                job_id="job-old-stereo",
+                run_id="run-old-stereo",
                 compute_mode="cpu",
                 items=[
                     {
@@ -117,7 +117,7 @@ class EtaPredictorTests(unittest.TestCase):
 
             predictor = build_eta_predictor(
                 output_root=root,
-                current_job_id="job-current",
+                current_run_id="run-current",
                 compute_mode="cpu",
             )
 
@@ -163,7 +163,7 @@ class EtaPredictorTests(unittest.TestCase):
             root = Path(tmp)
             _write_run(
                 root,
-                job_id="job-old-1",
+                run_id="run-old-1",
                 compute_mode="cpu",
                 items=[
                     {
@@ -180,7 +180,7 @@ class EtaPredictorTests(unittest.TestCase):
             )
             predictor = build_eta_predictor(
                 output_root=root,
-                current_job_id="job-current",
+                current_run_id="run-current",
                 compute_mode="cpu",
             )
 
@@ -232,7 +232,7 @@ class EtaPredictorTests(unittest.TestCase):
             root = Path(tmp)
             _write_run(
                 root,
-                job_id="job-old-stage-aware",
+                run_id="run-old-stage-aware",
                 compute_mode="cpu",
                 items=[
                     {
@@ -256,7 +256,7 @@ class EtaPredictorTests(unittest.TestCase):
             )
             predictor = build_eta_predictor(
                 output_root=root,
-                current_job_id="job-current",
+                current_run_id="run-current",
                 compute_mode="cpu",
             )
 

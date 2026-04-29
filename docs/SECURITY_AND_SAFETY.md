@@ -10,11 +10,11 @@ The primary concern is not remote attack surface. The primary concern is whether
 
 Current guardrails:
 
-- job source records and copied inputs are stored under the configured uploads root when the Docker worker path is used
+- run source records and copied inputs are stored under the configured uploads root when the Docker worker path is used
 - input cleanup deletes only directories under that uploads root
 - completed run deletion removes only the selected run directory
 - output ZIPs are generated under the app-data downloads directory
-- Hugging Face tokens are stored outside the repository in app-data
+- Hugging Face tokens are stored in local-only `settings.json`, which is not tracked by Git
 
 ## What This App Does Not Claim
 
@@ -31,14 +31,14 @@ For a public code repository, the risk is mostly about:
 - accidentally committing private data
 - shipping unsafe default paths
 - deleting the wrong directories
-- unclear behavior around token storage
+- accidentally sharing local `settings.json`
 
 Those are easier to manage than the risks of a hosted service.
 
 ## Recommended Ongoing Checks
 
 - keep sample configs generic
-- keep `.env` and run output ignored
+- keep `settings.json`, `.env`, and run output ignored
 - review delete paths whenever cleanup logic changes
 - keep CLI smoke coverage on settings, refresh, run status, and ZIP archive generation
 - avoid adding broad recursive delete behavior without explicit root checks

@@ -23,7 +23,6 @@
     ".aac",
     ".flac"
   ],
-  "huggingfaceTermsConfirmed": false,
-  "computeMode": "cpu",
-  "vadProfile": "default"
+  "huggingfaceToken": "",
+  "computeMode": "cpu"
 }

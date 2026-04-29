@@ -31,7 +31,7 @@ echo "  - Docker volumes for this project"
 echo "  - Docker network for this project"
 echo
 echo "Optional:"
-echo "  - delete saved app data volume (includes token data and worker state)"
+echo "  - delete saved app data volume (includes worker state)"
 if [[ -f "settings.json" ]]; then
   echo "  - delete local settings.json"
 fi
@@ -79,7 +79,7 @@ remove_volume_if_exists "${TORCH_CACHE_VOLUME}"
 echo
 echo "Saved app data volume:"
 echo "  ${APPDATA_VOLUME}"
-echo "This includes saved token data and worker state."
+echo "This includes worker state. Hugging Face token is stored in settings.json."
 if confirm_yes "Delete saved app data too? (y/n): "; then
   remove_volume_if_exists "${APPDATA_VOLUME}"
   echo "Deleted saved app data volume."
@@ -93,7 +93,7 @@ if [[ -f "settings.json" ]]; then
   echo
   echo "Local settings file:"
   echo "  $(pwd)/settings.json"
-  echo "This includes input and output directory settings."
+  echo "This includes input/output directories and Hugging Face token."
   if confirm_yes "Delete settings.json too? (y/n): "; then
     rm -f "settings.json"
     echo "Deleted settings.json"

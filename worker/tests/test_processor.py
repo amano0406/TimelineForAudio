@@ -8,21 +8,21 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from timeline_for_audio_worker import processor
-from timeline_for_audio_worker.contracts import InputItem, JobRequest, ManifestItem
+from timeline_for_audio_worker.contracts import InputItem, RunRequest, ManifestItem
 
 
 class ProcessorQueueTests(unittest.TestCase):
-    def test_process_job_returns_false_when_job_lock_exists(self) -> None:
+    def test_process_run_returns_false_when_run_lock_exists(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            job_dir = root / "job-1"
-            job_dir.mkdir()
+            run_dir = root / "run-1"
+            run_dir.mkdir()
             source_path = root / "sample.wav"
             source_path.write_bytes(b"audio")
 
-            request = JobRequest(
+            request = RunRequest(
                 schema_version=1,
-                job_id="job-1",
+                run_id="run-1",
                 created_at="2026-04-11T12:00:00+09:00",
                 output_root_id="runs",
                 output_root_path=str(root),
@@ -50,14 +50,14 @@ class ProcessorQueueTests(unittest.TestCase):
                     )
                 ],
             )
-            (job_dir / "request.json").write_text(
+            (run_dir / "request.json").write_text(
                 json.dumps(request.to_dict(), ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-            (job_dir / "status.json").write_text(
+            (run_dir / "status.json").write_text(
                 json.dumps(
                     {
-                        "job_id": "job-1",
+                        "run_id": "run-1",
                         "state": "running",
                         "updated_at": "2099-01-01T00:00:00+00:00",
                     },
@@ -66,24 +66,24 @@ class ProcessorQueueTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (job_dir / ".job.lock").write_text("{}", encoding="utf-8")
+            (run_dir / ".run.lock").write_text("{}", encoding="utf-8")
 
             with patch.object(processor, "_write_support_docs") as write_support_docs:
-                self.assertFalse(processor.process_job(job_dir))
+                self.assertFalse(processor.process_run(run_dir))
 
             write_support_docs.assert_not_called()
 
-    def test_process_job_reclaims_stale_job_lock(self) -> None:
+    def test_process_run_reclaims_stale_run_lock(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            job_dir = root / "job-1"
-            job_dir.mkdir()
+            run_dir = root / "run-1"
+            run_dir.mkdir()
             good_path = root / "good.wav"
             good_path.write_bytes(b"good")
 
-            request = JobRequest(
+            request = RunRequest(
                 schema_version=1,
-                job_id="job-1",
+                run_id="run-1",
                 created_at="2026-04-11T12:00:00+09:00",
                 output_root_id="runs",
                 output_root_path=str(root),
@@ -111,14 +111,14 @@ class ProcessorQueueTests(unittest.TestCase):
                     )
                 ],
             )
-            (job_dir / "request.json").write_text(
+            (run_dir / "request.json").write_text(
                 json.dumps(request.to_dict(), ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-            (job_dir / "status.json").write_text(
+            (run_dir / "status.json").write_text(
                 json.dumps(
                     {
-                        "job_id": "job-1",
+                        "run_id": "run-1",
                         "state": "running",
                         "updated_at": "2026-04-10T00:00:00+00:00",
                     },
@@ -127,7 +127,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (job_dir / ".job.lock").write_text("{}", encoding="utf-8")
+            (run_dir / ".run.lock").write_text("{}", encoding="utf-8")
 
             def fake_probe_audio(path: Path) -> dict[str, object]:
                 return {
@@ -156,9 +156,9 @@ class ProcessorQueueTests(unittest.TestCase):
                 patch.object(processor, "_process_one_item", return_value=[]),
                 patch.object(processor, "append_catalog_rows"),
             ):
-                self.assertTrue(processor.process_job(job_dir))
+                self.assertTrue(processor.process_run(run_dir))
 
-            self.assertFalse((job_dir / ".job.lock").exists())
+            self.assertFalse((run_dir / ".run.lock").exists())
 
     def test_resolve_duplicate_artifact_path_returns_none_for_stale_catalog_entry(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -176,7 +176,7 @@ class ProcessorQueueTests(unittest.TestCase):
             root = Path(temp_dir)
             timeline_path = (
                 root
-                / "job-1"
+                / "run-1"
                 / "media"
                 / "sample-media"
                 / "timeline"
@@ -187,25 +187,25 @@ class ProcessorQueueTests(unittest.TestCase):
 
             duplicate = {
                 "timeline_path": str(root / "stale-timeline.md"),
-                "run_dir": str(root / "job-1"),
+                "run_dir": str(root / "run-1"),
                 "media_id": "sample-media",
             }
 
             self.assertEqual(timeline_path, processor._resolve_duplicate_artifact_path(duplicate))
 
-    def test_process_job_reclaims_stale_running_job_before_pending_queue(self) -> None:
+    def test_process_run_reclaims_stale_running_run_before_pending_queue(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            running_job_dir = root / "job-running"
-            pending_job_dir = root / "job-pending"
-            running_job_dir.mkdir()
-            pending_job_dir.mkdir()
+            running_run_dir = root / "run-running"
+            pending_run_dir = root / "run-pending"
+            running_run_dir.mkdir()
+            pending_run_dir.mkdir()
             source_path = root / "sample.wav"
             source_path.write_bytes(b"audio")
 
-            request = JobRequest(
+            request = RunRequest(
                 schema_version=1,
-                job_id="job-running",
+                run_id="run-running",
                 created_at="2026-04-11T12:00:00+09:00",
                 output_root_id="runs",
                 output_root_path=str(root),
@@ -233,14 +233,14 @@ class ProcessorQueueTests(unittest.TestCase):
                     )
                 ],
             )
-            (running_job_dir / "request.json").write_text(
+            (running_run_dir / "request.json").write_text(
                 json.dumps(request.to_dict(), ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-            (running_job_dir / "status.json").write_text(
+            (running_run_dir / "status.json").write_text(
                 json.dumps(
                     {
-                        "job_id": "job-running",
+                        "run_id": "run-running",
                         "state": "running",
                         "updated_at": "2026-04-10T00:00:00+00:00",
                     },
@@ -249,9 +249,9 @@ class ProcessorQueueTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (running_job_dir / ".job.lock").write_text("{}", encoding="utf-8")
-            (pending_job_dir / "request.json").write_text("{}", encoding="utf-8")
-            (pending_job_dir / "status.json").write_text(
+            (running_run_dir / ".run.lock").write_text("{}", encoding="utf-8")
+            (pending_run_dir / "request.json").write_text("{}", encoding="utf-8")
+            (pending_run_dir / "status.json").write_text(
                 json.dumps({"state": "pending"}, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
@@ -282,37 +282,37 @@ class ProcessorQueueTests(unittest.TestCase):
                 patch.object(processor, "_estimate_remaining_with_history", return_value=None),
                 patch.object(processor, "_process_one_item", return_value=[]),
                 patch.object(processor, "append_catalog_rows"),
-                patch.object(processor, "_collect_running_jobs", return_value=[running_job_dir]),
-                patch.object(processor, "_collect_pending_jobs", return_value=[pending_job_dir]),
+                patch.object(processor, "_collect_running_runs", return_value=[running_run_dir]),
+                patch.object(processor, "_collect_pending_runs", return_value=[pending_run_dir]),
             ):
-                self.assertTrue(processor.process_job())
+                self.assertTrue(processor.process_run())
 
-            running_status = json.loads((running_job_dir / "status.json").read_text(encoding="utf-8"))
-            pending_status = json.loads((pending_job_dir / "status.json").read_text(encoding="utf-8"))
+            running_status = json.loads((running_run_dir / "status.json").read_text(encoding="utf-8"))
+            pending_status = json.loads((pending_run_dir / "status.json").read_text(encoding="utf-8"))
             self.assertEqual("completed", running_status["state"])
             self.assertEqual("pending", pending_status["state"])
 
-    def test_process_job_waits_for_running_job_before_picking_pending(self) -> None:
+    def test_process_run_waits_for_running_run_before_picking_pending(self) -> None:
         with (
-            patch.object(processor, "_collect_running_jobs", return_value=[Path("/tmp/run-1")]),
-            patch.object(processor, "_collect_pending_jobs") as collect_pending,
+            patch.object(processor, "_collect_running_runs", return_value=[Path("/tmp/run-1")]),
+            patch.object(processor, "_collect_pending_runs") as collect_pending,
         ):
-            self.assertFalse(processor.process_job())
+            self.assertFalse(processor.process_run())
             collect_pending.assert_not_called()
 
-    def test_process_job_continues_after_preflight_probe_failure(self) -> None:
+    def test_process_run_continues_after_preflight_probe_failure(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            job_dir = root / "job-1"
-            job_dir.mkdir()
+            run_dir = root / "run-1"
+            run_dir.mkdir()
             bad_path = root / "broken.m4a"
             bad_path.write_bytes(b"broken")
             good_path = root / "good.wav"
             good_path.write_bytes(b"good")
 
-            request = JobRequest(
+            request = RunRequest(
                 schema_version=1,
-                job_id="job-1",
+                run_id="run-1",
                 created_at="2026-04-11T12:00:00+09:00",
                 output_root_id="runs",
                 output_root_path=str(root),
@@ -349,11 +349,11 @@ class ProcessorQueueTests(unittest.TestCase):
                     ),
                 ],
             )
-            (job_dir / "request.json").write_text(
+            (run_dir / "request.json").write_text(
                 json.dumps(request.to_dict(), ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-            (job_dir / "status.json").write_text("{}", encoding="utf-8")
+            (run_dir / "status.json").write_text("{}", encoding="utf-8")
 
             process_calls: list[str] = []
 
@@ -394,11 +394,11 @@ class ProcessorQueueTests(unittest.TestCase):
                 patch.object(processor, "_process_one_item", side_effect=fake_process_one_item),
                 patch.object(processor, "append_catalog_rows"),
             ):
-                self.assertTrue(processor.process_job(job_dir))
+                self.assertTrue(processor.process_run(run_dir))
 
-            status_payload = json.loads((job_dir / "status.json").read_text(encoding="utf-8"))
-            result_payload = json.loads((job_dir / "result.json").read_text(encoding="utf-8"))
-            manifest_payload = json.loads((job_dir / "manifest.json").read_text(encoding="utf-8"))
+            status_payload = json.loads((run_dir / "status.json").read_text(encoding="utf-8"))
+            result_payload = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
+            manifest_payload = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
 
             self.assertEqual(["good.wav"], process_calls)
             self.assertEqual("completed", status_payload["state"])
@@ -413,19 +413,19 @@ class ProcessorQueueTests(unittest.TestCase):
             self.assertEqual("completed", manifest_payload["items"][1]["status"])
             self.assertIn("preflight: skipped 1 invalid audio file(s).", status_payload["warnings"])
 
-    def test_process_job_skips_audio_that_is_too_short(self) -> None:
+    def test_process_run_skips_audio_that_is_too_short(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            job_dir = root / "job-1"
-            job_dir.mkdir()
+            run_dir = root / "run-1"
+            run_dir.mkdir()
             short_path = root / "short.m4a"
             short_path.write_bytes(b"short")
             good_path = root / "good.wav"
             good_path.write_bytes(b"good")
 
-            request = JobRequest(
+            request = RunRequest(
                 schema_version=1,
-                job_id="job-1",
+                run_id="run-1",
                 created_at="2026-04-11T12:00:00+09:00",
                 output_root_id="runs",
                 output_root_path=str(root),
@@ -462,11 +462,11 @@ class ProcessorQueueTests(unittest.TestCase):
                     ),
                 ],
             )
-            (job_dir / "request.json").write_text(
+            (run_dir / "request.json").write_text(
                 json.dumps(request.to_dict(), ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-            (job_dir / "status.json").write_text("{}", encoding="utf-8")
+            (run_dir / "status.json").write_text("{}", encoding="utf-8")
 
             process_calls: list[str] = []
 
@@ -517,11 +517,11 @@ class ProcessorQueueTests(unittest.TestCase):
                 patch.object(processor, "_process_one_item", side_effect=fake_process_one_item),
                 patch.object(processor, "append_catalog_rows"),
             ):
-                self.assertTrue(processor.process_job(job_dir))
+                self.assertTrue(processor.process_run(run_dir))
 
-            status_payload = json.loads((job_dir / "status.json").read_text(encoding="utf-8"))
-            result_payload = json.loads((job_dir / "result.json").read_text(encoding="utf-8"))
-            manifest_payload = json.loads((job_dir / "manifest.json").read_text(encoding="utf-8"))
+            status_payload = json.loads((run_dir / "status.json").read_text(encoding="utf-8"))
+            result_payload = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
+            manifest_payload = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
 
             self.assertEqual(["good.wav"], process_calls)
             self.assertEqual("completed", status_payload["state"])
@@ -538,17 +538,17 @@ class ProcessorQueueTests(unittest.TestCase):
                 status_payload["warnings"],
             )
 
-    def test_process_job_resets_prior_status_on_rerun(self) -> None:
+    def test_process_run_resets_prior_status_on_rerun(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            job_dir = root / "job-1"
-            job_dir.mkdir()
+            run_dir = root / "run-1"
+            run_dir.mkdir()
             good_path = root / "good.wav"
             good_path.write_bytes(b"good")
 
-            request = JobRequest(
+            request = RunRequest(
                 schema_version=1,
-                job_id="job-1",
+                run_id="run-1",
                 created_at="2026-04-11T12:00:00+09:00",
                 output_root_id="runs",
                 output_root_path=str(root),
@@ -576,14 +576,14 @@ class ProcessorQueueTests(unittest.TestCase):
                     )
                 ],
             )
-            (job_dir / "request.json").write_text(
+            (run_dir / "request.json").write_text(
                 json.dumps(request.to_dict(), ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-            (job_dir / "status.json").write_text(
+            (run_dir / "status.json").write_text(
                 json.dumps(
                     {
-                        "job_id": "job-1",
+                        "run_id": "run-1",
                         "state": "failed",
                         "current_stage": "failed",
                         "message": "old failure",
@@ -631,9 +631,9 @@ class ProcessorQueueTests(unittest.TestCase):
                 patch.object(processor, "_process_one_item", return_value=[]),
                 patch.object(processor, "append_catalog_rows"),
             ):
-                self.assertTrue(processor.process_job(job_dir))
+                self.assertTrue(processor.process_run(run_dir))
 
-            status_payload = json.loads((job_dir / "status.json").read_text(encoding="utf-8"))
+            status_payload = json.loads((run_dir / "status.json").read_text(encoding="utf-8"))
 
             self.assertEqual("completed", status_payload["state"])
             self.assertEqual(1, status_payload["items_total"])
@@ -644,28 +644,28 @@ class ProcessorQueueTests(unittest.TestCase):
             self.assertIsNotNone(status_payload["started_at"])
             self.assertIsNotNone(status_payload["completed_at"])
 
-    def test_process_job_daemon_skips_pending_job_with_unavailable_sources(self) -> None:
+    def test_process_run_daemon_skips_pending_run_with_unavailable_sources(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            missing_job_dir = root / "job-missing"
-            good_job_dir = root / "job-good"
-            missing_job_dir.mkdir()
-            good_job_dir.mkdir()
+            missing_run_dir = root / "run-missing"
+            good_run_dir = root / "run-good"
+            missing_run_dir.mkdir()
+            good_run_dir.mkdir()
             good_path = root / "good.wav"
             good_path.write_bytes(b"good")
             missing_path = root / "missing.wav"
 
-            def write_request(job_dir: Path, job_id: str, source_path: Path) -> None:
-                request = JobRequest(
+            def write_request(run_dir: Path, run_id: str, source_path: Path) -> None:
+                request = RunRequest(
                     schema_version=1,
-                    job_id=job_id,
+                    run_id=run_id,
                     created_at="2026-04-11T12:00:00+09:00",
                     output_root_id="runs",
                     output_root_path=str(root),
                     profile="quality-first",
                     compute_mode="cpu",
                     pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
-                    conversion_signature=f"sig-{job_id}",
+                    conversion_signature=f"sig-{run_id}",
                     acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
                     acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
                     diarization_enabled=False,
@@ -686,17 +686,17 @@ class ProcessorQueueTests(unittest.TestCase):
                         )
                     ],
                 )
-                (job_dir / "request.json").write_text(
+                (run_dir / "request.json").write_text(
                     json.dumps(request.to_dict(), ensure_ascii=False, indent=2),
                     encoding="utf-8",
                 )
-                (job_dir / "status.json").write_text(
+                (run_dir / "status.json").write_text(
                     json.dumps({"state": "pending"}, ensure_ascii=False, indent=2),
                     encoding="utf-8",
                 )
 
-            write_request(missing_job_dir, "job-missing", missing_path)
-            write_request(good_job_dir, "job-good", good_path)
+            write_request(missing_run_dir, "run-missing", missing_path)
+            write_request(good_run_dir, "run-good", good_path)
 
             def fake_probe_audio(path: Path) -> dict[str, object]:
                 return {
@@ -712,11 +712,11 @@ class ProcessorQueueTests(unittest.TestCase):
                 }
 
             with (
-                patch.object(processor, "_collect_running_jobs", return_value=[]),
+                patch.object(processor, "_collect_running_runs", return_value=[]),
                 patch.object(
                     processor,
-                    "_collect_pending_jobs",
-                    return_value=[missing_job_dir, good_job_dir],
+                    "_collect_pending_runs",
+                    return_value=[missing_run_dir, good_run_dir],
                 ),
                 patch.object(processor, "_write_support_docs"),
                 patch.object(processor, "load_catalog", return_value={}),
@@ -731,24 +731,24 @@ class ProcessorQueueTests(unittest.TestCase):
                 patch.object(processor, "_process_one_item", return_value=[]),
                 patch.object(processor, "append_catalog_rows"),
             ):
-                self.assertTrue(processor.process_job())
+                self.assertTrue(processor.process_run())
 
-            missing_status = json.loads((missing_job_dir / "status.json").read_text(encoding="utf-8"))
-            good_status = json.loads((good_job_dir / "status.json").read_text(encoding="utf-8"))
+            missing_status = json.loads((missing_run_dir / "status.json").read_text(encoding="utf-8"))
+            good_status = json.loads((good_run_dir / "status.json").read_text(encoding="utf-8"))
             self.assertEqual("pending", missing_status["state"])
             self.assertEqual("completed", good_status["state"])
 
-    def test_collect_pending_jobs_skips_delete_requested_runs(self) -> None:
+    def test_collect_pending_runs_skips_delete_requested_runs(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            job_dir = root / "job-1"
-            job_dir.mkdir()
-            (job_dir / "request.json").write_text("{}", encoding="utf-8")
-            (job_dir / "status.json").write_text(
+            run_dir = root / "run-1"
+            run_dir.mkdir()
+            (run_dir / "request.json").write_text("{}", encoding="utf-8")
+            (run_dir / "status.json").write_text(
                 json.dumps({"state": "pending"}, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-            (job_dir / ".delete-requested").write_text("requested\n", encoding="utf-8")
+            (run_dir / ".delete-requested").write_text("requested\n", encoding="utf-8")
 
             with patch.object(
                 processor,
@@ -759,9 +759,9 @@ class ProcessorQueueTests(unittest.TestCase):
                     ]
                 },
             ):
-                self.assertEqual([], processor._collect_pending_jobs())
+                self.assertEqual([], processor._collect_pending_runs())
 
-    def test_process_job_deletes_requested_running_job_and_upload_session(self) -> None:
+    def test_process_run_deletes_requested_running_run_and_upload_session(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             uploads_root_dir = root / "uploads"
@@ -769,12 +769,12 @@ class ProcessorQueueTests(unittest.TestCase):
             session_dir.mkdir(parents=True)
             uploaded_path = session_dir / "sample.wav"
             uploaded_path.write_bytes(b"audio")
-            job_dir = root / "job-1"
-            job_dir.mkdir()
+            run_dir = root / "run-1"
+            run_dir.mkdir()
 
-            request = JobRequest(
+            request = RunRequest(
                 schema_version=1,
-                job_id="job-1",
+                run_id="run-1",
                 created_at="2026-04-15T12:00:00+09:00",
                 output_root_id="runs",
                 output_root_path=str(root),
@@ -802,22 +802,22 @@ class ProcessorQueueTests(unittest.TestCase):
                     )
                 ],
             )
-            (job_dir / "request.json").write_text(
+            (run_dir / "request.json").write_text(
                 json.dumps(request.to_dict(), ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-            (job_dir / "status.json").write_text("{}", encoding="utf-8")
+            (run_dir / "status.json").write_text("{}", encoding="utf-8")
             catalog_dir = root / ".timeline-for-audio"
             catalog_dir.mkdir()
             catalog_path = catalog_dir / "catalog.jsonl"
             catalog_path.write_text(
                 json.dumps(
                     {
-                        "job_id": "job-1",
-                        "run_dir": str(job_dir),
+                        "run_id": "run-1",
+                        "run_dir": str(run_dir),
                         "source_hash": "good-hash",
                         "conversion_signature": "sig-123",
-                        "timeline_path": str(job_dir / "media" / "item-1" / "timeline" / "timeline.md"),
+                        "timeline_path": str(run_dir / "media" / "item-1" / "timeline" / "timeline.md"),
                     },
                     ensure_ascii=False,
                 )
@@ -839,7 +839,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 }
 
             def fake_process_one_item(**kwargs):
-                (job_dir / ".delete-requested").write_text("requested\n", encoding="utf-8")
+                (run_dir / ".delete-requested").write_text("requested\n", encoding="utf-8")
                 kwargs["ensure_not_delete_requested"]("extract_acoustic_units")
                 return []
 
@@ -858,9 +858,9 @@ class ProcessorQueueTests(unittest.TestCase):
                 patch.object(processor, "_process_one_item", side_effect=fake_process_one_item),
                 patch.object(processor, "append_catalog_rows"),
             ):
-                self.assertTrue(processor.process_job(job_dir))
+                self.assertTrue(processor.process_run(run_dir))
 
-            self.assertFalse(job_dir.exists())
+            self.assertFalse(run_dir.exists())
             self.assertFalse(session_dir.exists())
             self.assertFalse(catalog_path.exists())
 
@@ -869,12 +869,12 @@ class ProcessorQueueTests(unittest.TestCase):
             root = Path(temp_dir)
             source_path = root / "sample.wav"
             source_path.write_bytes(b"audio")
-            job_dir = root / "job-1"
-            job_dir.mkdir()
+            run_dir = root / "run-1"
+            run_dir.mkdir()
 
-            request = JobRequest(
+            request = RunRequest(
                 schema_version=1,
-                job_id="job-1",
+                run_id="run-1",
                 created_at="2026-04-10T10:00:00+09:00",
                 output_root_id="runs",
                 output_root_path=str(root),
@@ -978,13 +978,13 @@ class ProcessorQueueTests(unittest.TestCase):
                 ),
             ):
                 warnings = processor._process_one_item(
-                    job_dir=job_dir,
+                    run_dir=run_dir,
                     request=request,
                     item=item,
                     manifest_item=manifest_item,
                 )
 
-            media_dir = job_dir / "media" / str(manifest_item.media_id)
+            media_dir = run_dir / "media" / str(manifest_item.media_id)
             timeline_path = media_dir / "timeline" / "speaker-acoustic-units-timeline.json"
             self.assertEqual([], warnings)
             self.assertTrue(timeline_path.exists())

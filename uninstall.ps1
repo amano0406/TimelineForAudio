@@ -89,7 +89,7 @@ if (-not $KeepAppData) {
     Write-Host ""
     Write-Host "Saved app data volume:"
     Write-Host "  $appDataVolume"
-    Write-Host "This includes saved token data and worker state."
+    Write-Host "This includes worker state. Hugging Face token is stored in settings.json."
     if (Confirm-TfaAction "Delete saved app data too? (y/n)") {
         Remove-TfaVolumeIfExists -VolumeName $appDataVolume
     }
@@ -106,7 +106,7 @@ if (-not $KeepSettings -and (Test-Path -LiteralPath $settingsPath)) {
     Write-Host ""
     Write-Host "Local settings file:"
     Write-Host "  $settingsPath"
-    Write-Host "This includes input and output directory settings."
+    Write-Host "This includes input/output directories and Hugging Face token."
     if (Confirm-TfaAction "Delete settings.json too? (y/n)") {
         Remove-Item -LiteralPath $settingsPath -Force
         Write-Host "Deleted settings.json"

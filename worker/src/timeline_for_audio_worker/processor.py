@@ -22,7 +22,7 @@ from .acoustic_units import (
 )
 from .artifacts import write_media_artifacts_index
 from .catalog import append_catalog_rows, catalog_key, catalog_path, load_catalog
-from .contracts import JobRequest, JobResult, JobStatus, ManifestItem
+from .contracts import RunRequest, RunResult, RunStatus, ManifestItem
 from .diarization import generate_speaker_turns
 from .eta import build_eta_predictor, estimate_remaining_seconds
 from .ffmpeg_utils import extract_audio, probe_audio, trim_audio
@@ -49,56 +49,56 @@ _ITEM_STAGE_BOUNDS: dict[str, tuple[float, float]] = {
     "generate_artifacts": (0.96, 1.0),
 }
 
-_JOB_LOCK_STALE_AFTER = timedelta(seconds=30)
+_RUN_LOCK_STALE_AFTER = timedelta(seconds=30)
 _MIN_PREPROCESS_DURATION_SEC = 2.0
 _PREFLIGHT_SKIPPED_STATUSES = {"skipped_invalid", "skipped_too_short"}
 _DELETE_REQUEST_MARKER = ".delete-requested"
 
 
-class JobDeletionRequested(RuntimeError):
+class RunDeletionRequested(RuntimeError):
     pass
 
 
-def _job_log_path(job_dir: Path) -> Path:
-    return job_dir / "logs" / "worker.log"
+def _run_log_path(run_dir: Path) -> Path:
+    return run_dir / "logs" / "worker.log"
 
 
-def _status_path(job_dir: Path) -> Path:
-    return job_dir / "status.json"
+def _status_path(run_dir: Path) -> Path:
+    return run_dir / "status.json"
 
 
-def _result_path(job_dir: Path) -> Path:
-    return job_dir / "result.json"
+def _result_path(run_dir: Path) -> Path:
+    return run_dir / "result.json"
 
 
-def _manifest_path(job_dir: Path) -> Path:
-    return job_dir / "manifest.json"
+def _manifest_path(run_dir: Path) -> Path:
+    return run_dir / "manifest.json"
 
 
-def _request_path(job_dir: Path) -> Path:
-    return job_dir / "request.json"
+def _request_path(run_dir: Path) -> Path:
+    return run_dir / "request.json"
 
 
-def _lock_path(job_dir: Path) -> Path:
-    return job_dir / ".job.lock"
+def _lock_path(run_dir: Path) -> Path:
+    return run_dir / ".run.lock"
 
 
-def _delete_request_path(job_dir: Path) -> Path:
-    return job_dir / _DELETE_REQUEST_MARKER
+def _delete_request_path(run_dir: Path) -> Path:
+    return run_dir / _DELETE_REQUEST_MARKER
 
 
-def _delete_requested(job_dir: Path) -> bool:
-    return _delete_request_path(job_dir).exists()
+def _delete_requested(run_dir: Path) -> bool:
+    return _delete_request_path(run_dir).exists()
 
 
-def _raise_if_delete_requested(job_dir: Path, stage_name: str | None = None) -> None:
-    if not _delete_requested(job_dir):
+def _raise_if_delete_requested(run_dir: Path, stage_name: str | None = None) -> None:
+    if not _delete_requested(run_dir):
         return
     suffix = f" during {stage_name}" if stage_name else ""
-    raise JobDeletionRequested(f"Deletion requested{suffix}.")
+    raise RunDeletionRequested(f"Deletion requested{suffix}.")
 
 
-def _delete_upload_directories(request: JobRequest) -> None:
+def _delete_upload_directories(request: RunRequest) -> None:
     uploads_root_path = uploads_root().resolve()
     seen: set[Path] = set()
     for item in request.input_items:
@@ -115,15 +115,15 @@ def _delete_upload_directories(request: JobRequest) -> None:
         seen.add(directory)
 
 
-def _prune_catalog_rows(request: JobRequest | None, job_dir: Path) -> None:
+def _prune_catalog_rows(request: RunRequest | None, run_dir: Path) -> None:
     if request is None or not request.output_root_path:
         return
     path = catalog_path(Path(request.output_root_path))
     if not path.exists():
         return
 
-    target_job_id = str(request.job_id or job_dir.name)
-    target_run_dir = os.path.normcase(os.path.normpath(str(job_dir.resolve())))
+    target_run_id = str(request.run_id or run_dir.name)
+    target_run_dir = os.path.normcase(os.path.normpath(str(run_dir.resolve())))
     kept_lines: list[str] = []
     removed_any = False
 
@@ -136,7 +136,7 @@ def _prune_catalog_rows(request: JobRequest | None, job_dir: Path) -> None:
             kept_lines.append(line)
             continue
 
-        row_job_id = str(row.get("job_id") or "")
+        row_run_id = str(row.get("run_id") or "")
         row_run_dir = str(row.get("run_dir") or "")
         normalized_row_run_dir = ""
         if row_run_dir:
@@ -144,9 +144,9 @@ def _prune_catalog_rows(request: JobRequest | None, job_dir: Path) -> None:
                 normalized_row_run_dir = os.path.normcase(os.path.normpath(str(Path(row_run_dir).resolve())))
             except Exception:
                 normalized_row_run_dir = os.path.normcase(os.path.normpath(row_run_dir))
-        same_job = bool(target_job_id) and row_job_id.lower() == target_job_id.lower()
+        same_run = bool(target_run_id) and row_run_id.lower() == target_run_id.lower()
         same_run_dir = bool(normalized_row_run_dir) and normalized_row_run_dir == target_run_dir
-        if same_job or same_run_dir:
+        if same_run or same_run_dir:
             removed_any = True
             continue
         kept_lines.append(line)
@@ -164,11 +164,11 @@ def _prune_catalog_rows(request: JobRequest | None, job_dir: Path) -> None:
         pass
 
 
-def _delete_job_dir(job_dir: Path, request: JobRequest | None = None) -> None:
+def _delete_run_dir(run_dir: Path, request: RunRequest | None = None) -> None:
     if request is not None:
-        _prune_catalog_rows(request, job_dir)
+        _prune_catalog_rows(request, run_dir)
         _delete_upload_directories(request)
-    shutil.rmtree(job_dir, ignore_errors=True)
+    shutil.rmtree(run_dir, ignore_errors=True)
 
 
 def _resolve_duplicate_artifact_path(duplicate: dict[str, Any] | None) -> Path | None:
@@ -195,34 +195,34 @@ def _resolve_duplicate_artifact_path(duplicate: dict[str, Any] | None) -> Path |
     return None
 
 
-def _load_request(job_dir: Path) -> JobRequest:
-    return JobRequest.from_dict(read_json(_request_path(job_dir)))
+def _load_request(run_dir: Path) -> RunRequest:
+    return RunRequest.from_dict(read_json(_request_path(run_dir)))
 
 
-def _load_status(job_dir: Path) -> JobStatus:
-    path = _status_path(job_dir)
+def _load_status(run_dir: Path) -> RunStatus:
+    path = _status_path(run_dir)
     if not path.exists():
-        return JobStatus(job_id=job_dir.name, updated_at=now_iso())
-    return JobStatus(**read_json(path))
+        return RunStatus(run_id=run_dir.name, updated_at=now_iso())
+    return RunStatus.from_dict(read_json(path))
 
 
-def _write_status(job_dir: Path, status: JobStatus) -> None:
+def _write_status(run_dir: Path, status: RunStatus) -> None:
     status.updated_at = now_iso()
-    write_json_atomic(_status_path(job_dir), status.to_dict())
+    write_json_atomic(_status_path(run_dir), status.to_dict())
 
 
-def _write_result(job_dir: Path, result: JobResult) -> None:
-    write_json_atomic(_result_path(job_dir), result.to_dict())
+def _write_result(run_dir: Path, result: RunResult) -> None:
+    write_json_atomic(_result_path(run_dir), result.to_dict())
 
 
-def _write_manifest(job_dir: Path, job_id: str, items: list[ManifestItem]) -> None:
+def _write_manifest(run_dir: Path, run_id: str, items: list[ManifestItem]) -> None:
     payload = {
         "schema_version": 1,
-        "job_id": job_id,
+        "run_id": run_id,
         "generated_at": now_iso(),
         "items": [item.to_dict() for item in items],
     }
-    write_json_atomic(_manifest_path(job_dir), payload)
+    write_json_atomic(_manifest_path(run_dir), payload)
 
 
 def _preflight_skip_warning_text(status: str, count: int) -> str | None:
@@ -238,14 +238,14 @@ def _preflight_skip_warning_text(status: str, count: int) -> str | None:
     return None
 
 
-def _acquire_job_lock(job_dir: Path) -> bool:
-    lock_path = _lock_path(job_dir)
+def _acquire_run_lock(run_dir: Path) -> bool:
+    lock_path = _lock_path(run_dir)
     while True:
         try:
             fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             break
         except FileExistsError:
-            if not _job_lock_is_stale(job_dir):
+            if not _run_lock_is_stale(run_dir):
                 return False
             try:
                 lock_path.unlink(missing_ok=True)
@@ -271,9 +271,9 @@ def _acquire_job_lock(job_dir: Path) -> bool:
     return True
 
 
-def _release_job_lock(job_dir: Path) -> None:
+def _release_run_lock(run_dir: Path) -> None:
     try:
-        _lock_path(job_dir).unlink(missing_ok=True)
+        _lock_path(run_dir).unlink(missing_ok=True)
     except Exception:
         pass
 
@@ -294,17 +294,17 @@ def _parse_iso_timestamp(value: str | None) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
-def _job_lock_is_stale(job_dir: Path) -> bool:
-    lock_path = _lock_path(job_dir)
+def _run_lock_is_stale(run_dir: Path) -> bool:
+    lock_path = _lock_path(run_dir)
     if not lock_path.exists():
         return False
-    status = _load_status(job_dir)
+    status = _load_status(run_dir)
     if str(status.state or "").lower() != "running":
         return True
     updated_at = _parse_iso_timestamp(status.updated_at or status.started_at)
     if updated_at is None:
         return True
-    return datetime.now(timezone.utc) - updated_at > _JOB_LOCK_STALE_AFTER
+    return datetime.now(timezone.utc) - updated_at > _RUN_LOCK_STALE_AFTER
 
 
 def _estimate_remaining(
@@ -443,13 +443,13 @@ def _completed_progress_percent(
     return round(5.0 + (90.0 * completed_fraction), 1)
 
 
-def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
+def _write_support_docs(run_dir: Path, request: RunRequest) -> None:
     vad_config = vad_config_for_profile(request.vad_profile)
     run_info = "\n".join(
         [
             "# Run Info",
             "",
-            f"- Run ID: `{request.job_id}`",
+            f"- Run ID: `{request.run_id}`",
             f"- Created At: `{request.created_at}`",
             f"- Profile: `{request.profile}`",
             f"- Compute Mode: `{request.compute_mode}`",
@@ -495,9 +495,9 @@ def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
             "",
         ]
     )
-    write_text(job_dir / "RUN_INFO.md", run_info)
-    write_text(job_dir / "CONVERSION_INFO.md", conversion_info)
-    write_text(job_dir / "NOTICE.md", notice)
+    write_text(run_dir / "RUN_INFO.md", run_info)
+    write_text(run_dir / "CONVERSION_INFO.md", conversion_info)
+    write_text(run_dir / "NOTICE.md", notice)
 
 
 def _resolve_input_path(item: Any) -> Path:
@@ -603,15 +603,15 @@ def _artifact_entry(
 
 def _process_one_item(
     *,
-    job_dir: Path,
-    request: JobRequest,
+    run_dir: Path,
+    request: RunRequest,
     item: Any,
     manifest_item: ManifestItem,
     on_stage: Callable[[str, str], None] | None = None,
     ensure_not_delete_requested: Callable[[str | None], None] | None = None,
 ) -> list[str]:
     source_path = _resolve_input_path(item)
-    media_dir = ensure_dir(job_dir / "media" / str(manifest_item.media_id))
+    media_dir = ensure_dir(run_dir / "media" / str(manifest_item.media_id))
     source_dir = ensure_dir(media_dir / "source")
     segments_dir = ensure_dir(media_dir / "segments")
     raw_dir = ensure_dir(media_dir / "ai-raw")
@@ -908,9 +908,9 @@ def _build_speaker_acoustic_units_timeline(
     }
 
 
-def _job_sources_accessible(job_dir: Path) -> bool:
+def _run_sources_accessible(run_dir: Path) -> bool:
     try:
-        request = _load_request(job_dir)
+        request = _load_request(run_dir)
     except Exception:
         return False
     return all(_resolve_input_path(item).exists() for item in request.input_items)
@@ -923,28 +923,28 @@ def _make_media_id(item: Any, file_hash: str) -> str:
     return f"{stem}-{suffix or short_id()}"
 
 
-def _collect_pending_jobs() -> list[Path]:
-    return _collect_jobs_by_state("pending")
+def _collect_pending_runs() -> list[Path]:
+    return _collect_runs_by_state("pending")
 
 
-def _collect_running_jobs() -> list[Path]:
-    return _collect_jobs_by_state("running")
+def _collect_running_runs() -> list[Path]:
+    return _collect_runs_by_state("running")
 
 
-def _claim_recoverable_running_job() -> tuple[Path | None, bool]:
-    running_jobs = _collect_running_jobs()
-    for candidate in running_jobs:
-        if not _job_lock_is_stale(candidate):
+def _claim_recoverable_running_run() -> tuple[Path | None, bool]:
+    running_runs = _collect_running_runs()
+    for candidate in running_runs:
+        if not _run_lock_is_stale(candidate):
             continue
-        if not _job_sources_accessible(candidate):
+        if not _run_sources_accessible(candidate):
             continue
-        if not _acquire_job_lock(candidate):
+        if not _acquire_run_lock(candidate):
             continue
         return candidate, True
-    return None, bool(running_jobs)
+    return None, bool(running_runs)
 
 
-def _collect_jobs_by_state(*states: str) -> list[Path]:
+def _collect_runs_by_state(*states: str) -> list[Path]:
     target_states = {state.lower() for state in states}
     settings = load_settings()
     rows: list[Path] = []
@@ -954,9 +954,8 @@ def _collect_jobs_by_state(*states: str) -> list[Path]:
         root_path = Path(str(root.get("path") or ""))
         if not root_path.exists():
             continue
-        job_dirs = list(root_path.glob("job-*"))
-        job_dirs.extend(root_path.glob("run-*"))
-        for candidate in sorted({item.resolve(): item for item in job_dirs}.values()):
+        run_dirs = list(root_path.glob("run-*"))
+        for candidate in sorted({item.resolve(): item for item in run_dirs}.values()):
             if not candidate.is_dir():
                 continue
             if _delete_requested(candidate):
@@ -968,45 +967,45 @@ def _collect_jobs_by_state(*states: str) -> list[Path]:
                 rows.append(candidate)
     return rows
 
-def process_job(job_dir: Path | None = None) -> bool:
+def process_run(run_dir: Path | None = None) -> bool:
     lock_acquired = False
     delete_requested = False
-    if job_dir is None:
-        running_job_dir, has_running_jobs = _claim_recoverable_running_job()
-        if running_job_dir is not None:
-            job_dir = running_job_dir
+    if run_dir is None:
+        running_run_dir, has_running_runs = _claim_recoverable_running_run()
+        if running_run_dir is not None:
+            run_dir = running_run_dir
             lock_acquired = True
         else:
-            if has_running_jobs:
+            if has_running_runs:
                 return False
-            pending = _collect_pending_jobs()
+            pending = _collect_pending_runs()
             if not pending:
                 return False
-            job_dir = None
+            run_dir = None
             for candidate in pending:
-                if not _job_sources_accessible(candidate):
+                if not _run_sources_accessible(candidate):
                     continue
-                if not _acquire_job_lock(candidate):
+                if not _acquire_run_lock(candidate):
                     continue
-                job_dir = candidate
+                run_dir = candidate
                 lock_acquired = True
                 break
-            if job_dir is None:
+            if run_dir is None:
                 return False
 
-    job_dir = job_dir.resolve()
-    if not _request_path(job_dir).exists():
+    run_dir = run_dir.resolve()
+    if not _request_path(run_dir).exists():
         return False
-    if not lock_acquired and not _acquire_job_lock(job_dir):
+    if not lock_acquired and not _acquire_run_lock(run_dir):
         return False
     lock_acquired = True
 
-    log_path = _job_log_path(job_dir)
-    request = _load_request(job_dir)
-    _raise_if_delete_requested(job_dir, "queued")
-    _write_support_docs(job_dir, request)
-    status = JobStatus(
-        job_id=request.job_id,
+    log_path = _run_log_path(run_dir)
+    request = _load_request(run_dir)
+    _raise_if_delete_requested(run_dir, "queued")
+    _write_support_docs(run_dir, request)
+    status = RunStatus(
+        run_id=request.run_id,
         state="running",
         current_stage="preflight",
         message="Preparing run.",
@@ -1014,10 +1013,10 @@ def process_job(job_dir: Path | None = None) -> bool:
         progress_percent=1.0 if request.input_items else 0.0,
         started_at=now_iso(),
     )
-    result = JobResult(
-        job_id=request.job_id,
+    result = RunResult(
+        run_id=request.run_id,
         state="running",
-        run_dir=str(job_dir),
+        run_dir=str(run_dir),
         output_root_id=request.output_root_id,
         output_root_path=request.output_root_path,
     )
@@ -1030,14 +1029,14 @@ def process_job(job_dir: Path | None = None) -> bool:
     preflight_skip_counts: Counter[str] = Counter()
 
     def ensure_not_delete_requested(stage_name: str | None = None) -> None:
-        _raise_if_delete_requested(job_dir, stage_name)
+        _raise_if_delete_requested(run_dir, stage_name)
 
     try:
-        _write_status(job_dir, status)
-        _write_result(job_dir, result)
-        append_log(log_path, f"[{now_iso()}] Starting run {request.job_id}")
+        _write_status(run_dir, status)
+        _write_result(run_dir, result)
+        append_log(log_path, f"[{now_iso()}] Starting run {request.run_id}")
         for index, input_item in enumerate(request.input_items, start=1):
-            _raise_if_delete_requested(job_dir, "preflight")
+            _raise_if_delete_requested(run_dir, "preflight")
             status.current_media = input_item.display_name
             status.message = (
                 f"Preflight {index}/{len(request.input_items)}: {input_item.display_name}"
@@ -1052,7 +1051,7 @@ def process_job(job_dir: Path | None = None) -> bool:
                 preflight_fraction=index / max(len(request.input_items), 1),
                 total_items=max(len(request.input_items), 1),
             )
-            _write_status(job_dir, status)
+            _write_status(run_dir, status)
             source_path = _resolve_input_path(input_item)
             try:
                 file_hash = sha256_file(source_path)
@@ -1089,8 +1088,8 @@ def process_job(job_dir: Path | None = None) -> bool:
                 )
                 preflight_skip_counts["skipped_invalid"] += 1
                 status.videos_skipped += 1
-                _write_manifest(job_dir, request.job_id, manifest_items)
-                _write_status(job_dir, status)
+                _write_manifest(run_dir, request.run_id, manifest_items)
+                _write_status(run_dir, status)
                 continue
             media_duration_seconds = float(media_probe["duration_seconds"])
             if media_duration_seconds < _MIN_PREPROCESS_DURATION_SEC:
@@ -1130,8 +1129,8 @@ def process_job(job_dir: Path | None = None) -> bool:
                 )
                 preflight_skip_counts["skipped_too_short"] += 1
                 status.videos_skipped += 1
-                _write_manifest(job_dir, request.job_id, manifest_items)
-                _write_status(job_dir, status)
+                _write_manifest(run_dir, request.run_id, manifest_items)
+                _write_status(run_dir, status)
                 continue
             duplicate = catalog.get(
                 catalog_key(
@@ -1201,12 +1200,12 @@ def process_job(job_dir: Path | None = None) -> bool:
         status.current_media = None
         status.message = "Preflight completed."
         status.progress_percent = 5.0 if manifest_items else 0.0
-        _write_manifest(job_dir, request.job_id, manifest_items)
-        _write_status(job_dir, status)
+        _write_manifest(run_dir, request.run_id, manifest_items)
+        _write_status(run_dir, status)
         append_log(log_path, f"[{now_iso()}] Preflight complete for {len(manifest_items)} item(s).")
         eta_predictor = build_eta_predictor(
             output_root=Path(request.output_root_path),
-            current_job_id=request.job_id,
+            current_run_id=request.run_id,
             compute_mode=request.compute_mode,
         )
         append_log(
@@ -1219,7 +1218,7 @@ def process_job(job_dir: Path | None = None) -> bool:
         for index, (input_item, manifest_item) in enumerate(
             zip(request.input_items, manifest_items, strict=False), start=1
         ):
-            _raise_if_delete_requested(job_dir, "extract_audio")
+            _raise_if_delete_requested(run_dir, "extract_audio")
             if manifest_item.status in _PREFLIGHT_SKIPPED_STATUSES:
                 append_log(
                     log_path,
@@ -1242,7 +1241,7 @@ def process_job(job_dir: Path | None = None) -> bool:
                 total_items=max(len(manifest_items), 1),
                 completed_items=status.videos_done + status.videos_skipped + status.videos_failed,
             )
-            _write_status(job_dir, status)
+            _write_status(run_dir, status)
 
             if manifest_item.duplicate_status == "duplicate_skip":
                 manifest_item.status = "skipped_duplicate"
@@ -1273,8 +1272,8 @@ def process_job(job_dir: Path | None = None) -> bool:
                     current_item_index=None,
                     current_item_elapsed_sec=0.0,
                 )
-                _write_manifest(job_dir, request.job_id, manifest_items)
-                _write_status(job_dir, status)
+                _write_manifest(run_dir, request.run_id, manifest_items)
+                _write_status(run_dir, status)
                 append_log(log_path, f"[{now_iso()}] Skipped duplicate: {input_item.original_path}")
                 continue
 
@@ -1355,13 +1354,13 @@ def process_job(job_dir: Path | None = None) -> bool:
                         current_stage_name=stage_name,
                         current_stage_elapsed_sec=current_stage_elapsed,
                     )
-                    _write_status(job_dir, status)
+                    _write_status(run_dir, status)
 
             heartbeat_thread = threading.Thread(target=heartbeat, daemon=True)
             heartbeat_thread.start()
 
             def stage_update(stage_name: str, message: str) -> None:
-                _raise_if_delete_requested(job_dir, stage_name)
+                _raise_if_delete_requested(run_dir, stage_name)
                 now_value = monotonic()
                 with heartbeat_lock:
                     previous_stage_name = str(heartbeat_state["stage_name"])
@@ -1430,12 +1429,12 @@ def process_job(job_dir: Path | None = None) -> bool:
                     current_stage_name=stage_name,
                     current_stage_elapsed_sec=current_stage_elapsed,
                 )
-                _write_status(job_dir, status)
+                _write_status(run_dir, status)
                 append_log(log_path, f"[{now_iso()}] {stage_name}: {input_item.original_path}")
 
             try:
                 item_warnings = _process_one_item(
-                    job_dir=job_dir,
+                    run_dir=run_dir,
                     request=request,
                     item=input_item,
                     manifest_item=manifest_item,
@@ -1450,8 +1449,8 @@ def process_job(job_dir: Path | None = None) -> bool:
                 completed_items.append(manifest_item)
                 appended_catalog_rows.append(
                     {
-                        "job_id": request.job_id,
-                        "run_dir": str(job_dir),
+                        "run_id": request.run_id,
+                        "run_dir": str(run_dir),
                         "audio_id": manifest_item.media_id,
                         "source_hash": manifest_item.sha256,
                         "conversion_signature": manifest_item.conversion_signature,
@@ -1466,7 +1465,7 @@ def process_job(job_dir: Path | None = None) -> bool:
                 )
                 status.videos_done += 1
                 append_log(log_path, f"[{now_iso()}] Completed: {input_item.original_path}")
-            except JobDeletionRequested:
+            except RunDeletionRequested:
                 raise
             except Exception as exc:
                 manifest_item.status = "failed"
@@ -1504,13 +1503,13 @@ def process_job(job_dir: Path | None = None) -> bool:
                 current_item_index=None,
                 current_item_elapsed_sec=0.0,
             )
-            _write_manifest(job_dir, request.job_id, manifest_items)
-            _write_status(job_dir, status)
+            _write_manifest(run_dir, request.run_id, manifest_items)
+            _write_status(run_dir, status)
 
         if appended_catalog_rows:
             append_catalog_rows(Path(request.output_root_path), appended_catalog_rows)
 
-        _raise_if_delete_requested(job_dir, "finalize")
+        _raise_if_delete_requested(run_dir, "finalize")
         status.current_media = None
         status.current_media_elapsed_sec = 0.0
         status.current_stage_elapsed_sec = 0.0
@@ -1524,7 +1523,7 @@ def process_job(job_dir: Path | None = None) -> bool:
         result.batch_count = 0
         result.timeline_index_path = None
         result.warnings = warnings
-        _write_result(job_dir, result)
+        _write_result(run_dir, result)
 
         status.state = "failed" if has_failures else "completed"
         status.current_stage = "failed" if has_failures else "completed"
@@ -1536,18 +1535,18 @@ def process_job(job_dir: Path | None = None) -> bool:
         status.estimated_remaining_sec = 0.0
         status.progress_percent = 100.0
         status.completed_at = now_iso()
-        _write_status(job_dir, status)
+        _write_status(run_dir, status)
         append_log(
             log_path,
-            f"[{now_iso()}] Job {'finished with errors' if has_failures else 'completed'} with {status.videos_done} processed, {status.videos_skipped} skipped, {status.videos_failed} failed.",
+            f"[{now_iso()}] Run {'finished with errors' if has_failures else 'completed'} with {status.videos_done} processed, {status.videos_skipped} skipped, {status.videos_failed} failed.",
         )
         return True
-    except JobDeletionRequested as exc:
+    except RunDeletionRequested as exc:
         delete_requested = True
-        append_log(log_path, f"[{now_iso()}] Job canceled for deletion: {exc}")
+        append_log(log_path, f"[{now_iso()}] Run canceled for deletion: {exc}")
         status.state = "canceled"
         status.current_stage = "canceled"
-        status.message = "Deletion requested. Job canceled."
+        status.message = "Deletion requested. Run canceled."
         status.warnings = warnings
         status.current_media = None
         status.current_media_elapsed_sec = 0.0
@@ -1555,16 +1554,16 @@ def process_job(job_dir: Path | None = None) -> bool:
         status.estimated_remaining_sec = 0.0
         status.progress_percent = max(status.progress_percent, 1.0)
         status.completed_at = now_iso()
-        _write_status(job_dir, status)
+        _write_status(run_dir, status)
         result.state = "canceled"
         result.processed_count = status.videos_done
         result.skipped_count = status.videos_skipped
         result.error_count = status.videos_failed
         result.warnings = warnings
-        _write_result(job_dir, result)
+        _write_result(run_dir, result)
         return True
     except Exception as exc:
-        append_log(log_path, f"[{now_iso()}] Job failed: {exc}")
+        append_log(log_path, f"[{now_iso()}] Run failed: {exc}")
         append_log(log_path, traceback.format_exc())
         status.state = "failed"
         status.current_stage = "failed"
@@ -1573,16 +1572,16 @@ def process_job(job_dir: Path | None = None) -> bool:
         status.current_stage_elapsed_sec = 0.0
         status.progress_percent = max(status.progress_percent, 1.0)
         status.completed_at = now_iso()
-        _write_status(job_dir, status)
+        _write_status(run_dir, status)
         result.state = "failed"
         result.processed_count = status.videos_done
         result.skipped_count = status.videos_skipped
         result.error_count = status.videos_failed + 1
         result.warnings = warnings + [tail_text(log_path, max_lines=30)]
-        _write_result(job_dir, result)
+        _write_result(run_dir, result)
         return True
     finally:
         if lock_acquired:
-            _release_job_lock(job_dir)
+            _release_run_lock(run_dir)
         if delete_requested:
-            _delete_job_dir(job_dir, request)
+            _delete_run_dir(run_dir, request)

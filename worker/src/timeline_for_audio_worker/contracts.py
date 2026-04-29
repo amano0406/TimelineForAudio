@@ -23,9 +23,9 @@ class InputItem:
 
 
 @dataclass
-class JobRequest:
+class RunRequest:
     schema_version: int
-    job_id: str
+    run_id: str
     created_at: str
     output_root_id: str
     output_root_path: str
@@ -47,7 +47,7 @@ class JobRequest:
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema_version": self.schema_version,
-            "job_id": self.job_id,
+            "run_id": self.run_id,
             "created_at": self.created_at,
             "output_root_id": self.output_root_id,
             "output_root_path": self.output_root_path,
@@ -69,10 +69,10 @@ class JobRequest:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "JobRequest":
+    def from_dict(cls, payload: dict[str, Any]) -> "RunRequest":
         return cls(
             schema_version=int(payload["schema_version"]),
-            job_id=str(payload["job_id"]),
+            run_id=str(payload["run_id"]),
             created_at=str(payload["created_at"]),
             output_root_id=str(payload["output_root_id"]),
             output_root_path=str(payload["output_root_path"]),
@@ -108,9 +108,9 @@ class JobRequest:
 
 
 @dataclass
-class JobStatus:
+class RunStatus:
     schema_version: int = 1
-    job_id: str = ""
+    run_id: str = ""
     state: str = "pending"
     current_stage: str = "queued"
     message: str = ""
@@ -132,6 +132,12 @@ class JobStatus:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "RunStatus":
+        payload = dict(payload)
+        payload["run_id"] = str(payload.get("run_id") or "")
+        return cls(**payload)
 
     @property
     def videos_total(self) -> int:
@@ -183,9 +189,9 @@ class JobStatus:
 
 
 @dataclass
-class JobResult:
+class RunResult:
     schema_version: int = 1
-    job_id: str = ""
+    run_id: str = ""
     state: str = "pending"
     run_dir: str = ""
     output_root_id: str = ""
@@ -199,6 +205,12 @@ class JobResult:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "RunResult":
+        payload = dict(payload)
+        payload["run_id"] = str(payload.get("run_id") or "")
+        return cls(**payload)
 
 
 @dataclass

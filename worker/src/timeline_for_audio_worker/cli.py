@@ -10,18 +10,16 @@ from .config import AppConfig, load_config
 from .discovery import discover_audio
 from .fs_utils import now_iso
 from .runtime_guard import assert_cli_runtime_allowed
-from .vad_profile import resolve_vad_profile
-from .job_store import (
+from .run_store import (
     build_run_archive,
     app_config_from_settings,
-    create_refresh_job,
+    create_refresh_run,
     find_run_dir,
     list_runs,
     settings_snapshot,
 )
 from .settings import (
     init_settings,
-    load_huggingface_token,
     load_settings,
     save_huggingface_token,
     save_settings,
@@ -43,13 +41,9 @@ def parse_args() -> argparse.Namespace:
         "status", help="Show current settings readiness."
     )
     settings_status.add_argument("--json", action="store_true")
-    settings_save = settings_subparsers.add_parser(
-        "save", help="Save Hugging Face token and terms confirmation."
-    )
+    settings_save = settings_subparsers.add_parser("save", help="Save local settings.")
     settings_save.add_argument("--token", type=str, required=False)
-    settings_save.add_argument("--terms-confirmed", action="store_const", const=True, default=None)
     settings_save.add_argument("--compute-mode", choices=["cpu", "gpu"], required=False)
-    settings_save.add_argument("--vad-profile", choices=["default", "loose", "strict"], required=False)
     settings_save.add_argument("--json", action="store_true")
     input_root = settings_subparsers.add_parser(
         "input-root", help="Manage configured input directories."
@@ -114,7 +108,6 @@ def parse_args() -> argparse.Namespace:
     )
     refresh_parser.add_argument("--source-id", dest="source_ids", action="append", default=[])
     refresh_parser.add_argument("--output-root-id", type=str, default=None)
-    refresh_parser.add_argument("--vad-profile", choices=["default", "loose", "strict"], required=False)
     refresh_parser.add_argument("--reprocess-duplicates", action="store_true")
     refresh_parser.add_argument("--queue-only", action="store_true")
     refresh_parser.add_argument("--json", action="store_true")
@@ -172,18 +165,18 @@ def cmd_scan(config_path: Path | None, output: Path | None) -> int:
 
 
 def cmd_process_run(run_dir: Path) -> int:
-    from .processor import process_job
+    from .processor import process_run
 
-    process_job(run_dir)
+    process_run(run_dir)
     return 0
 
 
 def cmd_daemon(poll_interval: int) -> int:
-    from .processor import process_job
+    from .processor import process_run
 
     _write_worker_capabilities()
     while True:
-        found = process_job()
+        found = process_run()
         if not found:
             time.sleep(max(1, poll_interval))
     return 0
@@ -263,9 +256,7 @@ def cmd_settings_status(as_json: bool) -> int:
 
 def cmd_settings_save(
     token: str | None,
-    terms_confirmed: bool | None,
     compute_mode: str | None,
-    vad_profile: str | None,
     as_json: bool,
 ) -> int:
     settings = load_settings()
@@ -273,10 +264,6 @@ def cmd_settings_save(
         save_huggingface_token(token)
     if compute_mode is not None:
         settings["computeMode"] = compute_mode
-    if vad_profile is not None:
-        settings["vadProfile"] = resolve_vad_profile(vad_profile)
-    if terms_confirmed is not None:
-        settings["huggingfaceTermsConfirmed"] = terms_confirmed
     save_settings(settings)
     _print_payload(settings_snapshot(settings), as_json)
     return 0
@@ -387,17 +374,9 @@ def cmd_settings_output_root_set(
 
 
 def _rename_internal_id_to_run_id(payload: object) -> object:
-    if isinstance(payload, str):
-        exact_replacements = {
-            "Job completed.": "Run completed.",
-            "Job finished with errors.": "Run finished with errors.",
-            "Preparing job.": "Preparing run.",
-        }
-        return exact_replacements.get(payload, payload)
     if isinstance(payload, dict):
         renamed = {
-            ("run_id" if key == "job_id" else key): _rename_internal_id_to_run_id(value)
-            for key, value in payload.items()
+            key: _rename_internal_id_to_run_id(value) for key, value in payload.items()
         }
         return renamed
     if isinstance(payload, list):
@@ -445,18 +424,16 @@ def cmd_refresh(
     *,
     source_ids: list[str],
     output_root_id: str,
-    vad_profile: str | None,
     reprocess_duplicates: bool,
     queue_only: bool,
     as_json: bool,
 ) -> int:
     settings = load_settings()
-    run_id, run_dir, summary = create_refresh_job(
+    run_id, run_dir, summary = create_refresh_run(
         settings=settings,
         source_ids=source_ids,
         output_root_id=output_root_id,
         reprocess_duplicates=reprocess_duplicates,
-        vad_profile=vad_profile,
     )
     summary = _rename_internal_id_to_run_id(summary)
     payload: dict[str, object] = {
@@ -464,14 +441,13 @@ def cmd_refresh(
         "run_id": run_id,
         "run_dir": str(run_dir) if run_dir is not None else None,
         "artifact": "speaker-acoustic-units-timeline",
-        "vad_profile": resolve_vad_profile(vad_profile or str(settings.get("vadProfile") or "")),
         "queue_only": queue_only,
         **summary,
     }
     if run_id is not None and run_dir is not None and not queue_only:
-        from .processor import process_job
+        from .processor import process_run
 
-        process_job(run_dir)
+        process_run(run_dir)
         status = json.loads(
             (run_dir / "status.json").read_text(encoding="utf-8-sig", errors="replace")
         )
@@ -506,7 +482,7 @@ def cmd_evaluate(
     from .evaluation import (
         evaluate_turn_artifacts,
         normalize_evaluation_artifact_kind,
-        resolve_job_prediction_path,
+        resolve_run_prediction_path,
         write_evaluation_report,
     )
 
@@ -517,7 +493,7 @@ def cmd_evaluate(
             raise ValueError("Either --prediction or --run-id is required.")
         run_dir = find_run_dir(run_id)
         normalized_artifact_kind = normalize_evaluation_artifact_kind(artifact_kind)
-        prediction_path = resolve_job_prediction_path(
+        prediction_path = resolve_run_prediction_path(
             run_dir=run_dir,
             media_id=media_id,
             artifact_kind=normalized_artifact_kind,
@@ -570,12 +546,9 @@ def main() -> int:
         if args.settings_command == "status":
             return cmd_settings_status(args.json)
         if args.settings_command == "save":
-            token = args.token if args.token is not None else load_huggingface_token()
             return cmd_settings_save(
-                token,
-                args.terms_confirmed,
+                args.token,
                 args.compute_mode,
-                args.vad_profile,
                 args.json,
             )
         if args.settings_command == "input-root":
@@ -620,7 +593,6 @@ def main() -> int:
         return cmd_refresh(
             source_ids=args.source_ids,
             output_root_id=args.output_root_id,
-            vad_profile=args.vad_profile,
             reprocess_duplicates=args.reprocess_duplicates,
             queue_only=args.queue_only,
             as_json=args.json,

@@ -8,11 +8,11 @@ import zipfile
 from contextlib import contextmanager
 from pathlib import Path
 
-from timeline_for_audio_worker.job_store import (
+from timeline_for_audio_worker.run_store import (
     build_run_archive,
     collect_input_items,
-    create_job,
-    create_refresh_job,
+    create_run,
+    create_refresh_run,
     generation_signature_for_settings,
     list_runs,
     settings_snapshot,
@@ -29,7 +29,6 @@ def isolated_settings_environment(root: Path):
     previous_settings_example = os.environ.get("TIMELINE_FOR_AUDIO_SETTINGS_EXAMPLE_PATH")
     appdata_root = root / "app-data"
     appdata_root.mkdir(parents=True, exist_ok=True)
-    (appdata_root / "secrets").mkdir(parents=True, exist_ok=True)
     defaults_path = root / "runtime.defaults.json"
     defaults_path.write_text("{}", encoding="utf-8")
     os.environ["TIMELINE_FOR_AUDIO_APPDATA_ROOT"] = str(appdata_root)
@@ -57,7 +56,7 @@ def isolated_settings_environment(root: Path):
             os.environ["TIMELINE_FOR_AUDIO_SETTINGS_EXAMPLE_PATH"] = previous_settings_example
 
 
-class JobStoreTests(unittest.TestCase):
+class RunStoreTests(unittest.TestCase):
     def test_collect_input_items_supports_files_and_directories(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -74,7 +73,6 @@ class JobStoreTests(unittest.TestCase):
                 "audioExtensions": [".wav", ".mp3"],
                 "inputRoots": [],
                 "outputRoots": [{"id": "runs", "path": str(root / "runs"), "enabled": True}],
-                "huggingfaceTermsConfirmed": False,
             }
 
             items = collect_input_items(settings=settings, files=[file_a], directories=[source_dir])
@@ -104,7 +102,6 @@ class JobStoreTests(unittest.TestCase):
                     "audioExtensions": [".mp3"],
                     "inputRoots": [],
                     "outputRoots": [{"id": "runs", "path": str(mapped_root), "enabled": True}],
-                    "huggingfaceTermsConfirmed": False,
                 }
 
                 items = collect_input_items(
@@ -121,7 +118,7 @@ class JobStoreTests(unittest.TestCase):
             self.assertEqual("sample.mp3", items[0].display_name)
             self.assertEqual(r"C:\Users\amano\video\_validation-input\sample.mp3", items[0].original_path)
 
-    def test_create_refresh_job_uses_configured_input_roots(self) -> None:
+    def test_create_refresh_run_uses_configured_input_roots(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source_dir = root / "audio"
@@ -140,14 +137,13 @@ class JobStoreTests(unittest.TestCase):
                     }
                 ],
                 "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
-                "huggingfaceTermsConfirmed": False,
                 "computeMode": "cpu",
                 "uiLanguage": "ja",
             }
 
-            job_id, run_dir, summary = create_refresh_job(settings=settings)
+            run_id, run_dir, summary = create_refresh_run(settings=settings)
 
-            self.assertIsNotNone(job_id)
+            self.assertIsNotNone(run_id)
             self.assertIsNotNone(run_dir)
             self.assertEqual(1, summary["total_discovered"])
             self.assertEqual(1, summary["queued_count"])
@@ -156,7 +152,7 @@ class JobStoreTests(unittest.TestCase):
             self.assertEqual("speaker-acoustic-units-timeline", summary["artifact"])
             self.assertEqual("zipa-large-crctc-300k-onnx-v1", request["acoustic_unit_backend"])
 
-    def test_create_refresh_job_skips_unchanged_catalog_items(self) -> None:
+    def test_create_refresh_run_skips_unchanged_catalog_items(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source_dir = root / "audio"
@@ -175,14 +171,13 @@ class JobStoreTests(unittest.TestCase):
                     }
                 ],
                 "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
-                "huggingfaceTermsConfirmed": False,
                 "computeMode": "cpu",
                 "uiLanguage": "ja",
             }
             signature = generation_signature_for_settings(
                 settings=settings,
             )
-            prior_media = runs_root / "job-prior" / "media" / "media-0001" / "timeline"
+            prior_media = runs_root / "run-prior" / "media" / "media-0001" / "timeline"
             prior_media.mkdir(parents=True)
             (prior_media / "speaker-acoustic-units-timeline.json").write_text(
                 '{"turns":[]}', encoding="utf-8"
@@ -192,8 +187,8 @@ class JobStoreTests(unittest.TestCase):
             (catalog_dir / "catalog.jsonl").write_text(
                 json.dumps(
                     {
-                        "job_id": "job-prior",
-                        "run_dir": str(runs_root / "job-prior"),
+                        "run_id": "run-prior",
+                        "run_dir": str(runs_root / "run-prior"),
                         "audio_id": "media-0001",
                         "source_hash": sha256_file(audio_file),
                         "conversion_signature": signature,
@@ -206,11 +201,11 @@ class JobStoreTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            job_id, run_dir, summary = create_refresh_job(
+            run_id, run_dir, summary = create_refresh_run(
                 settings=settings,
             )
 
-            self.assertIsNone(job_id)
+            self.assertIsNone(run_id)
             self.assertIsNone(run_dir)
             self.assertEqual(1, summary["total_discovered"])
             self.assertEqual(0, summary["queued_count"])
@@ -221,7 +216,7 @@ class JobStoreTests(unittest.TestCase):
                 summary["skipped"][0]["source_file_identity"],
             )
 
-    def test_create_refresh_job_treats_renamed_same_hash_as_new_file(self) -> None:
+    def test_create_refresh_run_treats_renamed_same_hash_as_new_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source_dir = root / "audio"
@@ -240,14 +235,13 @@ class JobStoreTests(unittest.TestCase):
                     }
                 ],
                 "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
-                "huggingfaceTermsConfirmed": False,
                 "computeMode": "cpu",
                 "uiLanguage": "ja",
             }
             signature = generation_signature_for_settings(
                 settings=settings,
             )
-            prior_media = runs_root / "job-prior" / "media" / "media-0001" / "timeline"
+            prior_media = runs_root / "run-prior" / "media" / "media-0001" / "timeline"
             prior_media.mkdir(parents=True)
             (prior_media / "speaker-acoustic-units-timeline.json").write_text(
                 '{"turns":[]}', encoding="utf-8"
@@ -257,8 +251,8 @@ class JobStoreTests(unittest.TestCase):
             (catalog_dir / "catalog.jsonl").write_text(
                 json.dumps(
                     {
-                        "job_id": "job-prior",
-                        "run_dir": str(runs_root / "job-prior"),
+                        "run_id": "run-prior",
+                        "run_dir": str(runs_root / "run-prior"),
                         "audio_id": "media-0001",
                         "source_hash": sha256_file(renamed_audio),
                         "conversion_signature": signature,
@@ -271,11 +265,11 @@ class JobStoreTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            job_id, run_dir, summary = create_refresh_job(
+            run_id, run_dir, summary = create_refresh_run(
                 settings=settings,
             )
 
-            self.assertIsNotNone(job_id)
+            self.assertIsNotNone(run_id)
             self.assertIsNotNone(run_dir)
             self.assertEqual(1, summary["total_discovered"])
             self.assertEqual(1, summary["queued_count"])
@@ -286,7 +280,7 @@ class JobStoreTests(unittest.TestCase):
                 request["input_items"][0]["source_file_identity"],
             )
 
-    def test_create_job_writes_pending_contract_files(self) -> None:
+    def test_create_run_writes_pending_contract_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             runs_root = root / "runs"
@@ -295,9 +289,7 @@ class JobStoreTests(unittest.TestCase):
                     "audioExtensions": [".wav"],
                     "inputRoots": [],
                     "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
-                    "huggingfaceTermsConfirmed": True,
                     "computeMode": "gpu",
-                    "vadProfile": "loose",
                 }
                 save_settings(settings)
                 save_huggingface_token("hf_test_value")
@@ -305,20 +297,20 @@ class JobStoreTests(unittest.TestCase):
                 source_file = root / "sample.wav"
                 source_file.write_bytes(b"sample")
                 items = collect_input_items(settings=settings, files=[source_file])
-                job_id, run_dir = create_job(settings=settings, input_items=items)
+                run_id, run_dir = create_run(settings=settings, input_items=items)
 
                 self.assertTrue((run_dir / "request.json").exists())
                 self.assertTrue((run_dir / "status.json").exists())
                 self.assertTrue((run_dir / "result.json").exists())
                 request = json.loads((run_dir / "request.json").read_text(encoding="utf-8"))
-                self.assertEqual(job_id, request["job_id"])
+                self.assertEqual(run_id, request["run_id"])
                 self.assertTrue(request["token_enabled"])
                 self.assertEqual("gpu", request["compute_mode"])
-                self.assertEqual("loose", request["vad_profile"])
+                self.assertEqual("default", request["vad_profile"])
                 self.assertEqual(request["conversion_signature"], request["generation_signature"])
                 self.assertEqual("zipa-large-crctc-300k-onnx-v1", request["acoustic_unit_backend"])
 
-    def test_list_runs_returns_created_job(self) -> None:
+    def test_list_runs_returns_created_run(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             runs_root = root / "runs"
@@ -326,19 +318,18 @@ class JobStoreTests(unittest.TestCase):
                 "audioExtensions": [".wav"],
                 "inputRoots": [],
                 "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
-                "huggingfaceTermsConfirmed": False,
             }
 
             source_file = root / "sample.wav"
             source_file.write_bytes(b"sample")
             items = collect_input_items(settings=settings, files=[source_file])
-            job_id, _ = create_job(settings=settings, input_items=items)
+            run_id, _ = create_run(settings=settings, input_items=items)
 
             rows = list_runs(settings)
             self.assertEqual(1, len(rows))
-            self.assertEqual(job_id, rows[0]["job_id"])
+            self.assertEqual(run_id, rows[0]["run_id"])
 
-    def test_create_job_allows_pending_jobs_to_queue(self) -> None:
+    def test_create_run_allows_pending_runs_to_queue(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             runs_root = root / "runs"
@@ -346,7 +337,6 @@ class JobStoreTests(unittest.TestCase):
                 "audioExtensions": [".wav"],
                 "inputRoots": [],
                 "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
-                "huggingfaceTermsConfirmed": False,
             }
 
             first_file = root / "first.wav"
@@ -357,14 +347,14 @@ class JobStoreTests(unittest.TestCase):
             first_items = collect_input_items(settings=settings, files=[first_file])
             second_items = collect_input_items(settings=settings, files=[second_file])
 
-            first_job_id, _ = create_job(settings=settings, input_items=first_items)
-            second_job_id, _ = create_job(settings=settings, input_items=second_items)
+            first_run_id, _ = create_run(settings=settings, input_items=first_items)
+            second_run_id, _ = create_run(settings=settings, input_items=second_items)
 
             rows = list_runs(settings)
             self.assertEqual(2, len(rows))
-            self.assertEqual({first_job_id, second_job_id}, {row["job_id"] for row in rows})
+            self.assertEqual({first_run_id, second_run_id}, {row["run_id"] for row in rows})
 
-    def test_settings_snapshot_reports_ready_when_token_and_terms_exist(self) -> None:
+    def test_settings_snapshot_reports_ready_when_token_exists(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             with isolated_settings_environment(root):
@@ -372,14 +362,12 @@ class JobStoreTests(unittest.TestCase):
                     "audioExtensions": [".wav"],
                     "inputRoots": [],
                     "outputRoots": [{"id": "runs", "path": str(root / "runs"), "enabled": True}],
-                    "huggingfaceTermsConfirmed": True,
                 }
                 save_settings(settings)
                 save_huggingface_token("hf_test_value")
 
                 snapshot = settings_snapshot(settings)
                 self.assertTrue(snapshot["has_token"])
-                self.assertTrue(snapshot["terms_confirmed"])
                 self.assertTrue(snapshot["ready"])
 
     def test_build_run_archive_creates_zip_file(self) -> None:
@@ -390,15 +378,14 @@ class JobStoreTests(unittest.TestCase):
                 "audioExtensions": [".wav"],
                 "inputRoots": [],
                 "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
-                "huggingfaceTermsConfirmed": False,
             }
 
             source_file = root / "sample.wav"
             source_file.write_bytes(b"sample")
             items = collect_input_items(settings=settings, files=[source_file])
-            job_id, run_dir = create_job(settings=settings, input_items=items)
+            run_id, run_dir = create_run(settings=settings, input_items=items)
             (run_dir / "result.json").write_text(
-                json.dumps({"job_id": job_id, "state": "completed"}, ensure_ascii=False),
+                json.dumps({"run_id": run_id, "state": "completed"}, ensure_ascii=False),
                 encoding="utf-8",
             )
             media_dir = run_dir / "media" / "sample-12345678"
@@ -423,7 +410,7 @@ class JobStoreTests(unittest.TestCase):
                 "# Speaker Summary\n", encoding="utf-8"
             )
 
-            archive_path = build_run_archive(job_id, settings=settings)
+            archive_path = build_run_archive(run_id, settings=settings)
 
             self.assertTrue(archive_path.exists())
             self.assertEqual(".zip", archive_path.suffix)
@@ -451,15 +438,14 @@ class JobStoreTests(unittest.TestCase):
                 "audioExtensions": [".wav"],
                 "inputRoots": [],
                 "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
-                "huggingfaceTermsConfirmed": False,
             }
 
             source_file = root / "sample.wav"
             source_file.write_bytes(b"sample")
             items = collect_input_items(settings=settings, files=[source_file])
-            job_id, run_dir = create_job(settings=settings, input_items=items)
+            run_id, run_dir = create_run(settings=settings, input_items=items)
             (run_dir / "result.json").write_text(
-                json.dumps({"job_id": job_id, "state": "completed"}, ensure_ascii=False),
+                json.dumps({"run_id": run_id, "state": "completed"}, ensure_ascii=False),
                 encoding="utf-8",
             )
             media_dir = run_dir / "media" / "sample-12345678"
@@ -480,7 +466,7 @@ class JobStoreTests(unittest.TestCase):
             )
             (run_dir / "CONVERSION_INFO.md").write_text("# Conversion Info\n", encoding="utf-8")
 
-            archive_path = build_run_archive(job_id, settings=settings, artifact_kind="timeline")
+            archive_path = build_run_archive(run_id, settings=settings, artifact_kind="timeline")
 
             self.assertTrue(archive_path.exists())
             self.assertTrue(archive_path.name.endswith("-timeline.zip"))

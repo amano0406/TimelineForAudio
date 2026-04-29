@@ -163,7 +163,7 @@ class EtaPredictor:
 def build_eta_predictor(
     *,
     output_root: Path,
-    current_job_id: str,
+    current_run_id: str,
     compute_mode: str,
 ) -> EtaPredictor:
     samples: list[HistoricalSample] = []
@@ -171,11 +171,11 @@ def build_eta_predictor(
     if not output_root.exists():
         return EtaPredictor(samples, normalized_compute_mode)
 
-    job_dirs = sorted(output_root.glob("job-*")) + sorted(output_root.glob("run-*"))
+    run_dirs = sorted(output_root.glob("run-*"))
     seen_dirs: set[Path] = set()
-    for run_dir in job_dirs:
+    for run_dir in run_dirs:
         resolved = run_dir.resolve()
-        if resolved in seen_dirs or resolved.name == current_job_id or not resolved.is_dir():
+        if resolved in seen_dirs or resolved.name == current_run_id or not resolved.is_dir():
             continue
         seen_dirs.add(resolved)
 

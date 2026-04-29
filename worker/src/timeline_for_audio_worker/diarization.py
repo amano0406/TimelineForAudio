@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from .settings import load_huggingface_token, load_settings
+from .settings import load_huggingface_token
 
 _DIARIZATION_MODEL_ID = "pyannote/speaker-diarization-community-1"
 _TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD = "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"
@@ -71,16 +71,12 @@ def generate_speaker_turns(
     audio_path: Path,
     compute_mode: str | None = None,
 ) -> dict[str, Any]:
-    settings = load_settings()
     token = load_huggingface_token()
-    terms_confirmed = bool(settings.get("huggingfaceTermsConfirmed"))
     diarization_rows: list[dict[str, Any]] = []
     error: str | None = None
 
     if not token:
         error = "Hugging Face token is not configured."
-    elif not terms_confirmed:
-        error = "Hugging Face gated model terms are not confirmed."
     else:
         try:
             from pyannote.audio import Pipeline

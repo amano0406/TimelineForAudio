@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import unittest
 
-from timeline_for_audio_worker.contracts import InputItem, JobRequest
+from timeline_for_audio_worker.contracts import InputItem, RunRequest
 
 
 class ContractsTests(unittest.TestCase):
-    def test_job_request_round_trip_preserves_audio_pipeline_fields(self) -> None:
-        request = JobRequest(
+    def test_run_request_round_trip_preserves_audio_pipeline_fields(self) -> None:
+        request = RunRequest(
             schema_version=1,
-            job_id="run-123",
+            run_id="run-123",
             created_at="2026-03-23T18:00:00+09:00",
             output_root_id="default",
             output_root_path="/shared/outputs/default",
@@ -38,9 +38,9 @@ class ContractsTests(unittest.TestCase):
         )
 
         payload = request.to_dict()
-        restored = JobRequest.from_dict(payload)
+        restored = RunRequest.from_dict(payload)
 
-        self.assertEqual("run-123", restored.job_id)
+        self.assertEqual("run-123", restored.run_id)
         self.assertEqual("quality-first", restored.profile)
         self.assertEqual("gpu", restored.compute_mode)
         self.assertEqual("sig-123", payload["generation_signature"])
@@ -60,11 +60,11 @@ class ContractsTests(unittest.TestCase):
         self.assertEqual(1, len(restored.input_items))
         self.assertEqual("example.wav", restored.input_items[0].display_name)
 
-    def test_job_request_from_dict_reads_current_contract(self) -> None:
-        restored = JobRequest.from_dict(
+    def test_run_request_from_dict_reads_current_contract(self) -> None:
+        restored = RunRequest.from_dict(
             {
                 "schema_version": 1,
-                "job_id": "run-123",
+                "run_id": "run-123",
                 "created_at": "2026-03-23T18:00:00+09:00",
                 "output_root_id": "default",
                 "output_root_path": "/shared/outputs/default",
