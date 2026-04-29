@@ -67,10 +67,7 @@ def _turn_rows(payload: Any) -> list[dict[str, Any]]:
         "turns",
         "speaker_segments",
         "segments",
-        "ipa_turns",
-        "readable_text_turns",
         "diarization_turns",
-        "turns",
     ):
         value = payload.get(key)
         if isinstance(value, list):
@@ -88,15 +85,13 @@ def _normalize_acoustic_units(value: Any) -> str:
 
 
 def _row_text(row: dict[str, Any]) -> str:
-    return str(row.get("text") or row.get("readable_text") or row.get("transcript") or "")
+    return str(row.get("text") or "")
 
 
-def _row_ipa(row: dict[str, Any]) -> str:
+def _row_acoustic_units(row: dict[str, Any]) -> str:
     return str(
         row.get("acoustic_units")
         or row.get("units")
-        or row.get("ipa")
-        or row.get("phonemes")
         or ""
     )
 
@@ -204,8 +199,12 @@ def evaluate_turn_artifacts(prediction_path: Path, reference_path: Path) -> dict
 
     predicted_text = _normalize_text("".join(_row_text(row) for row in prediction_rows))
     reference_text = _normalize_text("".join(_row_text(row) for row in reference_rows))
-    predicted_units = _normalize_acoustic_units(" ".join(_row_ipa(row) for row in prediction_rows))
-    reference_units = _normalize_acoustic_units(" ".join(_row_ipa(row) for row in reference_rows))
+    predicted_units = _normalize_acoustic_units(
+        " ".join(_row_acoustic_units(row) for row in prediction_rows)
+    )
+    reference_units = _normalize_acoustic_units(
+        " ".join(_row_acoustic_units(row) for row in reference_rows)
+    )
 
     text_cer = _error_rate(predicted_text, reference_text)
     acoustic_unit_error_rate = _error_rate(predicted_units, reference_units)

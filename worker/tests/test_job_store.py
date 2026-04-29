@@ -153,7 +153,8 @@ class JobStoreTests(unittest.TestCase):
             self.assertEqual(1, summary["queued_count"])
             self.assertEqual(0, summary["skipped_count"])
             request = json.loads((Path(str(run_dir)) / "request.json").read_text(encoding="utf-8"))
-            self.assertIsNone(request["language_hint"])
+            self.assertEqual("speaker-acoustic-units-timeline", summary["artifact"])
+            self.assertEqual("zipa-large-crctc-300k-onnx-v1", request["acoustic_unit_backend"])
 
     def test_create_refresh_job_skips_unchanged_catalog_items(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -180,7 +181,6 @@ class JobStoreTests(unittest.TestCase):
             }
             signature = generation_signature_for_settings(
                 settings=settings,
-                readable_text_enabled=False,
             )
             prior_media = runs_root / "job-prior" / "media" / "media-0001" / "timeline"
             prior_media.mkdir(parents=True)
@@ -208,7 +208,6 @@ class JobStoreTests(unittest.TestCase):
 
             job_id, run_dir, summary = create_refresh_job(
                 settings=settings,
-                readable_text_enabled=False,
             )
 
             self.assertIsNone(job_id)
@@ -247,11 +246,12 @@ class JobStoreTests(unittest.TestCase):
             }
             signature = generation_signature_for_settings(
                 settings=settings,
-                readable_text_enabled=False,
             )
-            prior_media = runs_root / "job-prior" / "media" / "media-0001" / "ipa"
+            prior_media = runs_root / "job-prior" / "media" / "media-0001" / "timeline"
             prior_media.mkdir(parents=True)
-            (prior_media / "IPA.md").write_text("# IPA\n", encoding="utf-8")
+            (prior_media / "speaker-acoustic-units-timeline.json").write_text(
+                '{"turns":[]}', encoding="utf-8"
+            )
             catalog_dir = runs_root / ".timeline-for-audio"
             catalog_dir.mkdir(parents=True)
             (catalog_dir / "catalog.jsonl").write_text(
@@ -273,7 +273,6 @@ class JobStoreTests(unittest.TestCase):
 
             job_id, run_dir, summary = create_refresh_job(
                 settings=settings,
-                readable_text_enabled=False,
             )
 
             self.assertIsNotNone(job_id)
@@ -298,7 +297,7 @@ class JobStoreTests(unittest.TestCase):
                     "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
                     "huggingfaceTermsConfirmed": True,
                     "computeMode": "gpu",
-                "vadProfile": "loose",
+                    "vadProfile": "loose",
                 }
                 save_settings(settings)
                 save_huggingface_token("hf_test_value")
@@ -315,11 +314,9 @@ class JobStoreTests(unittest.TestCase):
                 self.assertEqual(job_id, request["job_id"])
                 self.assertTrue(request["token_enabled"])
                 self.assertEqual("gpu", request["compute_mode"])
-                self.assertIsNone(request["ipa_backend"])
                 self.assertEqual("loose", request["vad_profile"])
                 self.assertEqual(request["conversion_signature"], request["generation_signature"])
-                self.assertIsNone(request["language_hint"])
-                self.assertEqual("", request["context_builder_version"])
+                self.assertEqual("zipa-large-crctc-300k-onnx-v1", request["acoustic_unit_backend"])
 
     def test_list_runs_returns_created_job(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -421,18 +418,9 @@ class JobStoreTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (run_dir / "CONVERSION_INFO.md").write_text("# Conversion Info\n", encoding="utf-8")
-            (media_dir / "transcript").mkdir(parents=True)
             (media_dir / "analysis").mkdir(parents=True)
-            (media_dir / "transcript" / "pass1.md").write_text("# Pass1 Transcript\n", encoding="utf-8")
-            (media_dir / "transcript" / "pass2.md").write_text("# Pass2 Transcript\n", encoding="utf-8")
-            (media_dir / "transcript" / "context_merged.txt").write_text(
-                "known context\n", encoding="utf-8"
-            )
             (media_dir / "analysis" / "speaker_summary.md").write_text(
                 "# Speaker Summary\n", encoding="utf-8"
-            )
-            (media_dir / "analysis" / "audio_features.md").write_text(
-                "# Audio Features\n", encoding="utf-8"
             )
 
             archive_path = build_run_archive(job_id, settings=settings)
@@ -449,9 +437,6 @@ class JobStoreTests(unittest.TestCase):
                 self.assertNotIn("TRANSCRIPTION_INFO.md", names)
                 self.assertIn("timeline/2026-03-24 12-58-32.json", names)
                 self.assertNotIn("timelines/2026-03-24 12-58-32.md", names)
-                self.assertNotIn("pass1-transcripts/2026-03-24 12-58-32.md", names)
-                self.assertNotIn("pass2-transcripts/2026-03-24 12-58-32.md", names)
-                self.assertNotIn("context-docs/2026-03-24 12-58-32.txt", names)
                 readme_html = archive.read("README.html").decode("utf-8")
                 self.assertIn("CONVERSION_INFO.md", readme_html)
                 self.assertIn("timeline/2026-03-24 12-58-32.json", readme_html)
@@ -502,7 +487,6 @@ class JobStoreTests(unittest.TestCase):
             with zipfile.ZipFile(archive_path) as archive:
                 names = set(archive.namelist())
                 self.assertIn("timeline/2026-03-24 12-58-32.json", names)
-                self.assertNotIn("readable-text/2026-03-24 12-58-32.md", names)
 
 
 if __name__ == "__main__":

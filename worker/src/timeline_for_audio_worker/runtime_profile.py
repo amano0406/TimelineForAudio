@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 HIGH_QUALITY_WARNING_GPU_MEMORY_GIB = 8.0
 HIGH_QUALITY_RECOMMENDED_GPU_MEMORY_GIB = 10.0
-TRANSCRIPTION_LANGUAGE = "ja"
 
 
 @dataclass(frozen=True)
@@ -38,10 +37,6 @@ def resolve_runtime_lane(compute_mode: str | None) -> RuntimeLane:
         compute_types=("int8",),
         diarization_default_enabled=True,
     )
-
-
-def resolve_transcription_model_id() -> str:
-    return resolve_runtime_lane("cpu").model_id
 
 
 def resolve_diarization_default(compute_mode: str | None, *, token_ready: bool) -> bool:

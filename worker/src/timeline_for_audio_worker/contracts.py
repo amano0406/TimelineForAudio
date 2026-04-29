@@ -33,10 +33,8 @@ class JobRequest:
     compute_mode: str
     pipeline_version: str
     conversion_signature: str
-    transcription_backend: str
-    transcription_model_id: str
-    supplemental_context_text: str | None
-    context_builder_version: str
+    acoustic_unit_backend: str
+    acoustic_unit_model_id: str
     diarization_enabled: bool
     diarization_model_id: str | None
     vad_backend: str
@@ -44,12 +42,6 @@ class JobRequest:
     reprocess_duplicates: bool
     token_enabled: bool
     input_items: list[InputItem]
-    language_hint: str | None = None
-    reconstruction_backend: str | None = None
-    reconstruction_model_id: str | None = None
-    reconstruction_prompt_version: str | None = None
-    readable_text_enabled: bool = False
-    ipa_backend: str | None = None
     vad_profile: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -64,35 +56,21 @@ class JobRequest:
             "pipeline_version": self.pipeline_version,
             "generation_signature": self.conversion_signature,
             "conversion_signature": self.conversion_signature,
-            "acoustic_unit_backend": self.transcription_backend,
-            "acoustic_unit_model_id": self.transcription_model_id,
-            "supplemental_context_text": self.supplemental_context_text,
-            "context_builder_version": self.context_builder_version,
+            "acoustic_unit_backend": self.acoustic_unit_backend,
+            "acoustic_unit_model_id": self.acoustic_unit_model_id,
             "diarization_enabled": self.diarization_enabled,
             "diarization_model_id": self.diarization_model_id,
             "vad_backend": self.vad_backend,
             "vad_model_id": self.vad_model_id,
             "reprocess_duplicates": self.reprocess_duplicates,
             "token_enabled": self.token_enabled,
-            "language_hint": self.language_hint,
-            "reconstruction_backend": self.reconstruction_backend,
-            "reconstruction_model_id": self.reconstruction_model_id,
-            "reconstruction_prompt_version": self.reconstruction_prompt_version,
-            "readable_text_enabled": self.readable_text_enabled,
-            "ipa_backend": self.ipa_backend,
             "vad_profile": resolve_vad_profile(self.vad_profile),
             "input_items": [item.to_dict() for item in self.input_items],
         }
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "JobRequest":
-        readable_text_enabled = bool(payload.get("readable_text_enabled", False))
         return cls(
-            language_hint=(
-                str(payload["language_hint"])
-                if payload.get("language_hint") not in (None, "")
-                else None
-            ),
             schema_version=int(payload["schema_version"]),
             job_id=str(payload["job_id"]),
             created_at=str(payload["created_at"]),
@@ -104,24 +82,8 @@ class JobRequest:
             conversion_signature=str(
                 payload.get("generation_signature") or payload.get("conversion_signature") or ""
             ),
-            transcription_backend=str(
-                payload.get("acoustic_unit_backend")
-                or payload.get("transcription_backend")
-                or ""
-            ),
-            transcription_model_id=str(
-                payload.get("acoustic_unit_model_id")
-                or payload.get("transcription_model_id")
-                or ""
-            ),
-            supplemental_context_text=(
-                str(payload["supplemental_context_text"])
-                if payload.get("supplemental_context_text") not in (None, "")
-                else None
-            ),
-            context_builder_version=str(
-                payload.get("context_builder_version") or ""
-            ),
+            acoustic_unit_backend=str(payload.get("acoustic_unit_backend") or ""),
+            acoustic_unit_model_id=str(payload.get("acoustic_unit_model_id") or ""),
             diarization_enabled=bool(payload.get("diarization_enabled", False)),
             diarization_model_id=(
                 str(payload["diarization_model_id"])
@@ -133,28 +95,7 @@ class JobRequest:
             reprocess_duplicates=bool(payload["reprocess_duplicates"]),
             token_enabled=bool(payload.get("token_enabled", False)),
             input_items=[InputItem(**item) for item in payload.get("input_items", [])],
-            ipa_backend=(
-                str(payload["ipa_backend"])
-                if payload.get("ipa_backend") not in (None, "")
-                else None
-            ),
             vad_profile=resolve_vad_profile(str(payload.get("vad_profile") or "")),
-            readable_text_enabled=readable_text_enabled,
-            reconstruction_backend=(
-                str(payload["reconstruction_backend"])
-                if readable_text_enabled and payload.get("reconstruction_backend") not in (None, "")
-                else None
-            ),
-            reconstruction_model_id=(
-                str(payload["reconstruction_model_id"])
-                if readable_text_enabled and payload.get("reconstruction_model_id") not in (None, "")
-                else None
-            ),
-            reconstruction_prompt_version=(
-                str(payload["reconstruction_prompt_version"])
-                if readable_text_enabled and payload.get("reconstruction_prompt_version") not in (None, "")
-                else None
-            ),
         )
 
     @property

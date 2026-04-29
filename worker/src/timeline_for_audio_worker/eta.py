@@ -17,21 +17,17 @@ _TERMINAL_ITEM_STATES = {
 _MAX_MATCH_SCORE = 9.0
 _STAGE_ORDER = [
     "extract_audio",
-    "transcribe_cleanup_source",
-    "prepare_cleanup_context",
-    "transcribe_turns",
+    "detect_speech_candidates",
     "diarize_audio",
-    "analyze_audio",
+    "extract_acoustic_units",
     "generate_artifacts",
 ]
 _DEFAULT_STAGE_SHARES = {
     "extract_audio": 0.12,
-    "transcribe_cleanup_source": 0.30,
-    "prepare_cleanup_context": 0.08,
-    "transcribe_turns": 0.28,
-    "diarize_audio": 0.10,
-    "analyze_audio": 0.12,
-    "generate_artifacts": 0.04,
+    "detect_speech_candidates": 0.10,
+    "diarize_audio": 0.30,
+    "extract_acoustic_units": 0.42,
+    "generate_artifacts": 0.06,
 }
 
 

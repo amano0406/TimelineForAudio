@@ -20,15 +20,8 @@ from .acoustic_units import (
     best_speaker_for_interval,
     generate_acoustic_unit_turns,
 )
-from .audio_features import build_speaker_count_metadata
-from .artifacts import (
-    register_artifact,
-    render_ipa,
-    render_readable_text,
-    write_media_artifacts_index,
-)
+from .artifacts import write_media_artifacts_index
 from .catalog import append_catalog_rows, catalog_key, catalog_path, load_catalog
-from .context_builder import CONTEXT_BUILDER_VERSION, build_context_documents
 from .contracts import JobRequest, JobResult, JobStatus, ManifestItem
 from .diarization import generate_speaker_turns
 from .eta import build_eta_predictor, estimate_remaining_seconds
@@ -45,7 +38,6 @@ from .fs_utils import (
     write_text,
 )
 from .hashing import sha256_file
-from .reconstruction import ReconstructionResult
 from .settings import configured_path, load_settings, uploads_root
 from .vad_profile import vad_config_for_profile
 
@@ -353,22 +345,16 @@ def _stage_expected_seconds(stage_name: str, media_duration_sec: float, compute_
     safe_duration = max(1.0, media_duration_sec)
     if stage_name == "extract_audio":
         return max(1.5, min(25.0, safe_duration * 0.06))
-    if stage_name == "transcribe_cleanup_source":
-        factor = 0.18 if compute_mode == "gpu" else 0.90
-        ceiling = 150.0 if compute_mode == "gpu" else 720.0
-        return max(4.0, min(ceiling, safe_duration * factor))
-    if stage_name == "prepare_cleanup_context":
-        return max(1.0, min(12.0, safe_duration * 0.03))
-    if stage_name == "transcribe_turns":
-        factor = 0.22 if compute_mode == "gpu" else 1.10
-        ceiling = 160.0 if compute_mode == "gpu" else 840.0
-        return max(4.0, min(ceiling, safe_duration * factor))
+    if stage_name == "detect_speech_candidates":
+        return max(1.0, min(30.0, safe_duration * 0.08))
     if stage_name == "diarize_audio":
         factor = 0.10 if compute_mode == "gpu" else 0.45
         ceiling = 120.0 if compute_mode == "gpu" else 480.0
         return max(2.0, min(ceiling, safe_duration * factor))
-    if stage_name == "analyze_audio":
-        return max(2.0, min(120.0, safe_duration * 0.12))
+    if stage_name == "extract_acoustic_units":
+        factor = 0.18 if compute_mode == "gpu" else 0.90
+        ceiling = 180.0 if compute_mode == "gpu" else 720.0
+        return max(4.0, min(ceiling, safe_duration * factor))
     if stage_name == "generate_artifacts":
         return max(1.0, min(15.0, safe_duration * 0.03))
     if stage_name == "llm_export":
@@ -491,7 +477,7 @@ def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
             f"- Pipeline version: `{request.pipeline_version}`",
             f"- Generation signature: `{request.generation_signature}`",
             "- Notes:",
-            "  - TimelineForAudio does not interpret meaning or reconstruct readable text.",
+            "  - TimelineForAudio does not interpret meaning or restore readable text.",
             "  - The primary artifact is `timeline/speaker-acoustic-units-timeline.json`.",
             "  - Timestamps are mapped back to the original audio timeline.",
             "  - Speaker labels are mechanical labels such as `SPEAKER_00`; identities are not inferred.",
@@ -502,7 +488,7 @@ def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
         [
             "# Notice",
             "",
-            "- This run is optimized for local processing, not cloud transcription.",
+            "- This run is optimized for local processing, not cloud text generation.",
             "- Model downloads may happen on first use and are cached afterward.",
             "- Speaker diarization is required. If pyannote prerequisites are missing, the item fails instead of producing fallback speaker labels.",
             "- Timeline timestamps are based on the original audio time.",
@@ -673,23 +659,14 @@ def _process_one_item(
     if ensure_not_delete_requested:
         ensure_not_delete_requested("diarize_audio")
 
-    speaker_metadata = build_speaker_count_metadata(
-        {
-            "diarization_used": True,
-            "speaker_count": len(
-                {
-                    str(turn.get("speaker") or "").strip()
-                    for turn in speaker_payload.get("turns", [])
-                    if str(turn.get("speaker") or "").strip()
-                }
-            ),
-            "speaker_turns": speaker_payload.get("turns", []),
-        },
-        {"diarization_used": True},
-    )
-    manifest_item.speaker_count = speaker_metadata["speaker_count"]
-    manifest_item.speaker_count_status = speaker_metadata["speaker_count_status"]
-    manifest_item.speaker_count_note = speaker_metadata["speaker_count_note"]
+    speaker_labels = {
+        str(turn.get("speaker") or "").strip()
+        for turn in speaker_payload.get("turns", [])
+        if str(turn.get("speaker") or "").strip()
+    }
+    manifest_item.speaker_count = len(speaker_labels) or None
+    manifest_item.speaker_count_status = "confirmed" if speaker_labels else "unavailable"
+    manifest_item.speaker_count_note = None if speaker_labels else "No speaker turns were available."
 
     if on_stage:
         on_stage("extract_acoustic_units", "Extracting acoustic units.")
@@ -987,609 +964,6 @@ def _collect_jobs_by_state(*states: str) -> list[Path]:
             if status.state.lower() in target_states:
                 rows.append(candidate)
     return rows
-def _process_one_item_legacy(
-    *,
-    job_dir: Path,
-    request: JobRequest,
-    item: Any,
-    manifest_item: ManifestItem,
-    on_stage: Callable[[str, str], None] | None = None,
-    ensure_not_delete_requested: Callable[[str | None], None] | None = None,
-) -> list[str]:
-    source_path = _resolve_input_path(item)
-    media_dir = ensure_dir(job_dir / "media" / str(manifest_item.media_id))
-    audio_dir = ensure_dir(media_dir / "audio")
-    ai_raw_dir = ensure_dir(media_dir / "ai-raw")
-    transcript_dir = ensure_dir(media_dir / "transcript")
-    analysis_dir = ensure_dir(media_dir / "analysis")
-    debug_ipa_dir = ensure_dir(media_dir / "debug" / "text-derived-ipa")
-    ipa_dir = ensure_dir(media_dir / "ipa")
-    readable_text_dir = media_dir / "readable-text"
-
-    source_info = {
-        "job_id": request.job_id,
-        "audio_id": manifest_item.media_id,
-        "input_id": item.input_id,
-        "source_kind": item.source_kind,
-        "source_id": item.source_id,
-        "source_relative_path": getattr(item, "source_relative_path", None),
-        "source_file_identity": getattr(item, "source_file_identity", None),
-        "original_path": item.original_path,
-        "resolved_path": str(source_path),
-        "display_name": item.display_name,
-        "size_bytes": manifest_item.size_bytes,
-        "duration_seconds": manifest_item.duration_seconds,
-        "source_hash": manifest_item.sha256,
-        "conversion_signature": manifest_item.conversion_signature,
-        "generation_signature": manifest_item.generation_signature,
-        "recorded_at": manifest_item.captured_at,
-        "captured_at": manifest_item.captured_at,
-        "container_name": manifest_item.container_name,
-        "extension": manifest_item.extension,
-        "audio_codec": manifest_item.audio_codec,
-        "audio_channels": manifest_item.audio_channels,
-        "audio_sample_rate": manifest_item.audio_sample_rate,
-        "bitrate": manifest_item.bitrate,
-        "model_id": manifest_item.model_id,
-        "pipeline_version": manifest_item.pipeline_version,
-        "language_hint": request.language_hint,
-        "supplemental_context_configured": bool(request.supplemental_context_text),
-        "ipa_cleanup_rules_version": request.context_builder_version or CONTEXT_BUILDER_VERSION,
-        "requested_ipa_backend": request.ipa_backend,
-        "readable_text_enabled": request.readable_text_enabled,
-        "reconstruction_backend": request.reconstruction_backend,
-        "reconstruction_model_id": request.reconstruction_model_id,
-        "reconstruction_prompt_version": request.reconstruction_prompt_version,
-        "diarization_enabled": True,
-        "diarization_required": True,
-        "diarization_model_id": request.diarization_model_id,
-        "vad_backend": request.vad_backend,
-        "vad_model_id": request.vad_model_id,
-        "vad_profile": request.vad_profile,
-        "vad_parameters": vad_config_for_profile(request.vad_profile)["vad_parameters"],
-    }
-    write_json_atomic(media_dir / "source.json", source_info)
-
-    source_normalized_audio_path = audio_dir / "source-normalized.wav"
-    normalized_audio_path = audio_dir / "normalized.wav"
-
-    if ensure_not_delete_requested:
-        ensure_not_delete_requested("extract_audio")
-    if on_stage:
-        on_stage("extract_audio", "Preparing audio input.")
-    extract_audio(source_path, source_normalized_audio_path)
-    cut_map = trim_audio(
-        source_normalized_audio_path,
-        normalized_audio_path,
-        manifest_item.duration_seconds,
-        min_silence_duration_ms=int(
-            vad_config_for_profile(request.vad_profile)["vad_parameters"].get(
-                "min_silence_duration_ms",
-                500,
-            )
-        ),
-    )
-    if ensure_not_delete_requested:
-        ensure_not_delete_requested("extract_audio")
-    write_json_atomic(audio_dir / "cut_map.json", cut_map)
-    timeline_payload = write_timeline_events(
-        source_info=source_info,
-        source_name=item.display_name,
-        duration_seconds=manifest_item.duration_seconds,
-        cut_map=cut_map,
-        output_dir=analysis_dir,
-    )
-    source_info["full_timeline_audio_path"] = str(source_normalized_audio_path)
-    source_info["speech_candidate_audio_path"] = str(normalized_audio_path)
-    source_info["cut_map_path"] = "audio/cut_map.json"
-    source_info["timeline_events_path"] = "analysis/timeline_events.json"
-    source_info["speech_candidate_count"] = timeline_payload.get("speech_candidate_count", 0)
-    source_info["silence_or_noise_candidate_count"] = timeline_payload.get(
-        "silence_or_noise_candidate_count", 0
-    )
-    write_json_atomic(media_dir / "source.json", source_info)
-
-    if ensure_not_delete_requested:
-        ensure_not_delete_requested("transcribe_cleanup_source")
-    if on_stage:
-        on_stage("transcribe_cleanup_source", "Preparing IPA cleanup source.")
-    cleanup_source_payload = transcribe_audio(
-        source_name=item.display_name,
-        audio_path=normalized_audio_path,
-        transcript_dir=transcript_dir,
-        artifact_stem="cleanup-source",
-        transcript_label="cleanup_source",
-        cut_map=cut_map,
-        compute_mode=request.compute_mode,
-        initial_prompt=None,
-        diarization_enabled=False,
-        word_timestamps=False,
-        vad_profile=request.vad_profile,
-    )
-    if ensure_not_delete_requested:
-        ensure_not_delete_requested("transcribe_cleanup_source")
-
-    if on_stage:
-        on_stage("prepare_cleanup_context", "Preparing supplemental cleanup context.")
-    context_report = build_context_documents(
-        transcript_dir=transcript_dir,
-        transcript_payload=cleanup_source_payload,
-        supplemental_context_text=request.supplemental_context_text,
-    )
-    if ensure_not_delete_requested:
-        ensure_not_delete_requested("prepare_cleanup_context")
-    merged_context_path = transcript_dir / "context_merged.txt"
-    merged_context = (
-        merged_context_path.read_text(encoding="utf-8", errors="replace")
-        if merged_context_path.exists()
-        else ""
-    )
-
-    if on_stage:
-        on_stage("transcribe_turns", "Generating turn-aligned text.")
-    voice_to_text_payload = transcribe_audio(
-        source_name=item.display_name,
-        audio_path=normalized_audio_path,
-        transcript_dir=ai_raw_dir,
-        artifact_stem="voice-to-text",
-        transcript_label="voice_to_text",
-        cut_map=cut_map,
-        compute_mode=request.compute_mode,
-        initial_prompt=merged_context,
-        diarization_enabled=True,
-        word_timestamps=True,
-        vad_profile=request.vad_profile,
-    )
-    write_json_atomic(ai_raw_dir / "voice-to-text.json", voice_to_text_payload)
-    if ensure_not_delete_requested:
-        ensure_not_delete_requested("transcribe_turns")
-
-    if on_stage:
-        on_stage("diarize_audio", "Aligning speaker turns.")
-    turns_source_payload = apply_speaker_diarization(
-        source_name=item.display_name,
-        audio_path=source_normalized_audio_path,
-        transcript_dir=transcript_dir,
-        analysis_dir=analysis_dir,
-        raw_ai_dir=ai_raw_dir,
-        transcript_payload=voice_to_text_payload,
-        compute_mode=request.compute_mode,
-        artifact_stem="voice-to-text-with-speakers",
-    )
-    write_json_atomic(transcript_dir / "voice-to-text-with-speakers.json", turns_source_payload)
-    write_json_atomic(
-        analysis_dir / "speaker-assignment.json",
-        {
-            "source_name": item.display_name,
-            "diarization_used": turns_source_payload.get("diarization_used", False),
-            "diarization_error": turns_source_payload.get("diarization_error"),
-            "speaker_assignment_method": turns_source_payload.get("speaker_assignment_method"),
-            "speaker_turns": turns_source_payload.get("speaker_turns", []),
-            "speaker_segments": turns_source_payload.get("speaker_segments", []),
-            "words": turns_source_payload.get("words", []),
-        },
-    )
-    if ensure_not_delete_requested:
-        ensure_not_delete_requested("diarize_audio")
-
-    write_transcript_delta(
-        transcript_dir=transcript_dir,
-        cleanup_source_payload=cleanup_source_payload,
-        turns_source_payload=turns_source_payload,
-    )
-    if on_stage:
-        on_stage("analyze_audio", "Collecting timing and audio summaries.")
-    speaker_summary = write_speaker_summary(
-        source_name=item.display_name,
-        output_dir=analysis_dir,
-        transcript_payload=turns_source_payload,
-    )
-    speaker_count_metadata = build_speaker_count_metadata(speaker_summary, turns_source_payload)
-    manifest_item.speaker_count = speaker_count_metadata["speaker_count"]
-    manifest_item.speaker_count_status = speaker_count_metadata["speaker_count_status"]
-    manifest_item.speaker_count_note = speaker_count_metadata["speaker_count_note"]
-    audio_feature_summary = analyze_audio(
-        source_name=item.display_name,
-        audio_path=source_normalized_audio_path,
-        duration_seconds=manifest_item.duration_seconds,
-        transcript_payload=turns_source_payload,
-        output_dir=analysis_dir,
-    )
-    if ensure_not_delete_requested:
-        ensure_not_delete_requested("analyze_audio")
-    manifest_item.pause_summary = audio_feature_summary.get("pause_summary", {})
-    manifest_item.loudness_summary = audio_feature_summary.get("loudness_summary", {})
-    manifest_item.speaking_rate_summary = audio_feature_summary.get("speaking_rate_summary", {})
-    manifest_item.pitch_summary = audio_feature_summary.get("pitch_summary", {})
-    manifest_item.speaker_confidence_summary = audio_feature_summary.get(
-        "speaker_confidence_summary", {}
-    )
-    manifest_item.diarization_quality_summary = audio_feature_summary.get(
-        "diarization_quality_summary", {}
-    )
-    manifest_item.optional_voice_feature_summary = audio_feature_summary.get(
-        "optional_voice_feature_summary", {}
-    )
-    if on_stage:
-        on_stage(
-            "generate_artifacts",
-            "Writing IPA and readable text artifacts."
-            if request.readable_text_enabled
-            else "Writing IPA artifacts.",
-        )
-    audio_ipa_result = generate_audio_ipa_turns(
-        audio_path=normalized_audio_path,
-        cut_map=cut_map,
-        preferred_backend=request.ipa_backend,
-        compute_mode=request.compute_mode,
-    )
-    audio_ipa_turn_rows = [
-        {
-            "index": turn.index,
-            "start": turn.start,
-            "end": turn.end,
-            "speaker": turn.speaker,
-            "ipa": turn.ipa,
-            "confidence": getattr(turn, "confidence", None),
-        }
-        for turn in audio_ipa_result.turns
-    ]
-    render_ipa(
-        output_path=ai_raw_dir / "Voice to IPA.md",
-        source_info=source_info,
-        backend_name=audio_ipa_result.backend_name,
-        status=audio_ipa_result.status,
-        warnings=audio_ipa_result.warnings,
-        speaker_count=None,
-        speaker_count_status=None,
-        speaker_count_note=None,
-        turns=audio_ipa_turn_rows,
-    )
-    write_json_atomic(
-        ai_raw_dir / "voice-to-ipa.json",
-        {
-            "requested_backend": request.ipa_backend,
-            "backend": audio_ipa_result.backend_name,
-            "status": audio_ipa_result.status,
-            "source_type": audio_ipa_result.source_type,
-            "warning_count": len(audio_ipa_result.warnings),
-            "warnings": audio_ipa_result.warnings,
-            "turn_count": len(audio_ipa_result.turns),
-            "turns": audio_ipa_turn_rows,
-        },
-    )
-    source_info["voice_to_ipa_markdown_path"] = "ai-raw/Voice to IPA.md"
-    source_info["voice_to_ipa_path"] = "ai-raw/voice-to-ipa.json"
-    source_info["voice_to_text_path"] = "ai-raw/voice-to-text.json"
-    source_info["voice_to_text_with_speakers_path"] = "transcript/voice-to-text-with-speakers.json"
-    source_info["speaker_diarization_path"] = "ai-raw/speaker-diarization.json"
-    source_info["speaker_assignment_path"] = "analysis/speaker-assignment.json"
-
-    ipa_result = align_ipa_turns_to_speakers(
-        ipa_result=audio_ipa_result,
-        speaker_payload=turns_source_payload,
-    )
-    text_derived_ipa_result = generate_ipa_turns(
-        transcript_payload=turns_source_payload,
-        preferred_backend=request.ipa_backend,
-    )
-    if (
-        request.ipa_backend == EXPERIMENTAL_PYOPENJTALK_IPA_BACKEND
-        and text_derived_ipa_result.backend_name
-        not in {EXPERIMENTAL_PYOPENJTALK_IPA_BACKEND, "segment-ipa-passthrough"}
-    ):
-        raise RuntimeError(
-            "Requested pyopenjtalk IPA backend did not run. Install pyopenjtalk or use --ipa-backend sudachi."
-        )
-    source_info["effective_ipa_backend"] = ipa_result.backend_name
-    source_info["effective_ipa_source_type"] = ipa_result.source_type
-    source_info["text_derived_ipa_backend"] = text_derived_ipa_result.backend_name
-    source_info["text_derived_ipa_source_type"] = text_derived_ipa_result.source_type
-    source_info["text_derived_ipa_markdown_path"] = "debug/text-derived-ipa/Text Derived IPA.md"
-    source_info["text_derived_ipa_turns_path"] = "debug/text-derived-ipa/text_derived_ipa_turns.json"
-    write_json_atomic(media_dir / "source.json", source_info)
-    ipa_path = ipa_dir / "IPA.md"
-    ipa_turn_rows = [
-        {
-            "index": turn.index,
-            "start": turn.start,
-            "end": turn.end,
-            "speaker": turn.speaker,
-            "ipa": turn.ipa,
-            "confidence": getattr(turn, "confidence", None),
-        }
-        for turn in ipa_result.turns
-    ]
-    text_derived_ipa_turn_rows = [
-        {
-            "index": turn.index,
-            "start": turn.start,
-            "end": turn.end,
-            "speaker": turn.speaker,
-            "ipa": turn.ipa,
-            "confidence": getattr(turn, "confidence", None),
-        }
-        for turn in text_derived_ipa_result.turns
-    ]
-    render_ipa(
-        output_path=ipa_path,
-        source_info=source_info,
-        backend_name=ipa_result.backend_name,
-        status=ipa_result.status,
-        warnings=ipa_result.warnings,
-        speaker_count=manifest_item.speaker_count,
-        speaker_count_status=manifest_item.speaker_count_status,
-        speaker_count_note=manifest_item.speaker_count_note,
-        turns=ipa_turn_rows,
-    )
-    write_json_atomic(
-        ipa_dir / "ipa_turns.json",
-        {
-            "requested_backend": request.ipa_backend,
-            "backend": ipa_result.backend_name,
-            "status": ipa_result.status,
-            "source_type": ipa_result.source_type,
-            "warning_count": len(ipa_result.warnings),
-            "warnings": ipa_result.warnings,
-            "turn_count": len(ipa_result.turns),
-            "turns": ipa_turn_rows,
-        },
-    )
-    render_ipa(
-        output_path=debug_ipa_dir / "Text Derived IPA.md",
-        source_info=source_info,
-        backend_name=text_derived_ipa_result.backend_name,
-        status=text_derived_ipa_result.status,
-        warnings=text_derived_ipa_result.warnings,
-        speaker_count=manifest_item.speaker_count,
-        speaker_count_status=manifest_item.speaker_count_status,
-        speaker_count_note=manifest_item.speaker_count_note,
-        turns=text_derived_ipa_turn_rows,
-    )
-    write_json_atomic(
-        debug_ipa_dir / "text_derived_ipa_turns.json",
-        {
-            "requested_backend": request.ipa_backend,
-            "backend": text_derived_ipa_result.backend_name,
-            "status": text_derived_ipa_result.status,
-            "source_type": text_derived_ipa_result.source_type,
-            "warning_count": len(text_derived_ipa_result.warnings),
-            "warnings": text_derived_ipa_result.warnings,
-            "turn_count": len(text_derived_ipa_result.turns),
-            "turns": text_derived_ipa_turn_rows,
-        },
-    )
-    write_review_artifact(
-        media_dir=media_dir,
-        source_info=source_info,
-        transcript_payload=turns_source_payload,
-        ipa_turns=ipa_turn_rows,
-        preferred_backend=request.ipa_backend,
-        speaker_count=manifest_item.speaker_count,
-    )
-    readable_text_turn_count = 0
-    readable_text_warnings: list[str] = []
-    readable_text_status = "disabled"
-    readable_text_path = readable_text_dir / "Readable Text.md"
-    if request.readable_text_enabled:
-        readable_text_dir = ensure_dir(readable_text_dir)
-        if ipa_result.turns:
-            readable_text_result = reconstruct_readable_text(
-                transcript_payload=turns_source_payload,
-                ipa_result=ipa_result,
-                language_hint=request.language_hint,
-                supplemental_context_text=request.supplemental_context_text,
-                compute_mode=request.compute_mode,
-            )
-        else:
-            readable_text_result = ReconstructionResult(
-                backend_name="audio-ipa-required-readable-text-unavailable-v1",
-                status="unavailable",
-                turns=[],
-                warnings=[
-                    "Readable Text was not generated because the primary audio-to-IPA stage did not produce IPA turns."
-                ],
-                model_id=request.reconstruction_model_id,
-                prompt_version=request.reconstruction_prompt_version,
-                requested_compute_mode=request.compute_mode,
-                effective_device=None,
-                decoding=None,
-            )
-        readable_text_status = readable_text_result.status
-        readable_text_warnings = list(readable_text_result.warnings)
-        readable_text_turn_count = len(readable_text_result.turns)
-        readable_text_turn_rows = [
-            {
-                "index": turn.index,
-                "start": turn.start,
-                "end": turn.end,
-                "speaker": turn.speaker,
-                "text": turn.text,
-            }
-            for turn in readable_text_result.turns
-        ]
-        write_json_atomic(
-            readable_text_dir / "reconstruction.json",
-            {
-                "backend": readable_text_result.backend_name,
-                "status": readable_text_result.status,
-                "model_id": readable_text_result.model_id,
-                "prompt_version": readable_text_result.prompt_version,
-                "requested_compute_mode": readable_text_result.requested_compute_mode,
-                "effective_device": readable_text_result.effective_device,
-                "decoding": readable_text_result.decoding,
-                "warning_count": len(readable_text_result.warnings),
-                "warnings": readable_text_result.warnings,
-                "turn_count": len(readable_text_result.turns),
-            },
-        )
-        write_json_atomic(
-            readable_text_dir / "readable_text_turns.json",
-            {
-                "backend": readable_text_result.backend_name,
-                "status": readable_text_result.status,
-                "model_id": readable_text_result.model_id,
-                "prompt_version": readable_text_result.prompt_version,
-                "requested_compute_mode": readable_text_result.requested_compute_mode,
-                "effective_device": readable_text_result.effective_device,
-                "decoding": readable_text_result.decoding,
-                "warning_count": len(readable_text_result.warnings),
-                "warnings": readable_text_result.warnings,
-                "turn_count": len(readable_text_result.turns),
-                "turns": readable_text_turn_rows,
-            },
-        )
-        render_readable_text(
-            output_path=readable_text_path,
-            source_info=source_info,
-            turns=readable_text_turn_rows,
-            warnings=readable_text_result.warnings,
-            speaker_count=manifest_item.speaker_count,
-            speaker_count_status=manifest_item.speaker_count_status,
-            speaker_count_note=manifest_item.speaker_count_note,
-        )
-    artifacts: list[dict[str, Any]] = []
-    ipa_artifact = register_artifact(
-        media_dir=media_dir,
-        kind="ipa",
-        title="IPA",
-        display_name="IPA",
-        role="secondary"
-        if request.readable_text_enabled and readable_text_turn_count > 0 and ipa_result.turns
-        else "primary"
-        if ipa_result.turns
-        else "pending",
-        path=ipa_path,
-    )
-    if ipa_artifact is not None:
-        artifacts.append(ipa_artifact)
-    voice_to_ipa_artifact = register_artifact(
-        media_dir=media_dir,
-        kind="voice_to_ipa",
-        title="Voice to IPA",
-        display_name="Voice to IPA",
-        role="support",
-        path=ai_raw_dir / "Voice to IPA.md",
-    )
-    if voice_to_ipa_artifact is not None:
-        artifacts.append(voice_to_ipa_artifact)
-    voice_to_text_artifact = register_artifact(
-        media_dir=media_dir,
-        kind="voice_to_text",
-        title="Voice to Text",
-        display_name="Voice to Text",
-        role="support",
-        path=ai_raw_dir / "voice-to-text.json",
-    )
-    if voice_to_text_artifact is not None:
-        artifacts.append(voice_to_text_artifact)
-    voice_to_text_with_speakers_artifact = register_artifact(
-        media_dir=media_dir,
-        kind="voice_to_text_with_speakers",
-        title="Voice to Text with Speakers",
-        display_name="Voice to Text with Speakers",
-        role="support",
-        path=transcript_dir / "voice-to-text-with-speakers.json",
-    )
-    if voice_to_text_with_speakers_artifact is not None:
-        artifacts.append(voice_to_text_with_speakers_artifact)
-    speaker_diarization_artifact = register_artifact(
-        media_dir=media_dir,
-        kind="speaker_diarization",
-        title="Speaker Diarization",
-        display_name="Speaker Diarization",
-        role="support",
-        path=ai_raw_dir / "speaker-diarization.json",
-    )
-    if speaker_diarization_artifact is not None:
-        artifacts.append(speaker_diarization_artifact)
-    speaker_assignment_artifact = register_artifact(
-        media_dir=media_dir,
-        kind="speaker_assignment",
-        title="Speaker Assignment",
-        display_name="Speaker Assignment",
-        role="support",
-        path=analysis_dir / "speaker-assignment.json",
-    )
-    if speaker_assignment_artifact is not None:
-        artifacts.append(speaker_assignment_artifact)
-    timeline_events_artifact = register_artifact(
-        media_dir=media_dir,
-        kind="timeline_events",
-        title="Timeline Events",
-        display_name="Timeline Events",
-        role="support",
-        path=analysis_dir / "Timeline Events.md",
-    )
-    if timeline_events_artifact is not None:
-        artifacts.append(timeline_events_artifact)
-    review_artifact = register_artifact(
-        media_dir=media_dir,
-        kind="review",
-        title="IPA Review",
-        display_name="IPA Review",
-        role="support",
-        path=media_dir / "review" / "review.html",
-    )
-    if review_artifact is not None:
-        artifacts.append(review_artifact)
-    if request.readable_text_enabled:
-        readable_text_artifact = register_artifact(
-            media_dir=media_dir,
-            kind="readable_text",
-            title="Readable Text",
-            display_name="可読テキスト",
-            role="primary" if readable_text_turn_count > 0 else "pending",
-            path=readable_text_path,
-        )
-        if readable_text_artifact is not None:
-            artifacts.append(readable_text_artifact)
-    write_process_review_artifact(
-        media_dir=media_dir,
-        source_info=source_info,
-        cleanup_source_payload=cleanup_source_payload,
-        turns_source_payload=turns_source_payload,
-        timeline_payload=timeline_payload,
-        ipa_turns=ipa_turn_rows,
-        readable_text_enabled=request.readable_text_enabled,
-        readable_text_turn_count=readable_text_turn_count,
-    )
-    process_review_artifact = register_artifact(
-        media_dir=media_dir,
-        kind="process_review",
-        title="Processing Review",
-        display_name="Processing Review",
-        role="support",
-        path=media_dir / "review" / "process.html",
-    )
-    if process_review_artifact is not None:
-        artifacts.append(process_review_artifact)
-    write_media_artifacts_index(
-        media_dir=media_dir,
-        media_id=str(manifest_item.media_id),
-        primary_artifact_kind="readable_text"
-        if request.readable_text_enabled and readable_text_turn_count > 0
-        else "ipa",
-        artifacts=artifacts,
-    )
-    if ensure_not_delete_requested:
-        ensure_not_delete_requested("generate_artifacts")
-    warnings: list[str] = []
-    for payload in (cleanup_source_payload, turns_source_payload):
-        prefix = str(payload.get("transcript_label") or payload.get("artifact_stem") or "transcript")
-        for warning in payload.get("transcription_warnings", []) or []:
-            if str(warning).strip():
-                warnings.append(f"{prefix}: {warning}")
-        if payload.get("diarization_requested") and payload.get("diarization_error"):
-            warnings.append(f"{prefix} diarization: {payload['diarization_error']}")
-    if context_report.get("merged_context_truncated"):
-        warnings.append("prepare_cleanup_context: merged context was truncated before turn alignment.")
-    if ipa_result.status != "unavailable":
-        warnings.extend(ipa_result.warnings)
-    if request.readable_text_enabled and readable_text_status != "unavailable":
-        warnings.extend(readable_text_warnings)
-    return warnings
-
 
 def process_job(job_dir: Path | None = None) -> bool:
     lock_acquired = False
@@ -1705,8 +1079,8 @@ def process_job(job_dir: Path | None = None) -> bool:
                         source_file_identity=input_item.source_file_identity,
                         extension=source_path.suffix.lstrip(".").lower() or None,
                         diarization_enabled=request.diarization_enabled,
-                        model_id=request.transcription_model_id,
-                        model_version=request.transcription_model_id,
+                        model_id=request.acoustic_unit_model_id,
+                        model_version=request.acoustic_unit_model_id,
                         pipeline_version=request.pipeline_version,
                     )
                 )
@@ -1745,8 +1119,8 @@ def process_job(job_dir: Path | None = None) -> bool:
                         audio_sample_rate=media_probe.get("audio_sample_rate"),
                         bitrate=media_probe.get("bitrate"),
                         diarization_enabled=request.diarization_enabled,
-                        model_id=request.transcription_model_id,
-                        model_version=request.transcription_model_id,
+                        model_id=request.acoustic_unit_model_id,
+                        model_version=request.acoustic_unit_model_id,
                         pipeline_version=request.pipeline_version,
                         captured_at=media_probe.get("captured_at"),
                     )
@@ -1807,8 +1181,8 @@ def process_job(job_dir: Path | None = None) -> bool:
                     audio_sample_rate=media_probe.get("audio_sample_rate"),
                     bitrate=media_probe.get("bitrate"),
                     diarization_enabled=request.diarization_enabled,
-                    model_id=request.transcription_model_id,
-                    model_version=request.transcription_model_id,
+                    model_id=request.acoustic_unit_model_id,
+                    model_version=request.acoustic_unit_model_id,
                     pipeline_version=request.pipeline_version,
                     captured_at=media_probe.get("captured_at"),
                 )

@@ -15,19 +15,16 @@ class ContractsTests(unittest.TestCase):
             output_root_path="/shared/outputs/default",
             profile="quality-first",
             compute_mode="gpu",
-            pipeline_version="2026-04-05-mvp1",
+            pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
             conversion_signature="sig-123",
-            transcription_backend="zipa-large-crctc-300k-onnx-v1",
-            transcription_model_id="anyspeech/zipa-large-crctc-300k",
-            supplemental_context_text=None,
-            context_builder_version="",
+            acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
+            acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
             diarization_enabled=True,
             diarization_model_id="pyannote/speaker-diarization-community-1",
-            vad_backend="silero-vad",
-            vad_model_id="faster-whisper-default",
+            vad_backend="ffmpeg-silencedetect",
+            vad_model_id="ffmpeg-silencedetect-noise-35db",
             reprocess_duplicates=False,
             token_enabled=True,
-            language_hint=None,
             input_items=[
                 InputItem(
                     input_id="scan-0001",
@@ -49,24 +46,21 @@ class ContractsTests(unittest.TestCase):
         self.assertEqual("sig-123", payload["generation_signature"])
         self.assertEqual("sig-123", restored.conversion_signature)
         self.assertEqual("sig-123", restored.generation_signature)
-        self.assertIsNone(payload["ipa_backend"])
+        self.assertEqual(
+            "zipa-large-crctc-300k-onnx-v1",
+            restored.acoustic_unit_backend,
+        )
+        self.assertEqual(
+            "anyspeech/zipa-large-crctc-300k",
+            restored.acoustic_unit_model_id,
+        )
         self.assertEqual("default", payload["vad_profile"])
-        self.assertIsNone(restored.language_hint)
-        self.assertIsNone(restored.reconstruction_backend)
-        self.assertIsNone(restored.reconstruction_model_id)
-        self.assertIsNone(restored.reconstruction_prompt_version)
-        self.assertFalse(restored.readable_text_enabled)
-        self.assertIsNone(restored.ipa_backend)
-        self.assertEqual("default", restored.vad_profile)
-        self.assertIsNone(restored.supplemental_context_text)
-        self.assertEqual("", restored.context_builder_version)
-        self.assertIsNone(restored.ipa_backend)
         self.assertEqual("default", restored.vad_profile)
         self.assertTrue(restored.diarization_enabled)
         self.assertEqual(1, len(restored.input_items))
         self.assertEqual("example.wav", restored.input_items[0].display_name)
 
-    def test_job_request_from_dict_ignores_legacy_normalization_fields(self) -> None:
+    def test_job_request_from_dict_reads_current_contract(self) -> None:
         restored = JobRequest.from_dict(
             {
                 "schema_version": 1,
@@ -76,63 +70,26 @@ class ContractsTests(unittest.TestCase):
                 "output_root_path": "/shared/outputs/default",
                 "profile": "quality-first",
                 "compute_mode": "cpu",
-                "processing_quality": "standard",
-                "pipeline_version": "2026-04-10-2pass1",
+                "pipeline_version": "2026-04-29-v3-speaker-acoustic-units1",
                 "generation_signature": "sig-456",
-                "transcription_backend": "faster-whisper",
-                "transcription_model_id": "medium",
-                "supplemental_context_text": "prior terms",
-                "second_pass_enabled": True,
-                "context_builder_version": "context-builder-v2",
-                "diarization_enabled": False,
-                "vad_backend": "silero-vad",
-                "vad_model_id": "faster-whisper-default",
+                "acoustic_unit_backend": "zipa-large-crctc-300k-onnx-v1",
+                "acoustic_unit_model_id": "anyspeech/zipa-large-crctc-300k",
+                "diarization_enabled": True,
+                "diarization_model_id": "pyannote/speaker-diarization-community-1",
+                "vad_backend": "ffmpeg-silencedetect",
+                "vad_model_id": "ffmpeg-silencedetect-noise-35db",
+                "vad_profile": "loose",
                 "reprocess_duplicates": True,
                 "token_enabled": False,
-                "language_hint": "ja,en",
                 "input_items": [],
-                "transcription_initial_prompt": "legacy prompt",
-                "transcript_normalization_mode": "deterministic",
-                "transcript_normalization_glossary": "legacy glossary",
             }
         )
 
         self.assertEqual("sig-456", restored.generation_signature)
-        self.assertEqual("ja,en", restored.language_hint)
-        self.assertIsNone(restored.reconstruction_backend)
-        self.assertEqual("prior terms", restored.supplemental_context_text)
-        self.assertEqual("context-builder-v2", restored.context_builder_version)
-
-    def test_job_request_from_dict_can_disable_readable_text(self) -> None:
-        restored = JobRequest.from_dict(
-            {
-                "schema_version": 1,
-                "job_id": "run-ipa-only",
-                "created_at": "2026-04-23T10:00:00+09:00",
-                "output_root_id": "default",
-                "output_root_path": "/shared/outputs/default",
-                "profile": "quality-first",
-                "compute_mode": "gpu",
-                "pipeline_version": "2026-04-21-v2-ipa1",
-                "generation_signature": "sig-ipa-only",
-                "transcription_backend": "faster-whisper",
-                "transcription_model_id": "medium",
-                "context_builder_version": "context-builder-v2",
-                "diarization_enabled": True,
-                "vad_backend": "faster-whisper-builtin",
-                "vad_model_id": "faster-whisper-default",
-                "reprocess_duplicates": False,
-                "token_enabled": True,
-                "language_hint": "ja",
-                "readable_text_enabled": False,
-                "input_items": [],
-            }
-        )
-
-        self.assertFalse(restored.readable_text_enabled)
-        self.assertIsNone(restored.reconstruction_backend)
-        self.assertIsNone(restored.reconstruction_model_id)
-        self.assertIsNone(restored.reconstruction_prompt_version)
+        self.assertEqual("cpu", restored.compute_mode)
+        self.assertEqual("loose", restored.vad_profile)
+        self.assertEqual("zipa-large-crctc-300k-onnx-v1", restored.acoustic_unit_backend)
+        self.assertEqual("anyspeech/zipa-large-crctc-300k", restored.acoustic_unit_model_id)
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ In scope:
 
 Out of scope:
 
-- readable text reconstruction
+- readable text restoration
 - LLM calls
 - summaries
 - speaker identity inference

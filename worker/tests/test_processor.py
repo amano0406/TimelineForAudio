@@ -28,16 +28,14 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-04-10-2pass1",
+                pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
                 conversion_signature="sig-123",
-                transcription_backend="faster-whisper",
-                transcription_model_id="medium",
-                supplemental_context_text=None,
-                context_builder_version="context-builder-v2",
+                acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
+                acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
                 diarization_enabled=False,
                 diarization_model_id=None,
-                vad_backend="faster-whisper",
-                vad_model_id="faster-whisper-default",
+                vad_backend="ffmpeg-silencedetect",
+                vad_model_id="ffmpeg-silencedetect-noise-35db",
                 reprocess_duplicates=False,
                 token_enabled=False,
                 input_items=[
@@ -91,16 +89,14 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-04-10-2pass1",
+                pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
                 conversion_signature="sig-123",
-                transcription_backend="faster-whisper",
-                transcription_model_id="medium",
-                supplemental_context_text=None,
-                context_builder_version="context-builder-v2",
+                acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
+                acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
                 diarization_enabled=False,
                 diarization_model_id=None,
-                vad_backend="faster-whisper",
-                vad_model_id="faster-whisper-default",
+                vad_backend="ffmpeg-silencedetect",
+                vad_model_id="ffmpeg-silencedetect-noise-35db",
                 reprocess_duplicates=False,
                 token_enabled=False,
                 input_items=[
@@ -215,16 +211,14 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-04-10-2pass1",
+                pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
                 conversion_signature="sig-123",
-                transcription_backend="faster-whisper",
-                transcription_model_id="medium",
-                supplemental_context_text=None,
-                context_builder_version="context-builder-v2",
+                acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
+                acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
                 diarization_enabled=False,
                 diarization_model_id=None,
-                vad_backend="faster-whisper",
-                vad_model_id="faster-whisper-default",
+                vad_backend="ffmpeg-silencedetect",
+                vad_model_id="ffmpeg-silencedetect-noise-35db",
                 reprocess_duplicates=False,
                 token_enabled=False,
                 input_items=[
@@ -324,16 +318,14 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-04-10-2pass1",
+                pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
                 conversion_signature="sig-123",
-                transcription_backend="faster-whisper",
-                transcription_model_id="medium",
-                supplemental_context_text=None,
-                context_builder_version="context-builder-v2",
+                acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
+                acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
                 diarization_enabled=False,
                 diarization_model_id=None,
-                vad_backend="faster-whisper",
-                vad_model_id="faster-whisper-default",
+                vad_backend="ffmpeg-silencedetect",
+                vad_model_id="ffmpeg-silencedetect-noise-35db",
                 reprocess_duplicates=False,
                 token_enabled=False,
                 input_items=[
@@ -439,16 +431,14 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-04-10-2pass1",
+                pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
                 conversion_signature="sig-123",
-                transcription_backend="faster-whisper",
-                transcription_model_id="medium",
-                supplemental_context_text=None,
-                context_builder_version="context-builder-v2",
+                acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
+                acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
                 diarization_enabled=False,
                 diarization_model_id=None,
-                vad_backend="faster-whisper",
-                vad_model_id="faster-whisper-default",
+                vad_backend="ffmpeg-silencedetect",
+                vad_model_id="ffmpeg-silencedetect-noise-35db",
                 reprocess_duplicates=False,
                 token_enabled=False,
                 input_items=[
@@ -564,16 +554,14 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-04-10-2pass1",
+                pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
                 conversion_signature="sig-123",
-                transcription_backend="faster-whisper",
-                transcription_model_id="medium",
-                supplemental_context_text=None,
-                context_builder_version="context-builder-v2",
+                acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
+                acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
                 diarization_enabled=False,
                 diarization_model_id=None,
-                vad_backend="faster-whisper",
-                vad_model_id="faster-whisper-default",
+                vad_backend="ffmpeg-silencedetect",
+                vad_model_id="ffmpeg-silencedetect-noise-35db",
                 reprocess_duplicates=False,
                 token_enabled=False,
                 input_items=[
@@ -676,16 +664,14 @@ class ProcessorQueueTests(unittest.TestCase):
                     output_root_path=str(root),
                     profile="quality-first",
                     compute_mode="cpu",
-                    pipeline_version="2026-04-10-2pass1",
+                    pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
                     conversion_signature=f"sig-{job_id}",
-                    transcription_backend="faster-whisper",
-                    transcription_model_id="medium",
-                    supplemental_context_text=None,
-                    context_builder_version="context-builder-v2",
+                    acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
+                    acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
                     diarization_enabled=False,
                     diarization_model_id=None,
-                    vad_backend="faster-whisper",
-                    vad_model_id="faster-whisper-default",
+                    vad_backend="ffmpeg-silencedetect",
+                    vad_model_id="ffmpeg-silencedetect-noise-35db",
                     reprocess_duplicates=False,
                     token_enabled=False,
                     input_items=[
@@ -794,16 +780,14 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-04-10-2pass1",
+                pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
                 conversion_signature="sig-123",
-                transcription_backend="faster-whisper",
-                transcription_model_id="medium",
-                supplemental_context_text=None,
-                context_builder_version="context-builder-v2",
+                acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
+                acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
                 diarization_enabled=False,
                 diarization_model_id=None,
-                vad_backend="faster-whisper",
-                vad_model_id="faster-whisper-default",
+                vad_backend="ffmpeg-silencedetect",
+                vad_model_id="ffmpeg-silencedetect-noise-35db",
                 reprocess_duplicates=False,
                 token_enabled=False,
                 input_items=[
@@ -856,7 +840,7 @@ class ProcessorQueueTests(unittest.TestCase):
 
             def fake_process_one_item(**kwargs):
                 (job_dir / ".delete-requested").write_text("requested\n", encoding="utf-8")
-                kwargs["ensure_not_delete_requested"]("transcribe_turns")
+                kwargs["ensure_not_delete_requested"]("extract_acoustic_units")
                 return []
 
             with (
@@ -898,14 +882,12 @@ class ProcessorQueueTests(unittest.TestCase):
                 compute_mode="cpu",
                 pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
                 conversion_signature="sig-123",
-                transcription_backend="zipa-large-crctc-300k-onnx-v1",
-                transcription_model_id="anyspeech/zipa-large-crctc-300k",
-                supplemental_context_text=None,
-                context_builder_version="",
+                acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
+                acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
                 diarization_enabled=True,
                 diarization_model_id="pyannote/speaker-diarization-community-1",
                 vad_backend="silero-vad",
-                vad_model_id="faster-whisper-default",
+                vad_model_id="ffmpeg-silencedetect-noise-35db",
                 reprocess_duplicates=False,
                 token_enabled=True,
                 input_items=[],
@@ -1007,8 +989,6 @@ class ProcessorQueueTests(unittest.TestCase):
             self.assertTrue((media_dir / "ai-raw" / "speaker-turns.raw.json").exists())
             self.assertTrue((media_dir / "ai-raw" / "acoustic-units.raw.json").exists())
             self.assertTrue((media_dir / "segments" / "speech-candidates.json").exists())
-            self.assertFalse((media_dir / "ipa").exists())
-            self.assertFalse((media_dir / "readable-text").exists())
             timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
             self.assertEqual("speaker-acoustic-units-timeline", timeline["artifact_type"])
             self.assertEqual("SPEAKER_01", timeline["turns"][0]["speaker"])
@@ -1019,412 +999,6 @@ class ProcessorQueueTests(unittest.TestCase):
             self.assertEqual(
                 "speaker_acoustic_units_timeline",
                 artifacts_payload["primary_artifact_kind"],
-            )
-
-    def _legacy_process_one_item_runs_cleanup_and_turn_alignment_before_artifacts(self) -> None:
-        with TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            source_path = root / "sample.wav"
-            source_path.write_bytes(b"audio")
-            job_dir = root / "job-1"
-            job_dir.mkdir()
-
-            request = JobRequest(
-                schema_version=1,
-                job_id="job-1",
-                created_at="2026-04-10T10:00:00+09:00",
-                output_root_id="runs",
-                output_root_path=str(root),
-                profile="quality-first",
-                compute_mode="cpu",
-                pipeline_version="2026-04-10-2pass1",
-                conversion_signature="sig-123",
-                transcription_backend="faster-whisper",
-                transcription_model_id="medium",
-                supplemental_context_text="Known spelling: TimelineForAudio",
-                context_builder_version="context-builder-v2",
-                diarization_enabled=True,
-                diarization_model_id="pyannote/speaker-diarization-community-1",
-                vad_backend="silero-vad",
-                vad_model_id="faster-whisper-default",
-                reprocess_duplicates=False,
-                token_enabled=True,
-                input_items=[],
-            )
-            item = InputItem(
-                input_id="upload-0001",
-                source_kind="upload",
-                source_id="uploads",
-                original_path=str(source_path),
-                display_name="sample.wav",
-                size_bytes=source_path.stat().st_size,
-                uploaded_path=str(source_path),
-            )
-            manifest_item = ManifestItem(
-                input_id=item.input_id,
-                source_kind=item.source_kind,
-                original_path=item.original_path,
-                file_name=item.display_name,
-                size_bytes=item.size_bytes,
-                duration_seconds=12.0,
-                source_hash="abc123",
-                conversion_signature="sig-123",
-                duplicate_status="new",
-                audio_id="sample-abc12345",
-                pipeline_version="2026-04-10-2pass1",
-                model_id="medium",
-            )
-
-            transcribe_calls: list[dict[str, object]] = []
-
-            def fake_extract_audio(input_path: Path, output_path: Path) -> None:
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                output_path.write_bytes(b"normalized")
-
-            def fake_trim_audio(input_path: Path, output_path: Path, duration_seconds: float):
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                output_path.write_bytes(b"trimmed")
-                return [
-                    {
-                        "original_start": 2.0,
-                        "original_end": 4.0,
-                        "trimmed_start": 0.0,
-                        "trimmed_end": 2.0,
-                    }
-                ]
-
-            def fake_transcribe_audio(**kwargs):
-                transcribe_calls.append(kwargs)
-                transcript_label = kwargs["transcript_label"]
-                if transcript_label == "cleanup_source":
-                    return {
-                        "artifact_stem": "cleanup-source",
-                        "transcript_label": "cleanup_source",
-                        "source_name": kwargs["source_name"],
-                        "diarization_used": False,
-                        "segments": [
-                            {
-                                "index": 1,
-                                "speaker": "SPEAKER_00",
-                                "text": "first pass text",
-                                "original_start": 0.0,
-                                "original_end": 1.0,
-                            }
-                        ],
-                        "speaker_turns": [],
-                    }
-                return {
-                    "artifact_stem": "voice-to-text",
-                    "transcript_label": "voice_to_text",
-                    "source_name": kwargs["source_name"],
-                    "diarization_used": True,
-                    "segments": [
-                        {
-                            "index": 1,
-                            "speaker": "SPEAKER_01",
-                            "text": "second pass text",
-                            "original_start": 0.0,
-                            "original_end": 1.0,
-                        }
-                    ],
-                    "speaker_turns": [{"start": 0.0, "end": 1.0, "speaker": "SPEAKER_01"}],
-                }
-
-            with (
-                patch.object(processor, "extract_audio", side_effect=fake_extract_audio),
-                patch.object(processor, "trim_audio", side_effect=fake_trim_audio),
-                patch.object(processor, "transcribe_audio", side_effect=fake_transcribe_audio),
-                patch(
-                    "timeline_for_audio_worker.processor.build_context_documents",
-                    create=True,
-                    return_value={
-                        "builder_version": "context-builder-v2",
-                        "merged_context_length": 12,
-                        "merged_context_truncated": False,
-                    },
-                ) as build_context_documents,
-                patch(
-                    "timeline_for_audio_worker.processor.write_transcript_delta",
-                    create=True,
-                    return_value={"changed_segment_count": 1},
-                ) as write_transcript_delta,
-                patch(
-                    "timeline_for_audio_worker.processor.apply_speaker_diarization",
-                    create=True,
-                    side_effect=lambda **kwargs: {
-                        **kwargs["transcript_payload"],
-                        "diarization_used": True,
-                        "speaker_turns": [{"start": 0.0, "end": 1.0, "speaker": "SPEAKER_01"}],
-                        "speaker_segments": [
-                            {
-                                "index": 1,
-                                "speaker": "SPEAKER_01",
-                                "text": "second pass text",
-                                "original_start": 0.0,
-                                "original_end": 1.0,
-                            }
-                        ],
-                    },
-                ) as apply_speaker_diarization,
-                patch.object(
-                    processor,
-                    "write_speaker_summary",
-                    return_value={"speaker_count": 1, "diarization_used": True},
-                ) as write_speaker_summary,
-                patch.object(
-                    processor,
-                    "analyze_audio",
-                    return_value={
-                        "pause_summary": {},
-                        "loudness_summary": {},
-                        "speaking_rate_summary": {},
-                        "pitch_summary": {},
-                        "speaker_confidence_summary": {},
-                        "diarization_quality_summary": {},
-                        "optional_voice_feature_summary": {},
-                    },
-                ) as analyze_audio,
-                patch.object(
-                    processor,
-                    "generate_audio_ipa_turns",
-                    return_value=SimpleNamespace(
-                        backend_name="stub-audio-ipa",
-                        status="ok",
-                        source_type="audio",
-                        warnings=[],
-                        turns=[
-                            SimpleNamespace(
-                                index=1,
-                                start=0.0,
-                                end=1.0,
-                                speaker="",
-                                ipa="/sekənd pæs tekst/",
-                                confidence=0.91,
-                            )
-                        ],
-                    ),
-                ) as generate_audio_ipa_turns,
-                patch.object(
-                    processor,
-                    "generate_ipa_turns",
-                    return_value=SimpleNamespace(
-                        backend_name="stub-text-derived-ipa",
-                        status="ok",
-                        source_type="text_derived",
-                        warnings=[],
-                        turns=[
-                            SimpleNamespace(
-                                index=1,
-                                start=0.0,
-                                end=1.0,
-                                speaker="SPEAKER_01",
-                                ipa="/sekənd pæs tekst/",
-                            )
-                        ],
-                    ),
-                ) as generate_ipa_turns,
-                patch.object(
-                    processor,
-                    "reconstruct_readable_text",
-                    return_value=SimpleNamespace(
-                        backend_name="stub-readable-text",
-                        status="ok",
-                        warnings=[],
-                        model_id="stub-model",
-                        prompt_version="stub-prompt",
-                        requested_compute_mode="cpu",
-                        effective_device="cpu",
-                        decoding=None,
-                        turns=[
-                            SimpleNamespace(
-                                index=1,
-                                start=0.0,
-                                end=1.0,
-                                speaker="SPEAKER_01",
-                                text="second pass text",
-                            )
-                        ],
-                    ),
-                ) as reconstruct_readable_text,
-            ):
-                warnings = processor._process_one_item(
-                    job_dir=job_dir,
-                    request=request,
-                    item=item,
-                    manifest_item=manifest_item,
-                )
-
-            self.assertEqual([], warnings)
-            self.assertEqual(2, len(transcribe_calls))
-            self.assertEqual("cleanup_source", transcribe_calls[0]["transcript_label"])
-            self.assertFalse(transcribe_calls[0]["diarization_enabled"])
-            self.assertEqual(
-                [
-                    {
-                        "original_start": 2.0,
-                        "original_end": 4.0,
-                        "trimmed_start": 0.0,
-                        "trimmed_end": 2.0,
-                    }
-                ],
-                transcribe_calls[0]["cut_map"],
-            )
-            self.assertEqual("voice_to_text", transcribe_calls[1]["transcript_label"])
-            self.assertTrue(transcribe_calls[1]["diarization_enabled"])
-            self.assertEqual(transcribe_calls[0]["cut_map"], transcribe_calls[1]["cut_map"])
-            self.assertEqual(
-                "voice_to_text",
-                apply_speaker_diarization.call_args.kwargs["transcript_payload"]["transcript_label"],
-            )
-            self.assertEqual(
-                "voice-to-text-with-speakers",
-                apply_speaker_diarization.call_args.kwargs["artifact_stem"],
-            )
-            self.assertEqual(
-                "source-normalized.wav",
-                apply_speaker_diarization.call_args.kwargs["audio_path"].name,
-            )
-            self.assertEqual("Known spelling: TimelineForAudio", build_context_documents.call_args.kwargs["supplemental_context_text"])
-            self.assertEqual(
-                "sample.wav",
-                build_context_documents.call_args.kwargs["transcript_payload"]["source_name"],
-            )
-            self.assertEqual(
-                "cleanup_source",
-                write_transcript_delta.call_args.kwargs["cleanup_source_payload"]["transcript_label"],
-            )
-            self.assertEqual(
-                "voice_to_text",
-                write_transcript_delta.call_args.kwargs["turns_source_payload"]["transcript_label"],
-            )
-            self.assertEqual(
-                "voice_to_text",
-                write_speaker_summary.call_args.kwargs["transcript_payload"]["transcript_label"],
-            )
-            self.assertEqual(
-                "voice_to_text",
-                analyze_audio.call_args.kwargs["transcript_payload"]["transcript_label"],
-            )
-            self.assertEqual("source-normalized.wav", analyze_audio.call_args.kwargs["audio_path"].name)
-            self.assertEqual(
-                "voice_to_text",
-                generate_ipa_turns.call_args.kwargs["transcript_payload"]["transcript_label"],
-            )
-            self.assertIsNone(generate_ipa_turns.call_args.kwargs["preferred_backend"])
-            self.assertEqual(
-                "normalized.wav",
-                generate_audio_ipa_turns.call_args.kwargs["audio_path"].name,
-            )
-            self.assertEqual(
-                transcribe_calls[0]["cut_map"],
-                generate_audio_ipa_turns.call_args.kwargs["cut_map"],
-            )
-            self.assertEqual("cpu", generate_audio_ipa_turns.call_args.kwargs["compute_mode"])
-            self.assertIsNone(transcribe_calls[0]["vad_profile"])
-            self.assertIsNone(transcribe_calls[1]["vad_profile"])
-            self.assertEqual(
-                "voice_to_text",
-                reconstruct_readable_text.call_args.kwargs["transcript_payload"]["transcript_label"],
-            )
-            self.assertEqual(
-                "sample.wav",
-                reconstruct_readable_text.call_args.kwargs["transcript_payload"]["source_name"],
-            )
-            self.assertEqual(1, manifest_item.speaker_count)
-            self.assertEqual("confirmed", manifest_item.speaker_count_status)
-            self.assertIsNone(manifest_item.speaker_count_note)
-            self.assertTrue((job_dir / "media" / manifest_item.media_id / "ipa" / "IPA.md").exists())
-            self.assertTrue((job_dir / "media" / manifest_item.media_id / "ai-raw" / "Voice to IPA.md").exists())
-            self.assertTrue((job_dir / "media" / manifest_item.media_id / "ai-raw" / "voice-to-ipa.json").exists())
-            self.assertTrue((job_dir / "media" / manifest_item.media_id / "ai-raw" / "voice-to-text.json").exists())
-            self.assertTrue((job_dir / "media" / manifest_item.media_id / "transcript" / "voice-to-text-with-speakers.json").exists())
-            self.assertTrue((job_dir / "media" / manifest_item.media_id / "analysis" / "speaker-assignment.json").exists())
-            self.assertTrue((job_dir / "media" / manifest_item.media_id / "debug" / "text-derived-ipa" / "Text Derived IPA.md").exists())
-            self.assertTrue((job_dir / "media" / manifest_item.media_id / "debug" / "text-derived-ipa" / "text_derived_ipa_turns.json").exists())
-            self.assertTrue((job_dir / "media" / manifest_item.media_id / "readable-text" / "Readable Text.md").exists())
-            self.assertTrue((job_dir / "media" / manifest_item.media_id / "ipa" / "ipa_turns.json").exists())
-            self.assertTrue(
-                (job_dir / "media" / manifest_item.media_id / "review" / "review.html").exists()
-            )
-            self.assertTrue(
-                (job_dir / "media" / manifest_item.media_id / "review" / "review_data.json").exists()
-            )
-            self.assertTrue(
-                (job_dir / "media" / manifest_item.media_id / "review" / "process.html").exists()
-            )
-            self.assertTrue(
-                (job_dir / "media" / manifest_item.media_id / "review" / "process_data.json").exists()
-            )
-            self.assertTrue(
-                (
-                    job_dir
-                    / "media"
-                    / manifest_item.media_id
-                    / "analysis"
-                    / "timeline_events.json"
-                ).exists()
-            )
-            self.assertTrue(
-                (
-                    job_dir
-                    / "media"
-                    / manifest_item.media_id
-                    / "analysis"
-                    / "Timeline Events.md"
-                ).exists()
-            )
-            cut_map_payload = json.loads(
-                (
-                    job_dir
-                    / "media"
-                    / manifest_item.media_id
-                    / "audio"
-                    / "cut_map.json"
-                ).read_text(encoding="utf-8")
-            )
-            self.assertEqual(transcribe_calls[0]["cut_map"], cut_map_payload)
-            source_info = json.loads(
-                (job_dir / "media" / manifest_item.media_id / "source.json").read_text(encoding="utf-8")
-            )
-            self.assertIsNone(source_info["requested_ipa_backend"])
-            self.assertEqual("stub-audio-ipa", source_info["effective_ipa_backend"])
-            self.assertEqual("audio", source_info["effective_ipa_source_type"])
-            self.assertEqual("stub-text-derived-ipa", source_info["text_derived_ipa_backend"])
-            self.assertEqual(1, source_info["speech_candidate_count"])
-            self.assertEqual(2, source_info["silence_or_noise_candidate_count"])
-            artifacts_payload = json.loads(
-                (job_dir / "media" / manifest_item.media_id / "artifacts.json").read_text(
-                    encoding="utf-8"
-                )
-            )
-            self.assertIn(
-                "review",
-                {artifact["kind"] for artifact in artifacts_payload["artifacts"]},
-            )
-            self.assertIn(
-                "process_review",
-                {artifact["kind"] for artifact in artifacts_payload["artifacts"]},
-            )
-            self.assertIn(
-                "voice_to_ipa",
-                {artifact["kind"] for artifact in artifacts_payload["artifacts"]},
-            )
-            self.assertIn(
-                "voice_to_text",
-                {artifact["kind"] for artifact in artifacts_payload["artifacts"]},
-            )
-            self.assertIn(
-                "speaker_assignment",
-                {artifact["kind"] for artifact in artifacts_payload["artifacts"]},
-            )
-            self.assertTrue(
-                (
-                    job_dir
-                    / "media"
-                    / manifest_item.media_id
-                    / "readable-text"
-                    / "readable_text_turns.json"
-                ).exists()
             )
 
 

@@ -14,14 +14,14 @@ from .runtime_profile import (
 from .vad_profile import vad_config_for_profile
 
 PIPELINE_VERSION = "2026-04-29-v3-speaker-acoustic-units1"
-TRANSCRIPTION_BACKEND = ACOUSTIC_UNIT_BACKEND
+ACOUSTIC_UNIT_BACKEND_NAME = ACOUSTIC_UNIT_BACKEND
 DIARIZATION_MODEL_ID = "pyannote/speaker-diarization-community-1"
 VAD_BACKEND = "ffmpeg-silencedetect"
 VAD_MODEL_ID = "ffmpeg-silencedetect-noise-35db"
 TIMELINE_SCHEMA = "speaker-acoustic-units-timeline-v1"
 
 
-def resolve_transcription_model_id() -> str:
+def resolve_acoustic_unit_model_id() -> str:
     return ACOUSTIC_UNIT_MODEL_ID
 
 
@@ -29,21 +29,11 @@ def build_conversion_signature(
     *,
     compute_mode: str | None,
     diarization_enabled: bool,
-    language_hint: str | None = None,
-    supplemental_context_text: str | None = None,
-    context_builder_version: str | None = None,
-    readable_text_enabled: bool = True,
-    ipa_backend: str | None = None,
     vad_profile: str | None = None,
 ) -> str:
     return build_generation_signature(
         compute_mode=compute_mode,
         diarization_enabled=diarization_enabled,
-        language_hint=language_hint,
-        supplemental_context_text=supplemental_context_text,
-        context_builder_version=context_builder_version,
-        readable_text_enabled=readable_text_enabled,
-        ipa_backend=ipa_backend,
         vad_profile=vad_profile,
     )
 
@@ -52,18 +42,8 @@ def build_generation_signature(
     *,
     compute_mode: str | None,
     diarization_enabled: bool,
-    language_hint: str | None = None,
-    supplemental_context_text: str | None = None,
-    context_builder_version: str | None = None,
-    readable_text_enabled: bool = True,
-    ipa_backend: str | None = None,
     vad_profile: str | None = None,
 ) -> str:
-    del language_hint
-    del supplemental_context_text
-    del context_builder_version
-    del readable_text_enabled
-    del ipa_backend
     vad_config = vad_config_for_profile(vad_profile)
     payload = {
         "pipeline": "TimelineForAudio",

@@ -454,9 +454,6 @@ def cmd_jobs_create(
         input_items=input_items,
         output_root_id=output_root_id,
         reprocess_duplicates=reprocess_duplicates,
-        readable_text_enabled=False,
-        supplemental_context_text=None,
-        ipa_backend=None,
         vad_profile=vad_profile,
     )
 
@@ -533,9 +530,6 @@ def cmd_refresh(
         source_ids=source_ids,
         output_root_id=output_root_id,
         reprocess_duplicates=reprocess_duplicates,
-        readable_text_enabled=False,
-        supplemental_context_text=None,
-        ipa_backend=None,
         vad_profile=vad_profile,
     )
     payload: dict[str, object] = {

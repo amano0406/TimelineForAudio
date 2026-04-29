@@ -105,4 +105,4 @@ The timeline preserves:
 - speaker label
 - acoustic units
 
-TimelineForAudio intentionally does not use language hints, supplemental text, or downstream LLM reconstruction.
+TimelineForAudio intentionally does not use language hints, supplemental text, or downstream LLM text restoration.

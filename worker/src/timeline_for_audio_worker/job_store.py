@@ -17,18 +17,16 @@ from .fs_utils import ensure_dir, now_iso, slugify, write_text
 from .hashing import sha256_file
 from .vad_profile import resolve_vad_profile
 from .signature import (
+    ACOUSTIC_UNIT_BACKEND_NAME,
     DIARIZATION_MODEL_ID,
     PIPELINE_VERSION,
-    TRANSCRIPTION_BACKEND,
     VAD_BACKEND,
     VAD_MODEL_ID,
     build_conversion_signature,
     normalize_compute_mode,
-    resolve_transcription_model_id,
+    resolve_acoustic_unit_model_id,
 )
 from .settings import configured_path, load_huggingface_token, load_settings
-
-CONTEXT_BUILDER_VERSION = ""
 
 _DATETIME_PATTERNS = [
     re.compile(
@@ -575,9 +573,6 @@ def create_job(
     input_items: list[InputItem],
     output_root_id: str | None = None,
     reprocess_duplicates: bool = False,
-    readable_text_enabled: bool = True,
-    supplemental_context_text: str | None = None,
-    ipa_backend: str | None = None,
     vad_profile: str | None = None,
 ) -> tuple[str, Path]:
     settings = settings or load_settings()
@@ -595,8 +590,6 @@ def create_job(
     ensure_dir(run_dir / "logs")
 
     diarization_enabled = True
-    language_hint = str(settings.get("uiLanguage") or "en").strip() or "en"
-    supplemental_context_text = None
     compute_mode = normalize_compute_mode(settings.get("computeMode"))
     requested_vad_profile = resolve_vad_profile(vad_profile or str(settings.get("vadProfile") or ""))
     request = JobRequest(
@@ -613,10 +606,8 @@ def create_job(
             diarization_enabled=diarization_enabled,
             vad_profile=requested_vad_profile,
         ),
-        transcription_backend=TRANSCRIPTION_BACKEND,
-        transcription_model_id=resolve_transcription_model_id(),
-        supplemental_context_text=None,
-        context_builder_version=CONTEXT_BUILDER_VERSION,
+        acoustic_unit_backend=ACOUSTIC_UNIT_BACKEND_NAME,
+        acoustic_unit_model_id=resolve_acoustic_unit_model_id(),
         diarization_enabled=diarization_enabled,
         diarization_model_id=DIARIZATION_MODEL_ID,
         vad_backend=VAD_BACKEND,
@@ -625,12 +616,6 @@ def create_job(
         reprocess_duplicates=reprocess_duplicates,
         token_enabled=bool(load_huggingface_token()),
         input_items=input_items,
-        language_hint=None,
-        readable_text_enabled=False,
-        ipa_backend=None,
-        reconstruction_backend=None,
-        reconstruction_model_id=None,
-        reconstruction_prompt_version=None,
     )
     status = JobStatus(
         job_id=job_id,
@@ -693,9 +678,6 @@ def _artifact_path_from_catalog_row(row: dict[str, Any] | None) -> Path | None:
 def generation_signature_for_settings(
     *,
     settings: dict[str, Any],
-    readable_text_enabled: bool,
-    supplemental_context_text: str | None = None,
-    ipa_backend: str | None = None,
     vad_profile: str | None = None,
 ) -> str:
     diarization_enabled = True
@@ -713,9 +695,6 @@ def create_refresh_job(
     source_ids: list[str] | None = None,
     output_root_id: str | None = None,
     reprocess_duplicates: bool = False,
-    readable_text_enabled: bool = True,
-    supplemental_context_text: str | None = None,
-    ipa_backend: str | None = None,
     vad_profile: str | None = None,
 ) -> tuple[str | None, Path | None, dict[str, Any]]:
     settings = settings or load_settings()
@@ -727,9 +706,6 @@ def create_refresh_job(
     ensure_dir(output_root_path)
     generation_signature = generation_signature_for_settings(
         settings=settings,
-        readable_text_enabled=readable_text_enabled,
-        supplemental_context_text=supplemental_context_text,
-        ipa_backend=ipa_backend,
         vad_profile=vad_profile,
     )
     catalog = load_catalog(output_root_path)
@@ -802,9 +778,6 @@ def create_refresh_job(
         input_items=input_items,
         output_root_id=output_root_id,
         reprocess_duplicates=reprocess_duplicates,
-        readable_text_enabled=readable_text_enabled,
-        supplemental_context_text=supplemental_context_text,
-        ipa_backend=ipa_backend,
         vad_profile=vad_profile,
     )
     summary["job_id"] = job_id
