@@ -25,8 +25,5 @@
   ],
   "huggingfaceTermsConfirmed": false,
   "computeMode": "cpu",
-  "contextBuilderVersion": "context-builder-v2",
-  "ipaBackend": "sudachi-reading-ipa-v1",
-  "vadProfile": "default",
-  "uiLanguage": "ja"
+  "vadProfile": "default"
 }

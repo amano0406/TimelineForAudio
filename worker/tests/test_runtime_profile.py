@@ -21,13 +21,13 @@ class RuntimeProfileTests(unittest.TestCase):
         self.assertEqual("medium", lanes["gpu"].model_id)
         self.assertEqual(("int8",), lanes["cpu"].compute_types)
         self.assertEqual(("float16", "int8_float16"), lanes["gpu"].compute_types)
-        self.assertFalse(lanes["cpu"].diarization_default_enabled)
+        self.assertTrue(lanes["cpu"].diarization_default_enabled)
         self.assertTrue(lanes["gpu"].diarization_default_enabled)
 
-    def test_resolve_diarization_default_is_gpu_only_when_token_ready(self) -> None:
-        self.assertFalse(resolve_diarization_default("cpu", token_ready=True))
-        self.assertFalse(resolve_diarization_default("cpu", token_ready=False))
-        self.assertFalse(resolve_diarization_default("gpu", token_ready=False))
+    def test_resolve_diarization_default_is_always_required(self) -> None:
+        self.assertTrue(resolve_diarization_default("cpu", token_ready=True))
+        self.assertTrue(resolve_diarization_default("cpu", token_ready=False))
+        self.assertTrue(resolve_diarization_default("gpu", token_ready=False))
         self.assertTrue(resolve_diarization_default("gpu", token_ready=True))
 
     def test_gpu_memory_thresholds_match_documented_policy(self) -> None:

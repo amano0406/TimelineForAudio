@@ -16,9 +16,10 @@ These are the direct worker dependencies currently pinned in `worker/requirement
 | --- | --- | --- |
 | `torch` | `2.8.0+cpu` | BSD-3-Clause |
 | `torchaudio` | `2.8.0+cpu` | BSD-style |
-| `faster-whisper` | `1.2.1` | MIT |
 | `pyannote.audio` | `4.0.1` | MIT |
-| `librosa` | `0.11.0` | ISC |
+| `onnxruntime` | `1.23.2` | MIT |
+| `lhotse` | `1.32.0` | Apache-2.0 |
+| `huggingface_hub` | `0.36.0` | Apache-2.0 |
 | `soundfile` | `0.13.1` | BSD-3-Clause |
 | `python-dotenv` | `1.2.2` | BSD-3-Clause |
 
@@ -35,8 +36,8 @@ Model weights are not stored in this repository. They are downloaded on demand a
 
 | Model / Asset | Purpose | License / Access |
 | --- | --- | --- |
-| `pyannote/speaker-diarization-community-1` | optional speaker diarization | CC-BY-4.0, plus gated-access approval and Hugging Face token required |
-| Whisper model weights used through `faster-whisper` | local transcription | verify the specific upstream model card and license for the model you ship or document |
+| `pyannote/speaker-diarization-community-1` | required speaker diarization | CC-BY-4.0, plus gated-access approval and Hugging Face token required |
+| `anyspeech/zipa-large-crctc-300k` | acoustic-unit extraction | verify the upstream model card and license before redistribution |
 
 See [MODEL_AND_RUNTIME_NOTES.md](MODEL_AND_RUNTIME_NOTES.md) for operational notes about model downloads, gated access, and first-run behavior.
 

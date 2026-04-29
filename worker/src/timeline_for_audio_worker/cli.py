@@ -9,7 +9,6 @@ from pathlib import Path
 from .config import AppConfig, load_config
 from .discovery import discover_audio
 from .fs_utils import now_iso
-from .ipa_backend import resolve_ipa_backend
 from .runtime_guard import assert_cli_runtime_allowed
 from .vad_profile import resolve_vad_profile
 from .job_store import (
@@ -52,8 +51,6 @@ def parse_args() -> argparse.Namespace:
     settings_save.add_argument("--token", type=str, required=False)
     settings_save.add_argument("--terms-confirmed", action="store_const", const=True, default=None)
     settings_save.add_argument("--compute-mode", choices=["cpu", "gpu"], required=False)
-    settings_save.add_argument("--language", type=str, required=False)
-    settings_save.add_argument("--ipa-backend", choices=["sudachi", "pyopenjtalk"], required=False)
     settings_save.add_argument("--vad-profile", choices=["default", "loose", "strict"], required=False)
     settings_save.add_argument("--json", action="store_true")
     input_root = settings_subparsers.add_parser(
@@ -109,12 +106,7 @@ def parse_args() -> argparse.Namespace:
     )
     jobs_create.add_argument("--source-id", dest="source_ids", action="append", default=[])
     jobs_create.add_argument("--output-root-id", type=str, default=None)
-    jobs_create.add_argument("--language", type=str, required=False)
-    jobs_create.add_argument("--ipa-backend", choices=["sudachi", "pyopenjtalk"], required=False)
     jobs_create.add_argument("--vad-profile", choices=["default", "loose", "strict"], required=False)
-    jobs_create.add_argument("--supplemental-context", type=str, required=False)
-    jobs_create.add_argument("--supplemental-context-file", type=Path, required=False)
-    jobs_create.add_argument("--ipa-only", action="store_true")
     jobs_create.add_argument("--reprocess-duplicates", action="store_true")
     jobs_create.add_argument("--queue-only", action="store_true")
     jobs_create.add_argument("--json", action="store_true")
@@ -126,7 +118,7 @@ def parse_args() -> argparse.Namespace:
     )
     jobs_archive.add_argument("--job-id", type=str, required=True)
     jobs_archive.add_argument("--output", type=Path, required=False)
-    jobs_archive.add_argument("--artifact-kind", choices=["readable-text", "ipa"], default="readable-text")
+    jobs_archive.add_argument("--artifact-kind", choices=["timeline"], default="timeline")
     jobs_archive.add_argument("--json", action="store_true")
 
     scan_parser = subparsers.add_parser(
@@ -140,12 +132,7 @@ def parse_args() -> argparse.Namespace:
     )
     refresh_parser.add_argument("--source-id", dest="source_ids", action="append", default=[])
     refresh_parser.add_argument("--output-root-id", type=str, default=None)
-    refresh_parser.add_argument("--language", type=str, required=False)
-    refresh_parser.add_argument("--ipa-backend", choices=["sudachi", "pyopenjtalk"], required=False)
     refresh_parser.add_argument("--vad-profile", choices=["default", "loose", "strict"], required=False)
-    refresh_parser.add_argument("--supplemental-context", type=str, required=False)
-    refresh_parser.add_argument("--supplemental-context-file", type=Path, required=False)
-    refresh_parser.add_argument("--ipa-only", action="store_true")
     refresh_parser.add_argument("--reprocess-duplicates", action="store_true")
     refresh_parser.add_argument("--queue-only", action="store_true")
     refresh_parser.add_argument("--json", action="store_true")
@@ -158,8 +145,11 @@ def parse_args() -> argparse.Namespace:
     evaluate_parser.add_argument("--media-id", type=str, required=False)
     evaluate_parser.add_argument(
         "--artifact-kind",
-        choices=["ipa", "readable-text", "turns-source", "diarization"],
-        default="ipa",
+        choices=[
+            "timeline",
+            "speaker-acoustic-units-timeline",
+        ],
+        default="timeline",
     )
     evaluate_parser.add_argument("--reference", type=Path, required=True)
     evaluate_parser.add_argument("--output-dir", type=Path, required=False)
@@ -293,8 +283,6 @@ def cmd_settings_save(
     token: str | None,
     terms_confirmed: bool | None,
     compute_mode: str | None,
-    language: str | None,
-    ipa_backend: str | None,
     vad_profile: str | None,
     as_json: bool,
 ) -> int:
@@ -303,10 +291,6 @@ def cmd_settings_save(
         save_huggingface_token(token)
     if compute_mode is not None:
         settings["computeMode"] = compute_mode
-    if language is not None:
-        settings["uiLanguage"] = language
-    if ipa_backend is not None:
-        settings["ipaBackend"] = resolve_ipa_backend(ipa_backend)
     if vad_profile is not None:
         settings["vadProfile"] = resolve_vad_profile(vad_profile)
     if terms_confirmed is not None:
@@ -450,24 +434,12 @@ def cmd_jobs_create(
     directories: list[Path],
     source_ids: list[str],
     output_root_id: str,
-    language: str | None,
-    ipa_backend: str | None,
     vad_profile: str | None,
-    supplemental_context: str | None,
-    supplemental_context_file: Path | None,
-    ipa_only: bool,
     reprocess_duplicates: bool,
     queue_only: bool,
     as_json: bool,
 ) -> int:
     settings = load_settings()
-    if language is not None:
-        settings["uiLanguage"] = language
-    supplemental_context_text = supplemental_context
-    if supplemental_context_file is not None:
-        supplemental_context_text = supplemental_context_file.read_text(
-            encoding="utf-8-sig", errors="replace"
-        )
     input_items = collect_input_items(
         settings=settings,
         files=files,
@@ -482,9 +454,9 @@ def cmd_jobs_create(
         input_items=input_items,
         output_root_id=output_root_id,
         reprocess_duplicates=reprocess_duplicates,
-        readable_text_enabled=not ipa_only,
-        supplemental_context_text=supplemental_context_text,
-        ipa_backend=ipa_backend,
+        readable_text_enabled=False,
+        supplemental_context_text=None,
+        ipa_backend=None,
         vad_profile=vad_profile,
     )
 
@@ -493,8 +465,7 @@ def cmd_jobs_create(
         "run_dir": str(run_dir),
         "state": "pending",
         "input_count": len(input_items),
-        "readable_text_enabled": not ipa_only,
-        "ipa_backend": resolve_ipa_backend(ipa_backend or str(settings.get("ipaBackend") or "")),
+        "artifact": "speaker-acoustic-units-timeline",
         "vad_profile": resolve_vad_profile(vad_profile or str(settings.get("vadProfile") or "")),
         "queue_only": queue_only,
     }
@@ -551,40 +522,27 @@ def cmd_refresh(
     *,
     source_ids: list[str],
     output_root_id: str,
-    language: str | None,
-    ipa_backend: str | None,
     vad_profile: str | None,
-    supplemental_context: str | None,
-    supplemental_context_file: Path | None,
-    ipa_only: bool,
     reprocess_duplicates: bool,
     queue_only: bool,
     as_json: bool,
 ) -> int:
     settings = load_settings()
-    if language is not None:
-        settings["uiLanguage"] = language
-    supplemental_context_text = supplemental_context
-    if supplemental_context_file is not None:
-        supplemental_context_text = supplemental_context_file.read_text(
-            encoding="utf-8-sig", errors="replace"
-        )
     job_id, run_dir, summary = create_refresh_job(
         settings=settings,
         source_ids=source_ids,
         output_root_id=output_root_id,
         reprocess_duplicates=reprocess_duplicates,
-        readable_text_enabled=not ipa_only,
-        supplemental_context_text=supplemental_context_text,
-        ipa_backend=ipa_backend,
+        readable_text_enabled=False,
+        supplemental_context_text=None,
+        ipa_backend=None,
         vad_profile=vad_profile,
     )
     payload: dict[str, object] = {
         "state": "skipped" if job_id is None else "pending",
         "job_id": job_id,
         "run_dir": str(run_dir) if run_dir is not None else None,
-        "readable_text_enabled": not ipa_only,
-        "ipa_backend": resolve_ipa_backend(ipa_backend or str(settings.get("ipaBackend") or "")),
+        "artifact": "speaker-acoustic-units-timeline",
         "vad_profile": resolve_vad_profile(vad_profile or str(settings.get("vadProfile") or "")),
         "queue_only": queue_only,
         **summary,
@@ -668,10 +626,10 @@ def cmd_evaluate(
     print(f"prediction_turns: {payload['prediction_turns']}")
     print(f"reference_turns: {payload['reference_turns']}")
     text_metrics = payload["text"]
-    ipa_metrics = payload["ipa"]
+    acoustic_unit_metrics = payload["acoustic_units"]
     speaker_metrics = payload["speaker"]
     print(f"text_cer: {_format_metric(text_metrics['cer'])}")
-    print(f"ipa_error_rate: {_format_metric(ipa_metrics['error_rate'])}")
+    print(f"acoustic_unit_error_rate: {_format_metric(acoustic_unit_metrics['error_rate'])}")
     print(f"speaker_label_accuracy: {_format_metric(speaker_metrics['label_accuracy'])}")
     print(f"speaker_time_mismatch_rate: {_format_metric(speaker_metrics['time_mismatch_rate'])}")
     if payload.get("report"):
@@ -696,8 +654,6 @@ def main() -> int:
                 token,
                 args.terms_confirmed,
                 args.compute_mode,
-                args.language,
-                args.ipa_backend,
                 args.vad_profile,
                 args.json,
             )
@@ -741,12 +697,7 @@ def main() -> int:
                 directories=args.directories,
                 source_ids=args.source_ids,
                 output_root_id=args.output_root_id,
-                language=args.language,
-                ipa_backend=args.ipa_backend,
                 vad_profile=args.vad_profile,
-                supplemental_context=args.supplemental_context,
-                supplemental_context_file=args.supplemental_context_file,
-                ipa_only=args.ipa_only,
                 reprocess_duplicates=args.reprocess_duplicates,
                 queue_only=args.queue_only,
                 as_json=args.json,
@@ -761,12 +712,7 @@ def main() -> int:
         return cmd_refresh(
             source_ids=args.source_ids,
             output_root_id=args.output_root_id,
-            language=args.language,
-            ipa_backend=args.ipa_backend,
             vad_profile=args.vad_profile,
-            supplemental_context=args.supplemental_context,
-            supplemental_context_file=args.supplemental_context_file,
-            ipa_only=args.ipa_only,
             reprocess_duplicates=args.reprocess_duplicates,
             queue_only=args.queue_only,
             as_json=args.json,

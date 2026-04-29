@@ -1,11 +1,9 @@
 --extra-index-url https://download.pytorch.org/whl/cu128
 torch==2.8.0
 torchaudio==2.8.0
-faster-whisper==1.2.1
 pyannote.audio==4.0.1
-librosa==0.11.0
 soundfile==0.13.1
 python-dotenv==1.2.2
-SudachiPy==0.6.10
-sudachidict_core==20260116
-transformers==4.52.4
+onnxruntime==1.23.2
+lhotse==1.32.0
+huggingface_hub==0.36.0

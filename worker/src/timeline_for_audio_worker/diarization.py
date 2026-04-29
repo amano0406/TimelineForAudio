@@ -275,12 +275,66 @@ def _load_diarization_audio_input(audio_path: Path) -> dict[str, Any]:
     }
 
 
+def generate_speaker_turns(
+    *,
+    source_name: str,
+    audio_path: Path,
+    compute_mode: str | None = None,
+) -> dict[str, Any]:
+    settings = load_settings()
+    token = load_huggingface_token()
+    terms_confirmed = bool(settings.get("huggingfaceTermsConfirmed"))
+    diarization_rows: list[dict[str, Any]] = []
+    error: str | None = None
+
+    if not token:
+        error = "Hugging Face token is not configured."
+    elif not terms_confirmed:
+        error = "Hugging Face gated model terms are not confirmed."
+    else:
+        try:
+            from pyannote.audio import Pipeline
+        except Exception as exc:
+            error = f"pyannote.audio is not available: {exc}"
+        else:
+            try:
+                with _legacy_torch_checkpoint_load():
+                    diarizer = Pipeline.from_pretrained(_DIARIZATION_MODEL_ID, token=token)
+                if str(compute_mode or "cpu").strip().lower() == "gpu":
+                    try:
+                        import torch
+
+                        if getattr(torch.cuda, "is_available", lambda: False)() and hasattr(diarizer, "to"):
+                            diarizer.to(torch.device("cuda"))
+                    except Exception:
+                        pass
+                audio_input = _load_diarization_audio_input(audio_path)
+                diarization_rows = _iterate_diarization_rows(diarizer(audio_input))
+            except Exception as exc:
+                error = str(exc)
+
+    if not diarization_rows:
+        raise RuntimeError(error or "Required speaker diarization produced no speaker turns.")
+
+    return {
+        "schema_version": 1,
+        "source_name": source_name,
+        "backend": "pyannote.audio",
+        "model_id": _DIARIZATION_MODEL_ID,
+        "status": "ok",
+        "error": None,
+        "turn_count": len(diarization_rows),
+        "turns": diarization_rows,
+    }
+
+
 def apply_speaker_diarization(
     *,
     source_name: str,
     audio_path: Path,
     transcript_dir: Path,
     analysis_dir: Path | None,
+    raw_ai_dir: Path | None = None,
     transcript_payload: dict[str, Any],
     compute_mode: str | None = None,
     artifact_stem: str | None = None,
@@ -291,11 +345,11 @@ def apply_speaker_diarization(
         artifact_stem
         or transcript_payload.get("artifact_stem")
         or transcript_payload.get("transcript_label")
-        or "turns-source"
+        or "voice-to-text-with-speakers"
     )
     settings = load_settings()
     token = load_huggingface_token()
-    diarization_requested = bool(transcript_payload.get("diarization_requested", False))
+    diarization_requested = True
     terms_confirmed = bool(settings.get("huggingfaceTermsConfirmed"))
     diarization_rows: list[dict[str, Any]] = []
     diarization_error: str | None = None
@@ -339,12 +393,30 @@ def apply_speaker_diarization(
     enriched["diarization_model_id"] = _DIARIZATION_MODEL_ID
     if not diarization_rows:
         enriched["diarization_used"] = False
+        raise RuntimeError(diarization_error or "Required speaker diarization produced no speaker turns.")
 
     transcript_dir.mkdir(parents=True, exist_ok=True)
+    enriched["artifact_stem"] = artifact_name
+    enriched["transcript_label"] = artifact_name.replace("-", "_")
     _write_json(transcript_dir / f"{artifact_name}_words.json", enriched.get("words", []))
     _write_json(transcript_dir / f"{artifact_name}_speaker_spans.json", enriched.get("speaker_segments", []))
+    if raw_ai_dir is not None:
+        _write_json(
+            raw_ai_dir / "speaker-diarization.json",
+            {
+                "source_name": source_name,
+                "backend": "pyannote.audio",
+                "model_id": _DIARIZATION_MODEL_ID,
+                "status": "ok",
+                "turn_count": len(diarization_rows),
+                "turns": diarization_rows,
+            },
+        )
     if analysis_dir is not None:
-        _write_json(analysis_dir / "diarization_turns.json", enriched.get("speaker_turns", []))
+        _write_json(
+            analysis_dir / "speaker-diarization-turns.json",
+            enriched.get("speaker_turns", []),
+        )
 
     _write_transcript_payload(
         source_name=source_name,

@@ -153,7 +153,7 @@ class JobStoreTests(unittest.TestCase):
             self.assertEqual(1, summary["queued_count"])
             self.assertEqual(0, summary["skipped_count"])
             request = json.loads((Path(str(run_dir)) / "request.json").read_text(encoding="utf-8"))
-            self.assertEqual("ja", request["language_hint"])
+            self.assertIsNone(request["language_hint"])
 
     def test_create_refresh_job_skips_unchanged_catalog_items(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -182,9 +182,11 @@ class JobStoreTests(unittest.TestCase):
                 settings=settings,
                 readable_text_enabled=False,
             )
-            prior_media = runs_root / "job-prior" / "media" / "media-0001" / "ipa"
+            prior_media = runs_root / "job-prior" / "media" / "media-0001" / "timeline"
             prior_media.mkdir(parents=True)
-            (prior_media / "IPA.md").write_text("# IPA\n", encoding="utf-8")
+            (prior_media / "speaker-acoustic-units-timeline.json").write_text(
+                '{"turns":[]}', encoding="utf-8"
+            )
             catalog_dir = runs_root / ".timeline-for-audio"
             catalog_dir.mkdir(parents=True)
             (catalog_dir / "catalog.jsonl").write_text(
@@ -296,8 +298,7 @@ class JobStoreTests(unittest.TestCase):
                     "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
                     "huggingfaceTermsConfirmed": True,
                     "computeMode": "gpu",
-                    "ipaBackend": "pyopenjtalk",
-                    "vadProfile": "loose",
+                "vadProfile": "loose",
                 }
                 save_settings(settings)
                 save_huggingface_token("hf_test_value")
@@ -314,11 +315,11 @@ class JobStoreTests(unittest.TestCase):
                 self.assertEqual(job_id, request["job_id"])
                 self.assertTrue(request["token_enabled"])
                 self.assertEqual("gpu", request["compute_mode"])
-                self.assertEqual("pyopenjtalk-g2p-v1", request["ipa_backend"])
+                self.assertIsNone(request["ipa_backend"])
                 self.assertEqual("loose", request["vad_profile"])
                 self.assertEqual(request["conversion_signature"], request["generation_signature"])
-                self.assertEqual("en", request["language_hint"])
-                self.assertEqual("context-builder-v2", request["context_builder_version"])
+                self.assertIsNone(request["language_hint"])
+                self.assertEqual("", request["context_builder_version"])
 
     def test_list_runs_returns_created_job(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -405,10 +406,8 @@ class JobStoreTests(unittest.TestCase):
             )
             media_dir = run_dir / "media" / "sample-12345678"
             (media_dir / "timeline").mkdir(parents=True)
-            (media_dir / "readable-text").mkdir(parents=True)
-            (media_dir / "timeline" / "timeline.md").write_text("# Timeline\n", encoding="utf-8")
-            (media_dir / "readable-text" / "Readable Text.md").write_text(
-                "# Readable Text\n", encoding="utf-8"
+            (media_dir / "timeline" / "speaker-acoustic-units-timeline.json").write_text(
+                '{"turns":[]}', encoding="utf-8"
             )
             (media_dir / "source.json").write_text(
                 json.dumps(
@@ -440,7 +439,7 @@ class JobStoreTests(unittest.TestCase):
 
             self.assertTrue(archive_path.exists())
             self.assertEqual(".zip", archive_path.suffix)
-            self.assertTrue(archive_path.name.endswith("-readable-text.zip"))
+            self.assertTrue(archive_path.name.endswith("-timeline.zip"))
             with zipfile.ZipFile(archive_path) as archive:
                 names = set(archive.namelist())
                 self.assertIn("README.html", names)
@@ -448,18 +447,18 @@ class JobStoreTests(unittest.TestCase):
                 self.assertNotIn("README.md", names)
                 self.assertIn("CONVERSION_INFO.md", names)
                 self.assertNotIn("TRANSCRIPTION_INFO.md", names)
-                self.assertIn("readable-text/2026-03-24 12-58-32.md", names)
+                self.assertIn("timeline/2026-03-24 12-58-32.json", names)
                 self.assertNotIn("timelines/2026-03-24 12-58-32.md", names)
                 self.assertNotIn("pass1-transcripts/2026-03-24 12-58-32.md", names)
                 self.assertNotIn("pass2-transcripts/2026-03-24 12-58-32.md", names)
                 self.assertNotIn("context-docs/2026-03-24 12-58-32.txt", names)
                 readme_html = archive.read("README.html").decode("utf-8")
                 self.assertIn("CONVERSION_INFO.md", readme_html)
-                self.assertIn("readable-text/2026-03-24 12-58-32.md", readme_html)
+                self.assertIn("timeline/2026-03-24 12-58-32.json", readme_html)
                 self.assertNotIn("timelines/2026-03-24 12-58-32.md", readme_html)
                 self.assertNotIn("README.md", readme_html)
 
-    def test_build_run_archive_can_create_ipa_zip(self) -> None:
+    def test_build_run_archive_can_create_timeline_zip(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             runs_root = root / "runs"
@@ -479,8 +478,10 @@ class JobStoreTests(unittest.TestCase):
                 encoding="utf-8",
             )
             media_dir = run_dir / "media" / "sample-12345678"
-            (media_dir / "ipa").mkdir(parents=True)
-            (media_dir / "ipa" / "IPA.md").write_text("# IPA\n", encoding="utf-8")
+            (media_dir / "timeline").mkdir(parents=True)
+            (media_dir / "timeline" / "speaker-acoustic-units-timeline.json").write_text(
+                '{"turns":[]}', encoding="utf-8"
+            )
             (media_dir / "source.json").write_text(
                 json.dumps(
                     {
@@ -494,13 +495,13 @@ class JobStoreTests(unittest.TestCase):
             )
             (run_dir / "CONVERSION_INFO.md").write_text("# Conversion Info\n", encoding="utf-8")
 
-            archive_path = build_run_archive(job_id, settings=settings, artifact_kind="ipa")
+            archive_path = build_run_archive(job_id, settings=settings, artifact_kind="timeline")
 
             self.assertTrue(archive_path.exists())
-            self.assertTrue(archive_path.name.endswith("-ipa.zip"))
+            self.assertTrue(archive_path.name.endswith("-timeline.zip"))
             with zipfile.ZipFile(archive_path) as archive:
                 names = set(archive.namelist())
-                self.assertIn("ipa/2026-03-24 12-58-32.md", names)
+                self.assertIn("timeline/2026-03-24 12-58-32.json", names)
                 self.assertNotIn("readable-text/2026-03-24 12-58-32.md", names)
 
 

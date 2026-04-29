@@ -12,19 +12,11 @@ from uuid import uuid4
 
 from .catalog import catalog_key, load_catalog
 from .contracts import InputItem, JobRequest, JobResult, JobStatus
-from .context_builder import CONTEXT_BUILDER_VERSION
 from .discovery import discover_audio
 from .fs_utils import ensure_dir, now_iso, slugify, write_text
 from .hashing import sha256_file
-from .ipa_backend import resolve_ipa_backend
 from .vad_profile import resolve_vad_profile
-from .reconstruction import (
-    resolve_reconstruction_backend,
-    resolve_reconstruction_model_id,
-    resolve_reconstruction_prompt_version,
-)
 from .signature import (
-    CONTEXT_BUILDER_VERSION as SIGNATURE_CONTEXT_BUILDER_VERSION,
     DIARIZATION_MODEL_ID,
     PIPELINE_VERSION,
     TRANSCRIPTION_BACKEND,
@@ -35,6 +27,8 @@ from .signature import (
     resolve_transcription_model_id,
 )
 from .settings import configured_path, load_huggingface_token, load_settings
+
+CONTEXT_BUILDER_VERSION = ""
 
 _DATETIME_PATTERNS = [
     re.compile(
@@ -293,7 +287,7 @@ def build_run_archive(
     *,
     settings: dict[str, Any] | None = None,
     output: Path | None = None,
-    artifact_kind: str = "readable-text",
+    artifact_kind: str = "timeline",
 ) -> Path:
     run_dir = find_run_dir(job_id, settings)
     normalized_artifact_kind = _normalize_export_artifact_kind(artifact_kind)
@@ -330,16 +324,19 @@ def _find_conversion_info_path(run_dir: Path) -> Path | None:
 
 
 def _normalize_export_artifact_kind(value: str | None) -> str:
-    normalized = str(value or "readable-text").strip().lower()
-    if normalized in {"readable-text", "readable_text", "readable"}:
-        return "readable-text"
-    if normalized == "ipa":
-        return "ipa"
+    normalized = str(value or "timeline").strip().lower()
+    if normalized in {
+        "timeline",
+        "speaker-acoustic-units",
+        "speaker_acoustic_units",
+        "speaker-acoustic-units-timeline",
+    }:
+        return "timeline"
     raise ValueError(f"Unsupported artifact kind: {value}")
 
 
 def _artifact_export_title(artifact_kind: str) -> str:
-    return "Readable Text" if artifact_kind == "readable-text" else "IPA"
+    return "Speaker Acoustic Units Timeline"
 
 
 def _build_export_package(
@@ -357,11 +354,12 @@ def _build_export_package(
         for media_dir in sorted(media_root.iterdir()):
             if not media_dir.is_dir():
                 continue
-            readable_text_path = media_dir / "readable-text" / "Readable Text.md"
-            ipa_path = media_dir / "ipa" / "IPA.md"
-            if not readable_text_path.exists() and not ipa_path.exists():
+            timeline_path = media_dir / "timeline" / "speaker-acoustic-units-timeline.json"
+            if not timeline_path.exists():
                 continue
-            source_path = media_dir / "source.json"
+            source_path = media_dir / "source" / "source-record.json"
+            if not source_path.exists():
+                source_path = media_dir / "source.json"
             source_info = (
                 json.loads(source_path.read_text(encoding="utf-8-sig", errors="replace"))
                 if source_path.exists()
@@ -371,8 +369,7 @@ def _build_export_package(
             timelines.append(
                 {
                     "media_id": media_dir.name,
-                    "readable_text_path": str(readable_text_path),
-                    "ipa_path": str(ipa_path),
+                    "timeline_path": str(timeline_path),
                     "label": label,
                     "source_path": str(source_info.get("original_path") or ""),
                 }
@@ -387,11 +384,10 @@ def _build_export_package(
     used_names: set[str] = set()
     exported_rows: list[dict[str, str]] = []
     for row in timelines:
-        source_key = "readable_text_path" if normalized_artifact_kind == "readable-text" else "ipa_path"
-        source_path = Path(row[source_key])
+        source_path = Path(row["timeline_path"])
         if not source_path.exists():
             continue
-        timeline_file_name = _ensure_unique_export_file_name(f"{row['label']}.md", used_names)
+        timeline_file_name = _ensure_unique_export_file_name(f"{row['label']}.json", used_names)
         destination = artifact_root / timeline_file_name
         destination.write_text(
             source_path.read_text(encoding="utf-8", errors="replace"),
@@ -598,17 +594,10 @@ def create_job(
     ensure_dir(run_dir / "llm")
     ensure_dir(run_dir / "logs")
 
-    diarization_enabled = bool(load_huggingface_token()) and bool(
-        settings.get("huggingfaceTermsConfirmed", False)
-    )
+    diarization_enabled = True
     language_hint = str(settings.get("uiLanguage") or "en").strip() or "en"
-    supplemental_context_text = (
-        supplemental_context_text.strip()
-        if supplemental_context_text and supplemental_context_text.strip()
-        else None
-    )
+    supplemental_context_text = None
     compute_mode = normalize_compute_mode(settings.get("computeMode"))
-    requested_ipa_backend = resolve_ipa_backend(ipa_backend or str(settings.get("ipaBackend") or ""))
     requested_vad_profile = resolve_vad_profile(vad_profile or str(settings.get("vadProfile") or ""))
     request = JobRequest(
         schema_version=1,
@@ -622,37 +611,26 @@ def create_job(
         conversion_signature=build_conversion_signature(
             compute_mode=settings.get("computeMode"),
             diarization_enabled=diarization_enabled,
-            language_hint=language_hint,
-            supplemental_context_text=supplemental_context_text,
-            context_builder_version=SIGNATURE_CONTEXT_BUILDER_VERSION,
-            readable_text_enabled=readable_text_enabled,
-            ipa_backend=requested_ipa_backend,
             vad_profile=requested_vad_profile,
         ),
         transcription_backend=TRANSCRIPTION_BACKEND,
         transcription_model_id=resolve_transcription_model_id(),
-        supplemental_context_text=supplemental_context_text,
+        supplemental_context_text=None,
         context_builder_version=CONTEXT_BUILDER_VERSION,
         diarization_enabled=diarization_enabled,
-        diarization_model_id=DIARIZATION_MODEL_ID if diarization_enabled else None,
+        diarization_model_id=DIARIZATION_MODEL_ID,
         vad_backend=VAD_BACKEND,
         vad_model_id=VAD_MODEL_ID,
         vad_profile=requested_vad_profile,
         reprocess_duplicates=reprocess_duplicates,
         token_enabled=bool(load_huggingface_token()),
         input_items=input_items,
-        language_hint=language_hint,
-        readable_text_enabled=readable_text_enabled,
-        ipa_backend=requested_ipa_backend,
-        reconstruction_backend=resolve_reconstruction_backend(language_hint, compute_mode)
-        if readable_text_enabled
-        else None,
-        reconstruction_model_id=resolve_reconstruction_model_id(language_hint, compute_mode)
-        if readable_text_enabled
-        else None,
-        reconstruction_prompt_version=resolve_reconstruction_prompt_version(language_hint, compute_mode)
-        if readable_text_enabled
-        else None,
+        language_hint=None,
+        readable_text_enabled=False,
+        ipa_backend=None,
+        reconstruction_backend=None,
+        reconstruction_model_id=None,
+        reconstruction_prompt_version=None,
     )
     status = JobStatus(
         job_id=job_id,
@@ -705,8 +683,7 @@ def _artifact_path_from_catalog_row(row: dict[str, Any] | None) -> Path | None:
         return None
     media_dir = Path(str(run_dir)) / "media" / str(media_id)
     for candidate in (
-        media_dir / "readable-text" / "Readable Text.md",
-        media_dir / "ipa" / "IPA.md",
+        media_dir / "timeline" / "speaker-acoustic-units-timeline.json",
     ):
         if candidate.exists():
             return candidate
@@ -721,25 +698,11 @@ def generation_signature_for_settings(
     ipa_backend: str | None = None,
     vad_profile: str | None = None,
 ) -> str:
-    diarization_enabled = bool(load_huggingface_token()) and bool(
-        settings.get("huggingfaceTermsConfirmed", False)
-    )
-    language_hint = str(settings.get("uiLanguage") or "en").strip() or "en"
-    normalized_context = (
-        supplemental_context_text.strip()
-        if supplemental_context_text and supplemental_context_text.strip()
-        else None
-    )
-    requested_ipa_backend = resolve_ipa_backend(ipa_backend or str(settings.get("ipaBackend") or ""))
+    diarization_enabled = True
     requested_vad_profile = resolve_vad_profile(vad_profile or str(settings.get("vadProfile") or ""))
     return build_conversion_signature(
         compute_mode=settings.get("computeMode"),
         diarization_enabled=diarization_enabled,
-        language_hint=language_hint,
-        supplemental_context_text=normalized_context,
-        context_builder_version=SIGNATURE_CONTEXT_BUILDER_VERSION,
-        readable_text_enabled=readable_text_enabled,
-        ipa_backend=requested_ipa_backend,
         vad_profile=requested_vad_profile,
     )
 
@@ -829,7 +792,7 @@ def create_refresh_job(
         "skipped_count": len(skipped_rows),
         "skipped": skipped_rows,
         "generation_signature": generation_signature,
-        "ipa_backend": resolve_ipa_backend(ipa_backend or str(settings.get("ipaBackend") or "")),
+        "artifact": "speaker-acoustic-units-timeline",
         "vad_profile": resolve_vad_profile(vad_profile or str(settings.get("vadProfile") or "")),
     }
     if not input_items:
@@ -862,12 +825,9 @@ def settings_snapshot(settings: dict[str, Any] | None = None) -> dict[str, Any]:
         "has_token": bool(token),
         "terms_confirmed": bool(settings.get("huggingfaceTermsConfirmed", False)),
         "ready": bool(token) and bool(settings.get("huggingfaceTermsConfirmed", False)),
+        "diarization_required": True,
         "compute_mode": str(settings.get("computeMode") or "cpu"),
-        "ipa_backend": resolve_ipa_backend(str(settings.get("ipaBackend") or "")),
         "vad_profile": resolve_vad_profile(str(settings.get("vadProfile") or "")),
-        "context_builder_version": str(
-            settings.get("contextBuilderVersion") or CONTEXT_BUILDER_VERSION
-        ),
         "input_roots": _enabled_input_roots(settings),
         "output_roots": _enabled_output_root_list(settings),
     }

@@ -178,11 +178,16 @@ class ProcessorQueueTests(unittest.TestCase):
     def test_resolve_duplicate_artifact_path_uses_run_dir_when_artifact_path_is_missing(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            readable_text_path = (
-                root / "job-1" / "media" / "sample-media" / "readable-text" / "Readable Text.md"
+            timeline_path = (
+                root
+                / "job-1"
+                / "media"
+                / "sample-media"
+                / "timeline"
+                / "speaker-acoustic-units-timeline.json"
             )
-            readable_text_path.parent.mkdir(parents=True, exist_ok=True)
-            readable_text_path.write_text("# Readable Text\n", encoding="utf-8")
+            timeline_path.parent.mkdir(parents=True, exist_ok=True)
+            timeline_path.write_text('{"turns":[]}', encoding="utf-8")
 
             duplicate = {
                 "timeline_path": str(root / "stale-timeline.md"),
@@ -190,7 +195,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 "media_id": "sample-media",
             }
 
-            self.assertEqual(readable_text_path, processor._resolve_duplicate_artifact_path(duplicate))
+            self.assertEqual(timeline_path, processor._resolve_duplicate_artifact_path(duplicate))
 
     def test_process_job_reclaims_stale_running_job_before_pending_queue(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -875,7 +880,148 @@ class ProcessorQueueTests(unittest.TestCase):
             self.assertFalse(session_dir.exists())
             self.assertFalse(catalog_path.exists())
 
-    def test_process_one_item_runs_cleanup_and_turn_alignment_before_artifacts(self) -> None:
+    def test_process_one_item_writes_speaker_acoustic_units_timeline(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_path = root / "sample.wav"
+            source_path.write_bytes(b"audio")
+            job_dir = root / "job-1"
+            job_dir.mkdir()
+
+            request = JobRequest(
+                schema_version=1,
+                job_id="job-1",
+                created_at="2026-04-10T10:00:00+09:00",
+                output_root_id="runs",
+                output_root_path=str(root),
+                profile="quality-first",
+                compute_mode="cpu",
+                pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
+                conversion_signature="sig-123",
+                transcription_backend="zipa-large-crctc-300k-onnx-v1",
+                transcription_model_id="anyspeech/zipa-large-crctc-300k",
+                supplemental_context_text=None,
+                context_builder_version="",
+                diarization_enabled=True,
+                diarization_model_id="pyannote/speaker-diarization-community-1",
+                vad_backend="silero-vad",
+                vad_model_id="faster-whisper-default",
+                reprocess_duplicates=False,
+                token_enabled=True,
+                input_items=[],
+            )
+            item = InputItem(
+                input_id="upload-0001",
+                source_kind="upload",
+                source_id="uploads",
+                original_path=str(source_path),
+                display_name="sample.wav",
+                size_bytes=source_path.stat().st_size,
+                uploaded_path=str(source_path),
+            )
+            manifest_item = ManifestItem(
+                input_id=item.input_id,
+                source_kind=item.source_kind,
+                original_path=item.original_path,
+                file_name=item.display_name,
+                size_bytes=item.size_bytes,
+                duration_seconds=12.0,
+                source_hash="abc123",
+                conversion_signature="sig-123",
+                duplicate_status="new",
+                audio_id="sample-abc12345",
+                pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
+                model_id="anyspeech/zipa-large-crctc-300k",
+            )
+
+            def fake_extract_audio(input_path: Path, output_path: Path) -> None:
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"normalized")
+
+            def fake_trim_audio(
+                input_path: Path,
+                output_path: Path,
+                duration_seconds: float,
+                *,
+                min_silence_duration_ms: int = 500,
+            ):
+                self.assertEqual(500, min_silence_duration_ms)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"trimmed")
+                return [
+                    {
+                        "original_start": 2.0,
+                        "original_end": 4.0,
+                        "trimmed_start": 0.0,
+                        "trimmed_end": 2.0,
+                    }
+                ]
+
+            with (
+                patch.object(processor, "extract_audio", side_effect=fake_extract_audio),
+                patch.object(processor, "trim_audio", side_effect=fake_trim_audio),
+                patch.object(
+                    processor,
+                    "generate_speaker_turns",
+                    return_value={
+                        "schema_version": 1,
+                        "backend": "pyannote.audio",
+                        "model_id": "pyannote/speaker-diarization-community-1",
+                        "status": "ok",
+                        "turn_count": 1,
+                        "turns": [{"start": 2.0, "end": 4.0, "speaker": "SPEAKER_01"}],
+                    },
+                ),
+                patch.object(
+                    processor,
+                    "generate_acoustic_unit_turns",
+                    return_value=SimpleNamespace(
+                        backend_name="zipa-stub",
+                        model_id="zipa-model",
+                        status="ok",
+                        unit_type="phone_like",
+                        warnings=[],
+                        turns=[
+                            SimpleNamespace(
+                                index=1,
+                                start=2.0,
+                                end=4.0,
+                                acoustic_units="ko n ni chi wa",
+                                confidence=0.91,
+                            )
+                        ],
+                    ),
+                ),
+            ):
+                warnings = processor._process_one_item(
+                    job_dir=job_dir,
+                    request=request,
+                    item=item,
+                    manifest_item=manifest_item,
+                )
+
+            media_dir = job_dir / "media" / str(manifest_item.media_id)
+            timeline_path = media_dir / "timeline" / "speaker-acoustic-units-timeline.json"
+            self.assertEqual([], warnings)
+            self.assertTrue(timeline_path.exists())
+            self.assertTrue((media_dir / "ai-raw" / "speaker-turns.raw.json").exists())
+            self.assertTrue((media_dir / "ai-raw" / "acoustic-units.raw.json").exists())
+            self.assertTrue((media_dir / "segments" / "speech-candidates.json").exists())
+            self.assertFalse((media_dir / "ipa").exists())
+            self.assertFalse((media_dir / "readable-text").exists())
+            timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
+            self.assertEqual("speaker-acoustic-units-timeline", timeline["artifact_type"])
+            self.assertEqual("SPEAKER_01", timeline["turns"][0]["speaker"])
+            self.assertEqual("ko n ni chi wa", timeline["turns"][0]["acoustic_units"])
+            artifacts_payload = json.loads(
+                (media_dir / "artifacts.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                "speaker_acoustic_units_timeline",
+                artifacts_payload["primary_artifact_kind"],
+            )
+
+    def _legacy_process_one_item_runs_cleanup_and_turn_alignment_before_artifacts(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source_path = root / "sample.wav"
@@ -968,8 +1114,8 @@ class ProcessorQueueTests(unittest.TestCase):
                         "speaker_turns": [],
                     }
                 return {
-                    "artifact_stem": "turns-source",
-                    "transcript_label": "turns_source",
+                    "artifact_stem": "voice-to-text",
+                    "transcript_label": "voice_to_text",
                     "source_name": kwargs["source_name"],
                     "diarization_used": True,
                     "segments": [
@@ -1040,10 +1186,31 @@ class ProcessorQueueTests(unittest.TestCase):
                 ) as analyze_audio,
                 patch.object(
                     processor,
+                    "generate_audio_ipa_turns",
+                    return_value=SimpleNamespace(
+                        backend_name="stub-audio-ipa",
+                        status="ok",
+                        source_type="audio",
+                        warnings=[],
+                        turns=[
+                            SimpleNamespace(
+                                index=1,
+                                start=0.0,
+                                end=1.0,
+                                speaker="",
+                                ipa="/sekənd pæs tekst/",
+                                confidence=0.91,
+                            )
+                        ],
+                    ),
+                ) as generate_audio_ipa_turns,
+                patch.object(
+                    processor,
                     "generate_ipa_turns",
                     return_value=SimpleNamespace(
-                        backend_name="stub-ipa",
+                        backend_name="stub-text-derived-ipa",
                         status="ok",
+                        source_type="text_derived",
                         warnings=[],
                         turns=[
                             SimpleNamespace(
@@ -1102,12 +1269,16 @@ class ProcessorQueueTests(unittest.TestCase):
                 ],
                 transcribe_calls[0]["cut_map"],
             )
-            self.assertEqual("turns_source", transcribe_calls[1]["transcript_label"])
+            self.assertEqual("voice_to_text", transcribe_calls[1]["transcript_label"])
             self.assertTrue(transcribe_calls[1]["diarization_enabled"])
             self.assertEqual(transcribe_calls[0]["cut_map"], transcribe_calls[1]["cut_map"])
             self.assertEqual(
-                "turns_source",
+                "voice_to_text",
                 apply_speaker_diarization.call_args.kwargs["transcript_payload"]["transcript_label"],
+            )
+            self.assertEqual(
+                "voice-to-text-with-speakers",
+                apply_speaker_diarization.call_args.kwargs["artifact_stem"],
             )
             self.assertEqual(
                 "source-normalized.wav",
@@ -1123,27 +1294,36 @@ class ProcessorQueueTests(unittest.TestCase):
                 write_transcript_delta.call_args.kwargs["cleanup_source_payload"]["transcript_label"],
             )
             self.assertEqual(
-                "turns_source",
+                "voice_to_text",
                 write_transcript_delta.call_args.kwargs["turns_source_payload"]["transcript_label"],
             )
             self.assertEqual(
-                "turns_source",
+                "voice_to_text",
                 write_speaker_summary.call_args.kwargs["transcript_payload"]["transcript_label"],
             )
             self.assertEqual(
-                "turns_source",
+                "voice_to_text",
                 analyze_audio.call_args.kwargs["transcript_payload"]["transcript_label"],
             )
             self.assertEqual("source-normalized.wav", analyze_audio.call_args.kwargs["audio_path"].name)
             self.assertEqual(
-                "turns_source",
+                "voice_to_text",
                 generate_ipa_turns.call_args.kwargs["transcript_payload"]["transcript_label"],
             )
             self.assertIsNone(generate_ipa_turns.call_args.kwargs["preferred_backend"])
+            self.assertEqual(
+                "normalized.wav",
+                generate_audio_ipa_turns.call_args.kwargs["audio_path"].name,
+            )
+            self.assertEqual(
+                transcribe_calls[0]["cut_map"],
+                generate_audio_ipa_turns.call_args.kwargs["cut_map"],
+            )
+            self.assertEqual("cpu", generate_audio_ipa_turns.call_args.kwargs["compute_mode"])
             self.assertIsNone(transcribe_calls[0]["vad_profile"])
             self.assertIsNone(transcribe_calls[1]["vad_profile"])
             self.assertEqual(
-                "turns_source",
+                "voice_to_text",
                 reconstruct_readable_text.call_args.kwargs["transcript_payload"]["transcript_label"],
             )
             self.assertEqual(
@@ -1154,6 +1334,13 @@ class ProcessorQueueTests(unittest.TestCase):
             self.assertEqual("confirmed", manifest_item.speaker_count_status)
             self.assertIsNone(manifest_item.speaker_count_note)
             self.assertTrue((job_dir / "media" / manifest_item.media_id / "ipa" / "IPA.md").exists())
+            self.assertTrue((job_dir / "media" / manifest_item.media_id / "ai-raw" / "Voice to IPA.md").exists())
+            self.assertTrue((job_dir / "media" / manifest_item.media_id / "ai-raw" / "voice-to-ipa.json").exists())
+            self.assertTrue((job_dir / "media" / manifest_item.media_id / "ai-raw" / "voice-to-text.json").exists())
+            self.assertTrue((job_dir / "media" / manifest_item.media_id / "transcript" / "voice-to-text-with-speakers.json").exists())
+            self.assertTrue((job_dir / "media" / manifest_item.media_id / "analysis" / "speaker-assignment.json").exists())
+            self.assertTrue((job_dir / "media" / manifest_item.media_id / "debug" / "text-derived-ipa" / "Text Derived IPA.md").exists())
+            self.assertTrue((job_dir / "media" / manifest_item.media_id / "debug" / "text-derived-ipa" / "text_derived_ipa_turns.json").exists())
             self.assertTrue((job_dir / "media" / manifest_item.media_id / "readable-text" / "Readable Text.md").exists())
             self.assertTrue((job_dir / "media" / manifest_item.media_id / "ipa" / "ipa_turns.json").exists())
             self.assertTrue(
@@ -1200,7 +1387,9 @@ class ProcessorQueueTests(unittest.TestCase):
                 (job_dir / "media" / manifest_item.media_id / "source.json").read_text(encoding="utf-8")
             )
             self.assertIsNone(source_info["requested_ipa_backend"])
-            self.assertEqual("stub-ipa", source_info["effective_ipa_backend"])
+            self.assertEqual("stub-audio-ipa", source_info["effective_ipa_backend"])
+            self.assertEqual("audio", source_info["effective_ipa_source_type"])
+            self.assertEqual("stub-text-derived-ipa", source_info["text_derived_ipa_backend"])
             self.assertEqual(1, source_info["speech_candidate_count"])
             self.assertEqual(2, source_info["silence_or_noise_candidate_count"])
             artifacts_payload = json.loads(
@@ -1214,6 +1403,18 @@ class ProcessorQueueTests(unittest.TestCase):
             )
             self.assertIn(
                 "process_review",
+                {artifact["kind"] for artifact in artifacts_payload["artifacts"]},
+            )
+            self.assertIn(
+                "voice_to_ipa",
+                {artifact["kind"] for artifact in artifacts_payload["artifacts"]},
+            )
+            self.assertIn(
+                "voice_to_text",
+                {artifact["kind"] for artifact in artifacts_payload["artifacts"]},
+            )
+            self.assertIn(
+                "speaker_assignment",
                 {artifact["kind"] for artifact in artifacts_payload["artifacts"]},
             )
             self.assertTrue(

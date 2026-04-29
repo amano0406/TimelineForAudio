@@ -166,8 +166,10 @@ class ReviewArtifactTests(unittest.TestCase):
                 "audio/source-normalized.wav",
                 "audio/normalized.wav",
                 "audio/cut_map.json",
-                "transcript/turns-source.json",
-                "analysis/diarization_turns.json",
+                "ai-raw/voice-to-text.json",
+                "ai-raw/speaker-diarization.json",
+                "transcript/voice-to-text-with-speakers.json",
+                "analysis/speaker-assignment.json",
                 "ipa/IPA.md",
                 "ipa/ipa_turns.json",
             ):

@@ -9,7 +9,7 @@ _VAD_PROFILES: dict[str, dict[str, Any]] = {
     "default": {
         "vad_filter": True,
         "vad_parameters": {"min_silence_duration_ms": 500},
-        "description": "Current-compatible faster-whisper VAD settings.",
+        "description": "Default FFmpeg silencedetect settings.",
     },
     "loose": {
         "vad_filter": True,

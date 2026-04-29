@@ -125,6 +125,11 @@ def render_readable_text(
         "",
     ]
 
+    if warnings:
+        lines.extend(["## Warnings", ""])
+        lines.extend(f"- {str(warning).strip()}" for warning in warnings if str(warning).strip())
+        lines.append("")
+
     if not turns:
         lines.append("_No readable text turns generated._")
         rendered = "\n".join(lines).rstrip() + "\n"
@@ -173,6 +178,11 @@ def render_ipa(
         f"- Language Hint: `{str(source_info.get('language_hint') or 'und').strip() or 'und'}`",
         "",
     ]
+
+    if warnings:
+        lines.extend(["## Warnings", ""])
+        lines.extend(f"- {str(warning).strip()}" for warning in warnings if str(warning).strip())
+        lines.append("")
 
     if not turns:
         lines.append("_No IPA turns generated._")

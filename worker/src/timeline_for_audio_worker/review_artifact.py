@@ -502,6 +502,8 @@ def build_process_review_data(
         "compute_mode": source_info.get("compute_mode"),
         "vad_profile": source_info.get("vad_profile"),
         "ipa_backend": source_info.get("effective_ipa_backend") or source_info.get("requested_ipa_backend"),
+        "ipa_source_type": source_info.get("effective_ipa_source_type"),
+        "text_derived_ipa_backend": source_info.get("text_derived_ipa_backend"),
         "diarization_enabled": bool(source_info.get("diarization_enabled")),
         "diarization_model_id": source_info.get("diarization_model_id"),
         "speech_candidate_count": int(timeline_payload.get("speech_candidate_count") or 0),
@@ -623,7 +625,7 @@ def render_process_review_html(
 
     <section class="panel">
       <h2>How this IPA was made</h2>
-      <p class="note">元音声の時間軸は保持したまま、処理用には発話候補だけを短く切り出します。話者は full timeline audio と transcript を照合し、IPA は speaker 付き transcript から作ります。</p>
+      <p class="note">元音声の時間軸は保持したまま、処理用には発話候補だけを短く切り出します。主IPAは ai-raw の Voice to IPA を speaker assignment に合わせます。text-derived IPA は検証用の補助成果物です。</p>
       <div class="flow">
         <article class="step">
           <div class="tag">1. Source</div>
@@ -659,16 +661,18 @@ def render_process_review_html(
         <article class="step">
           <div class="tag">4. Transcript sources</div>
           <h3>IPA化前の発話単位</h3>
-          <p class="muted">cleanup source で補助情報を整え、turns source で時刻・単語・話者を持つ発話単位を作ります。</p>
+          <p class="muted">ai-raw にはAIが返した直後の文字起こしを残し、transcript には話者を合わせた文字起こしを残します。</p>
           <ul class="files">
             {_existing_file_rows(media_dir, output_path, [
                 ("Cleanup source markdown", "transcript/cleanup-source.md"),
                 ("Cleanup source JSON", "transcript/cleanup-source.json"),
                 ("Merged context", "transcript/context_merged.txt"),
-                ("Turn source markdown", "transcript/turns-source.md"),
-                ("Turn source JSON", "transcript/turns-source.json"),
-                ("Turn words", "transcript/turns-source_words.json"),
-                ("Speaker spans", "transcript/turns-source_speaker_spans.json"),
+                ("Raw Voice to Text markdown", "ai-raw/voice-to-text.md"),
+                ("Raw Voice to Text JSON", "ai-raw/voice-to-text.json"),
+                ("Voice to Text with Speakers markdown", "transcript/voice-to-text-with-speakers.md"),
+                ("Voice to Text with Speakers JSON", "transcript/voice-to-text-with-speakers.json"),
+                ("Voice to Text with Speakers words", "transcript/voice-to-text-with-speakers_words.json"),
+                ("Voice to Text with Speakers spans", "transcript/voice-to-text-with-speakers_speaker_spans.json"),
                 ("Transcript delta", "transcript/transcript_delta.json"),
             ])}
           </ul>
@@ -676,10 +680,12 @@ def render_process_review_html(
         <article class="step">
           <div class="tag">5. Speaker alignment</div>
           <h3>話者ラベルの作成</h3>
-          <p class="muted">`source-normalized.wav` と turns source を使い、`SPEAKER_00` などの機械的な話者ラベルを発話に合わせます。実名は推測しません。</p>
+          <p class="muted">`source-normalized.wav` と raw Voice to Text を使い、`SPEAKER_00` などの機械的な話者ラベルを発話に合わせます。実名は推測しません。</p>
           <ul class="files">
             {_existing_file_rows(media_dir, output_path, [
-                ("Diarization turns", "analysis/diarization_turns.json"),
+                ("Raw speaker diarization", "ai-raw/speaker-diarization.json"),
+                ("Speaker diarization turns", "analysis/speaker-diarization-turns.json"),
+                ("Speaker assignment", "analysis/speaker-assignment.json"),
                 ("Speaker summary markdown", "analysis/speaker_summary.md"),
                 ("Speaker summary JSON", "analysis/speaker_summary.json"),
                 ("Audio features markdown", "analysis/audio_features.md"),
@@ -690,11 +696,15 @@ def render_process_review_html(
         <article class="step">
           <div class="tag">6. IPA artifacts</div>
           <h3>最終IPA</h3>
-          <p class="muted">speaker 付き transcript からIPAを作ります。ユーザー向けの主成果物は `IPA.md` です。</p>
+          <p class="muted">ai-raw の Voice to IPA を話者割り当てに合わせ、ユーザー向けの主成果物 `IPA.md` を作ります。</p>
           <ul class="files">
             {_existing_file_rows(media_dir, output_path, [
+                ("Raw Voice to IPA markdown", "ai-raw/Voice to IPA.md"),
+                ("Raw Voice to IPA JSON", "ai-raw/voice-to-ipa.json"),
                 ("IPA markdown", "ipa/IPA.md"),
                 ("IPA turns JSON", "ipa/ipa_turns.json"),
+                ("Text-derived IPA markdown", "debug/text-derived-ipa/Text Derived IPA.md"),
+                ("Text-derived IPA turns", "debug/text-derived-ipa/text_derived_ipa_turns.json"),
                 ("IPA/audio review", "review/review.html"),
                 ("IPA/audio review data", "review/review_data.json"),
             ] + readable_rows)}

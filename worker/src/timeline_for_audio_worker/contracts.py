@@ -3,13 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from .ipa_backend import resolve_ipa_backend
 from .vad_profile import resolve_vad_profile
-from .reconstruction import (
-    resolve_reconstruction_backend,
-    resolve_reconstruction_model_id,
-    resolve_reconstruction_prompt_version,
-)
 
 
 @dataclass
@@ -54,7 +48,7 @@ class JobRequest:
     reconstruction_backend: str | None = None
     reconstruction_model_id: str | None = None
     reconstruction_prompt_version: str | None = None
-    readable_text_enabled: bool = True
+    readable_text_enabled: bool = False
     ipa_backend: str | None = None
     vad_profile: str | None = None
 
@@ -70,8 +64,8 @@ class JobRequest:
             "pipeline_version": self.pipeline_version,
             "generation_signature": self.conversion_signature,
             "conversion_signature": self.conversion_signature,
-            "transcription_backend": self.transcription_backend,
-            "transcription_model_id": self.transcription_model_id,
+            "acoustic_unit_backend": self.transcription_backend,
+            "acoustic_unit_model_id": self.transcription_model_id,
             "supplemental_context_text": self.supplemental_context_text,
             "context_builder_version": self.context_builder_version,
             "diarization_enabled": self.diarization_enabled,
@@ -85,14 +79,14 @@ class JobRequest:
             "reconstruction_model_id": self.reconstruction_model_id,
             "reconstruction_prompt_version": self.reconstruction_prompt_version,
             "readable_text_enabled": self.readable_text_enabled,
-            "ipa_backend": resolve_ipa_backend(self.ipa_backend),
+            "ipa_backend": self.ipa_backend,
             "vad_profile": resolve_vad_profile(self.vad_profile),
             "input_items": [item.to_dict() for item in self.input_items],
         }
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "JobRequest":
-        readable_text_enabled = bool(payload.get("readable_text_enabled", True))
+        readable_text_enabled = bool(payload.get("readable_text_enabled", False))
         return cls(
             language_hint=(
                 str(payload["language_hint"])
@@ -110,15 +104,23 @@ class JobRequest:
             conversion_signature=str(
                 payload.get("generation_signature") or payload.get("conversion_signature") or ""
             ),
-            transcription_backend=str(payload.get("transcription_backend") or ""),
-            transcription_model_id=str(payload.get("transcription_model_id") or ""),
+            transcription_backend=str(
+                payload.get("acoustic_unit_backend")
+                or payload.get("transcription_backend")
+                or ""
+            ),
+            transcription_model_id=str(
+                payload.get("acoustic_unit_model_id")
+                or payload.get("transcription_model_id")
+                or ""
+            ),
             supplemental_context_text=(
                 str(payload["supplemental_context_text"])
                 if payload.get("supplemental_context_text") not in (None, "")
                 else None
             ),
             context_builder_version=str(
-                payload.get("context_builder_version") or "context-builder-v2"
+                payload.get("context_builder_version") or ""
             ),
             diarization_enabled=bool(payload.get("diarization_enabled", False)),
             diarization_model_id=(
@@ -131,43 +133,26 @@ class JobRequest:
             reprocess_duplicates=bool(payload["reprocess_duplicates"]),
             token_enabled=bool(payload.get("token_enabled", False)),
             input_items=[InputItem(**item) for item in payload.get("input_items", [])],
-            ipa_backend=resolve_ipa_backend(str(payload.get("ipa_backend") or "")),
+            ipa_backend=(
+                str(payload["ipa_backend"])
+                if payload.get("ipa_backend") not in (None, "")
+                else None
+            ),
             vad_profile=resolve_vad_profile(str(payload.get("vad_profile") or "")),
             readable_text_enabled=readable_text_enabled,
             reconstruction_backend=(
                 str(payload["reconstruction_backend"])
                 if readable_text_enabled and payload.get("reconstruction_backend") not in (None, "")
-                else resolve_reconstruction_backend(
-                    str(payload["language_hint"])
-                    if payload.get("language_hint") not in (None, "")
-                    else None,
-                    str(payload.get("compute_mode") or "cpu"),
-                )
-                if readable_text_enabled
                 else None
             ),
             reconstruction_model_id=(
                 str(payload["reconstruction_model_id"])
                 if readable_text_enabled and payload.get("reconstruction_model_id") not in (None, "")
-                else resolve_reconstruction_model_id(
-                    str(payload["language_hint"])
-                    if payload.get("language_hint") not in (None, "")
-                    else None,
-                    str(payload.get("compute_mode") or "cpu"),
-                )
-                if readable_text_enabled
                 else None
             ),
             reconstruction_prompt_version=(
                 str(payload["reconstruction_prompt_version"])
                 if readable_text_enabled and payload.get("reconstruction_prompt_version") not in (None, "")
-                else resolve_reconstruction_prompt_version(
-                    str(payload["language_hint"])
-                    if payload.get("language_hint") not in (None, "")
-                    else None,
-                    str(payload.get("compute_mode") or "cpu"),
-                )
-                if readable_text_enabled
                 else None
             ),
         )

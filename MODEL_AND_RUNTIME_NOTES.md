@@ -1,103 +1,72 @@
 # Model and Runtime Notes
 
-This document explains what `TimelineForAudio` downloads or expects at runtime and what users should know before running the app locally.
+This document explains the current runtime model choices and local execution contract for TimelineForAudio.
 
-## Public Release Contract
+## Public Contract
 
-The current public release line is `TimelineForAudio v0.4.0 Tech Preview`.
+TimelineForAudio is a local CLI worker. Windows PowerShell scripts are the primary entrypoint. WSL/macOS shell scripts are kept as developer/backdoor paths.
 
-- baseline support is Windows + Docker Desktop + CPU mode
-- WSL/Unix command scripts are kept as a backdoor path, not the primary Windows entrypoint
-- GPU mode is available on supported NVIDIA + Docker GPU setups through a dedicated GPU worker image
-- this app is local-first and desktop-style, not a hosted SaaS service
+The worker does not reconstruct readable text, summarize meaning, or infer real speaker identities. It produces a structured timeline artifact that preserves the original audio timeline.
 
-## Models Used by the Worker
+## Current Models
 
-`TimelineForAudio` uses a local-first audio pipeline and downloads model/data assets only when they are actually needed.
+The current provisional model set is:
 
-Current main components:
+| Component | Current model / backend | Role |
+| --- | --- | --- |
+| Speaker diarization | `pyannote/speaker-diarization-community-1` | Generate mechanical speaker turns such as `SPEAKER_00` and `SPEAKER_01`. |
+| Acoustic units | `anyspeech/zipa-large-crctc-300k` | Extract phone-like acoustic units from speech candidate audio. |
+| Speech candidate detection | `ffmpeg silencedetect` | Avoid running heavier model work over obvious silence. |
 
-- `faster-whisper`
-  - transcription
-  - timestamped segment generation
-  - built-in VAD filtering during transcription
-- `transformers`
-  - local readable-text reconstruction from IPA-oriented turns
-  - currently enabled for `GPU + Japanese language hint` jobs
-  - current reconstruction model: `Respair/Japanese_Phoneme_to_Grapheme_LLM`
-- `pyannote/speaker-diarization-community-1`
-  - optional speaker diarization
-  - driven from worker-preloaded waveform input instead of direct file-path decoding
-- `librosa`
-  - pitch and speaking-rate-adjacent feature extraction
-- `ffmpeg`
-  - decode, probing, and audio normalization
+The output contract intentionally uses `acoustic_units` instead of IPA, phoneme, or phone. The backend may change later without changing the primary artifact shape.
 
 ## First-Run Downloads
 
 On first use, the worker may download:
 
+- Docker image layers
 - Python package dependencies
-- Hugging Face model weights for transcription, readable-text reconstruction, and diarization
+- Hugging Face model weights for pyannote and ZIPA
 
-These downloads are cached for reuse. The exact cache location depends on the runtime environment. In the Docker setup, cache volumes are mounted so the app does not need to download the same assets on every restart.
+Docker volumes cache model files so the same assets do not need to be downloaded on every run.
 
-## Hugging Face Token and Gated Approval
+## Hugging Face Requirements
 
-Speaker diarization is optional, but if you want it, two things are required:
+Speaker diarization is required. The user must configure:
 
 1. a Hugging Face access token
-2. approval for the gated `pyannote/speaker-diarization-community-1` model page
+2. approval for `pyannote/speaker-diarization-community-1`
 
-Without those two conditions, the app does not fail the whole job. It continues with transcription and timeline generation, but without speaker diarization.
+If these prerequisites are missing, the item fails instead of silently producing fallback speaker labels. This is intentional because speaker labels are part of the main artifact.
 
-For the initial public release, this remains an optional feature, not part of the baseline support contract.
+## Audio Preparation
 
-## Two-Pass Transcript Notes
+The worker:
 
-The app uses a two-pass ASR flow:
+1. decodes source audio through FFmpeg
+2. writes normalized `16kHz mono` WAV for processing
+3. detects silence with FFmpeg
+4. creates speech candidate audio for heavier model stages
+5. maps all turn timestamps back to the original audio timeline
 
-- pass1 creates a first full transcript
-- deterministic context builder output is created from pass1 plus optional user-supplied supplemental context
-- pass2 reruns ASR on the same audio with that merged context text
-- speaker diarization runs after pass2 so the final transcript text stays fixed and only speaker metadata is added
+The original source file is not modified.
 
-Pass2 becomes the final transcript. The app does not run glossary-style lexical rewrites after pass2.
+## Main Artifact
 
-## Audio Feature Notes
+The primary file is:
 
-The app computes additional summaries from normalized audio and transcript timing, including:
+```text
+media/<media-id>/timeline/speaker-acoustic-units-timeline.json
+```
 
-- pause and silence summaries
-- loudness summaries
-- speaking-rate summaries
-- pitch summaries
-- overlap and interruption summaries
-- heuristic speaker-confidence and diarization-quality summaries
+It contains:
 
-These summaries are intended as review aids. They are not identity guarantees or ground-truth labels.
-
-## Audio Preparation Notes
-
-Inputs are normalized into a stable worker format before transcription.
-
-- source files are decoded with `ffmpeg`
-- normalized worker audio is written as mono `16kHz` WAV
-- timing metadata remains inspectable through `source.json` and `cut_map.json`
-
-## Intended Workflow
-
-The generated output is designed to be reviewed locally, then compressed and uploaded to ChatGPT or another LLM for follow-up analysis.
-
-Typical follow-up use cases:
-
-- meeting review
-- topic extraction
-- communication analysis
-- personal conversation review over time
-- turning many local recordings into a structured prompt-ready archive
-
-## Public Samples
-
-Public sample artifacts are not bundled at the moment. If samples are added later, they should use the current IPA / readable-text output shape and must not include private recordings or identifying details.
+- source file metadata
+- generation signature
+- diarization backend/model metadata
+- acoustic-unit backend/model metadata
+- turn start/end time in source-audio-relative seconds
+- optional absolute timestamp when recording origin can be inferred
+- speaker label
+- acoustic units
 

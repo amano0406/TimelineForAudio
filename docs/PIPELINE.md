@@ -2,165 +2,108 @@
 
 ## 1. Request Creation
 
-The CLI writes `request.json` into a new `job-*` directory under the selected output root.
+The CLI creates a `job-*` directory under the configured output root.
 
 The request contains:
 
 - job id
-- output root selection
-- duplicate policy
-- token-enabled flag
-- fully expanded input items
+- output root
+- input items
 - compute mode
-- language hint
-- job-level supplemental context text
+- duplicate policy
 - generation signature
+- Hugging Face token availability flag
 
-## 2. Worker Pickup
+Language hints and supplemental text are not used by this product.
 
-The Python worker daemon scans enabled output roots for `job-*` directories whose `status.json` is still `pending`.
+## 2. Preflight
 
-## 3. Preflight
+For every input item the worker:
 
-For every input item:
+- resolves the source path
+- probes media metadata with `ffprobe`
+- computes SHA-256
+- checks duplicate state in `.timeline-for-audio/catalog.jsonl`
+- writes `manifest.json`
 
-- resolve the source path
-- probe duration, codec, channels, sample rate, and file size with `ffprobe`
-- compute SHA-256
-- compute the generation signature
-- check duplicate state against `.timeline-for-audio/catalog.jsonl`
-- the duplicate key includes `source hash + generation signature + source file identity`
-- source file identity is based on input root id and relative path, so a renamed file is treated as a different file
+The duplicate key is:
 
-The worker writes `manifest.json` before heavy processing starts.
+```text
+source hash + generation signature + source file identity
+```
 
-## 4. Audio Preparation
+`source file identity` includes the configured input root id and relative path. A renamed file is therefore treated as a different source.
 
-The worker normalizes each input into a stable analysis format:
+## 3. Audio Preparation
 
-1. decode the source audio with `ffmpeg`
-2. write full mono `16kHz` timeline copy to `audio/source-normalized.wav`
-3. scan the full copy for non-silent speech-candidate intervals
-4. write the speech-candidate processing audio to `audio/normalized.wav`
-5. write `audio/cut_map.json`
-6. write timeline event artifacts under `analysis/`
+The worker:
 
-`cut_map.json` maps timestamps from `audio/normalized.wav` back to the original audio-relative timeline.
+1. decodes the source audio with `ffmpeg`
+2. writes `source/audio-normalized.wav`
+3. detects speech candidate ranges
+4. writes `segments/speech-candidates.wav`
+5. writes `segments/speech-candidate-map.json`
+6. writes `segments/speech-candidates.json`
 
-## 5. Cleanup-Source Transcription
+The original audio file is not modified.
 
-The worker calls `faster-whisper` to generate cleanup-oriented source text from the speech-candidate processing audio.
+## 4. Speaker Diarization
 
-- language: derived from the CLI language setting when available
-- device: `cpu` or `cuda`
-- built-in VAD filtering
-- no user-visible prompt injection at this stage
+Speaker diarization is required.
 
-If GPU transcription fails, the worker can fall back to CPU and records a warning in the transcript metadata.
+Current model:
 
-Artifacts written here:
+```text
+pyannote/speaker-diarization-community-1
+```
 
-- `transcript/cleanup_source.json`
-- `transcript/cleanup_source.md`
+Output:
 
-## 6. Cleanup And Reconstruction Preparation
+```text
+ai-raw/speaker-turns.raw.json
+```
 
-The worker prepares turn alignment and readable-text reconstruction input from:
+If diarization cannot run, the media item fails. The worker does not create fallback speakers.
 
-- cleanup-source cues
-- optional job-level supplemental context text
-- normalized language hint
+## 5. Acoustic Unit Extraction
 
-Artifacts written here can include:
+Current provisional backend:
 
-- `transcript/context_primary.txt`
-- `transcript/context_secondary.txt` when provided
-- `transcript/context_merged.txt`
-- `transcript/context_report.json`
+```text
+ZIPA 300M
+```
 
-## 7. Turn Alignment And Speaker Assignment
+Output:
 
-The worker produces turn-oriented source spans from the recording and aligns speakers when diarization is available.
+```text
+ai-raw/acoustic-units.raw.json
+```
 
-Artifacts written here:
+The output field is named `acoustic_units` rather than IPA, phoneme, or phone so that the backend can change without changing the product contract.
 
-- `transcript/turns_source.json`
-- `transcript/turns_source.md`
-- `transcript/transcript_delta.json`
+## 6. Timeline Assembly
 
-## 8. Diarization Enrichment
+The worker aligns acoustic-unit spans to diarization turns by timestamp overlap.
 
-If `pyannote/speaker-diarization-community-1` is available and the Hugging Face prerequisites are satisfied, diarization runs on the full normalized timeline copy and aligns speaker turns to the current turn spans.
+Primary output:
 
-The worker preloads the normalized audio with `torchaudio`, passes waveform + sample rate into `pyannote`, keeps the current turn text fixed, and assigns speakers from diarization turns to turn timestamps for downstream IPA and readable-text generation.
+```text
+timeline/speaker-acoustic-units-timeline.json
+```
 
-If diarization is unavailable or fails:
+Each turn contains:
 
-- transcription still completes
-- `diarization_used` stays false
-- the error is recorded in transcript metadata
+- `start_sec`
+- `end_sec`
+- `absolute_start_at` when available
+- `absolute_end_at` when available
+- `speaker`
+- `acoustic_units`
+- `unit_type`
+- `confidence`
 
-Artifacts written here:
+## 7. Archive
 
-- `transcript/turns_words.json`
-- `transcript/turns_speaker_spans.json`
-- `analysis/diarization_turns.json`
+`jobs archive` exports the timeline JSON package.
 
-Speaker labels remain generic machine labels. The worker does not infer real names, identity, gender, age, or speaker attributes.
-
-## 8.5 Timeline Events
-
-The worker records the original audio timeline as candidate events:
-
-- `speech_candidate`
-- `silence_or_noise_candidate`
-
-`silence_or_noise_candidate` means the interval was not selected for speech-focused processing. It is not a semantic classification of the sound.
-
-Artifacts written here:
-
-- `analysis/timeline_events.json`
-- `analysis/Timeline Events.md`
-
-## 9. IPA Generation
-
-The worker derives IPA per turn and keeps speaker + timestamp + IPA aligned as the canonical intermediate.
-
-Artifacts written here:
-
-- `ipa/ipa_turns.json`
-- `ipa/IPA.md`
-- `review/review_data.json`
-- `review/review.html`
-- `review/process_data.json`
-- `review/process.html`
-
-`review.html` is a local inspection helper for checking IPA tokens against a selected local audio file. It does not embed the audio file. `process.html` is a local inspection helper that links the generated source, audio, cut-map, transcript, diarization, and IPA files in processing order.
-
-## 10. Readable-Text Reconstruction
-
-The worker reconstructs readable text from IPA turns, language hint, and optional supplemental context.
-
-Artifacts written here:
-
-- `readable-text/readable_text_turns.json`
-- `readable-text/Readable Text.md`
-
-## 11. Export Packaging
-
-After the job finishes, the app can build one of two reduced review packages:
-
-- `README.html`
-- `CONVERSION_INFO.md`
-- `FAILURE_REPORT.md` when needed
-- `logs/worker.log` when needed
-- either the IPA markdown output or the Readable Text markdown output
-
-`README.html` is the human entrypoint for exported results.
-
-## 12. Failure Model
-
-- item-level failures do not abort the entire job when other items can still complete
-- the worker logs stack traces to `logs/worker.log`
-- `status.json` and `result.json` are updated even on failure
-- failed or warning jobs can still export successful artifacts plus failure diagnostics
+The audio file itself is not embedded in the archive.

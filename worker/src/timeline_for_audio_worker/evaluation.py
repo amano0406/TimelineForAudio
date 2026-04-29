@@ -10,10 +10,8 @@ _SPACE_RE = re.compile(r"\s+")
 EVALUATION_SCHEMA_VERSION = 1
 
 _ARTIFACT_JSON_PATHS = {
-    "ipa": Path("ipa") / "ipa_turns.json",
-    "readable-text": Path("readable-text") / "readable_text_turns.json",
-    "turns-source": Path("transcript") / "turns-source.json",
-    "diarization": Path("analysis") / "diarization_turns.json",
+    "timeline": Path("timeline") / "speaker-acoustic-units-timeline.json",
+    "speaker-acoustic-units-timeline": Path("timeline") / "speaker-acoustic-units-timeline.json",
 }
 
 
@@ -22,9 +20,9 @@ def _read_json(path: Path) -> Any:
 
 
 def normalize_evaluation_artifact_kind(value: str | None) -> str:
-    normalized = str(value or "ipa").strip().lower().replace("_", "-")
-    if normalized in {"readable", "readable-text"}:
-        return "readable-text"
+    normalized = str(value or "timeline").strip().lower().replace("_", "-")
+    if normalized in {"speaker-acoustic-units", "speaker-acoustic-units-timeline"}:
+        return "speaker-acoustic-units-timeline"
     if normalized in _ARTIFACT_JSON_PATHS:
         return normalized
     raise ValueError(f"Unsupported evaluation artifact kind: {value}")
@@ -72,6 +70,7 @@ def _turn_rows(payload: Any) -> list[dict[str, Any]]:
         "ipa_turns",
         "readable_text_turns",
         "diarization_turns",
+        "turns",
     ):
         value = payload.get(key)
         if isinstance(value, list):
@@ -83,7 +82,7 @@ def _normalize_text(value: Any) -> str:
     return _SPACE_RE.sub("", str(value or "").strip())
 
 
-def _normalize_ipa(value: Any) -> str:
+def _normalize_acoustic_units(value: Any) -> str:
     text = str(value or "").strip().strip("/")
     return _SPACE_RE.sub(" ", text).strip()
 
@@ -93,7 +92,13 @@ def _row_text(row: dict[str, Any]) -> str:
 
 
 def _row_ipa(row: dict[str, Any]) -> str:
-    return str(row.get("ipa") or row.get("ipa_text") or row.get("phonemes") or "")
+    return str(
+        row.get("acoustic_units")
+        or row.get("units")
+        or row.get("ipa")
+        or row.get("phonemes")
+        or ""
+    )
 
 
 def _row_speaker(row: dict[str, Any]) -> str:
@@ -101,11 +106,14 @@ def _row_speaker(row: dict[str, Any]) -> str:
 
 
 def _row_start(row: dict[str, Any]) -> float:
-    return float(row.get("original_start", row.get("start", 0.0)) or 0.0)
+    return float(row.get("start_sec", row.get("original_start", row.get("start", 0.0))) or 0.0)
 
 
 def _row_end(row: dict[str, Any]) -> float:
-    return float(row.get("original_end", row.get("end", row.get("start", 0.0))) or 0.0)
+    return float(
+        row.get("end_sec", row.get("original_end", row.get("end", row.get("start", 0.0))))
+        or 0.0
+    )
 
 
 def _edit_distance(left: str, right: str) -> int:
@@ -196,11 +204,11 @@ def evaluate_turn_artifacts(prediction_path: Path, reference_path: Path) -> dict
 
     predicted_text = _normalize_text("".join(_row_text(row) for row in prediction_rows))
     reference_text = _normalize_text("".join(_row_text(row) for row in reference_rows))
-    predicted_ipa = _normalize_ipa(" ".join(_row_ipa(row) for row in prediction_rows))
-    reference_ipa = _normalize_ipa(" ".join(_row_ipa(row) for row in reference_rows))
+    predicted_units = _normalize_acoustic_units(" ".join(_row_ipa(row) for row in prediction_rows))
+    reference_units = _normalize_acoustic_units(" ".join(_row_ipa(row) for row in reference_rows))
 
     text_cer = _error_rate(predicted_text, reference_text)
-    ipa_error_rate = _error_rate(predicted_ipa, reference_ipa)
+    acoustic_unit_error_rate = _error_rate(predicted_units, reference_units)
 
     return {
         "schema_version": EVALUATION_SCHEMA_VERSION,
@@ -215,12 +223,12 @@ def evaluate_turn_artifacts(prediction_path: Path, reference_path: Path) -> dict
             else None,
             "reference_length": len(reference_text),
         },
-        "ipa": {
-            "error_rate": ipa_error_rate,
-            "edit_distance": _edit_distance(predicted_ipa, reference_ipa)
-            if reference_ipa
+        "acoustic_units": {
+            "error_rate": acoustic_unit_error_rate,
+            "edit_distance": _edit_distance(predicted_units, reference_units)
+            if reference_units
             else None,
-            "reference_length": len(reference_ipa),
+            "reference_length": len(reference_units),
         },
         "speaker": {
             "label_accuracy": _speaker_label_accuracy(prediction_rows, reference_rows),
@@ -243,7 +251,7 @@ def _format_metric(value: object) -> str:
 
 def render_evaluation_markdown(payload: dict[str, Any]) -> str:
     text_metrics = payload.get("text", {})
-    ipa_metrics = payload.get("ipa", {})
+    acoustic_unit_metrics = payload.get("acoustic_units", {})
     speaker_metrics = payload.get("speaker", {})
     lines = [
         "# Evaluation",
@@ -258,14 +266,14 @@ def render_evaluation_markdown(payload: dict[str, Any]) -> str:
         "| Metric | Value |",
         "|---|---:|",
         f"| Text CER | `{_format_metric(text_metrics.get('cer'))}` |",
-        f"| IPA Error Rate | `{_format_metric(ipa_metrics.get('error_rate'))}` |",
+        f"| Acoustic Unit Error Rate | `{_format_metric(acoustic_unit_metrics.get('error_rate'))}` |",
         f"| Speaker Label Accuracy | `{_format_metric(speaker_metrics.get('label_accuracy'))}` |",
         f"| Speaker Time Mismatch Proxy | `{_format_metric(speaker_metrics.get('time_mismatch_rate'))}` |",
         "",
         "## Notes",
         "",
         "- Speaker time mismatch is a lightweight turn-level proxy, not full DER.",
-        "- Missing reference text or IPA returns `N/A` for that metric.",
+        "- Missing reference text or acoustic units returns `N/A` for that metric.",
         "",
     ]
     return "\n".join(lines)

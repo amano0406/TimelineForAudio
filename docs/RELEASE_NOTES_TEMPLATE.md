@@ -1,6 +1,6 @@
 # TimelineForAudio v0.x.y Tech Preview
 
-Local-first audio-to-IPA packaging tool for LLM workflows.
+Local-first speaker acoustic-units timeline tool for downstream LLM workflows.
 This is a desktop-style local tool, not a hosted SaaS product.
 
 ## Baseline Support
@@ -12,7 +12,7 @@ This is a desktop-style local tool, not a hosted SaaS product.
 ## Optional Features
 
 - GPU mode: NVIDIA + Docker GPU access required, supported via the GPU compose overlay
-- Speaker diarization: optional, requires both a Hugging Face token and gated approval for `pyannote/speaker-diarization-community-1`
+- Speaker diarization: required, needs both a Hugging Face token and approval for `pyannote/speaker-diarization-community-1`
 
 ## Download
 

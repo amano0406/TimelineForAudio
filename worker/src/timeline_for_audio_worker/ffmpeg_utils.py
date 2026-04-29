@@ -254,16 +254,21 @@ def _invert_intervals(
 
 
 def trim_audio(
-    input_path: Path, output_path: Path, duration_seconds: float
+    input_path: Path,
+    output_path: Path,
+    duration_seconds: float,
+    *,
+    min_silence_duration_ms: int = 500,
 ) -> list[dict[str, float]]:
     ensure_dir(output_path.parent)
+    silence_duration = max(0.05, float(min_silence_duration_ms) / 1000.0)
     detected = run_command(
         [
             "ffmpeg",
             "-i",
             str(input_path),
             "-af",
-            "silencedetect=noise=-35dB:d=0.5",
+            f"silencedetect=noise=-35dB:d={silence_duration:.3f}",
             "-f",
             "null",
             "-",

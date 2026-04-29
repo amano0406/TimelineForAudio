@@ -36,7 +36,7 @@ def resolve_runtime_lane(compute_mode: str | None) -> RuntimeLane:
         compute_mode=normalized_compute_mode,
         model_id="medium",
         compute_types=("int8",),
-        diarization_default_enabled=False,
+        diarization_default_enabled=True,
     )
 
 
@@ -45,6 +45,5 @@ def resolve_transcription_model_id() -> str:
 
 
 def resolve_diarization_default(compute_mode: str | None, *, token_ready: bool) -> bool:
-    if not token_ready:
-        return False
-    return resolve_runtime_lane(compute_mode).diarization_default_enabled
+    del compute_mode, token_ready
+    return True

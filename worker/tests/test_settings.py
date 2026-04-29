@@ -40,10 +40,7 @@ class SettingsTests(unittest.TestCase):
                         ],
                         "audioExtensions": [".mp3"],
                         "computeMode": "cpu",
-                        "contextBuilderVersion": "context-builder-v2",
-                        "ipaBackend": "sudachi-reading-ipa-v1",
                         "vadProfile": "default",
-                        "uiLanguage": "ja",
                     }
                 ),
                 encoding="utf-8",
@@ -70,7 +67,9 @@ class SettingsTests(unittest.TestCase):
         self.assertTrue(result["created"])
         self.assertFalse(second["created"])
         self.assertTrue(settings_exists)
-        self.assertEqual("ja", loaded["uiLanguage"])
+        self.assertNotIn("uiLanguage", loaded)
+        self.assertNotIn("ipaBackend", loaded)
+        self.assertNotIn("contextBuilderVersion", loaded)
         self.assertEqual("C:\\Users\\amano\\Videos\\", loaded["inputRoots"][0]["path"])
 
     def test_configured_path_maps_windows_drive_on_unix(self) -> None:

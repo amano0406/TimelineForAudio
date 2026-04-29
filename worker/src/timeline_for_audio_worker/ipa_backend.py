@@ -18,6 +18,9 @@ _KANJI_RE = re.compile(r"[一-龯々]")
 DEFAULT_IPA_BACKEND = "sudachi-reading-ipa-v1"
 EXPERIMENTAL_PYOPENJTALK_IPA_BACKEND = "pyopenjtalk-g2p-v1"
 MIXED_DERIVED_IPA_BACKEND = "mixed-derived-ipa-v1"
+AUDIO_TO_IPA_BACKEND = "wav2vec2-xlsr-53-espeak-cv-ft-v1"
+AUDIO_TO_IPA_MODEL_ID = "facebook/wav2vec2-xlsr-53-espeak-cv-ft"
+AUDIO_TO_IPA_UNCONFIGURED_BACKEND = "audio-to-ipa-unconfigured-v1"
 
 _SPECIAL_READINGS = {
     "こんにちは": "コンニチワ",
@@ -245,6 +248,16 @@ class IPAResult:
     status: str
     turns: list[IPATurn]
     warnings: list[str]
+    source_type: str = "text_derived"
+
+
+@dataclass
+class LoadedAudioIpaModel:
+    model_id: str
+    device: str
+    processor: Any
+    model: Any
+    torch_module: Any
 
 
 @lru_cache(maxsize=1)
@@ -650,6 +663,7 @@ def generate_ipa_turns(
             status="ok",
             turns=turns,
             warnings=deduped_warnings,
+            source_type="text_derived",
         )
 
     return IPAResult(
@@ -658,4 +672,267 @@ def generate_ipa_turns(
         turns=[],
         warnings=deduped_warnings
         or ["IPA turn data is not available from the current transcription payload."],
+        source_type="text_derived",
+    )
+
+
+def _best_speaker_for_interval(
+    start: float,
+    end: float,
+    speaker_turns: list[dict[str, Any]],
+) -> str:
+    midpoint = start + ((end - start) / 2.0)
+    best_speaker = "SPEAKER_00"
+    best_overlap = 0.0
+    for turn in speaker_turns:
+        turn_start = float(turn.get("start", turn.get("original_start", 0.0)) or 0.0)
+        turn_end = float(turn.get("end", turn.get("original_end", turn_start)) or turn_start)
+        overlap = max(0.0, min(end, turn_end) - max(start, turn_start))
+        if overlap > best_overlap:
+            best_overlap = overlap
+            best_speaker = str(turn.get("speaker") or "SPEAKER_00")
+    if best_overlap > 0:
+        return best_speaker
+
+    for turn in speaker_turns:
+        turn_start = float(turn.get("start", turn.get("original_start", 0.0)) or 0.0)
+        turn_end = float(turn.get("end", turn.get("original_end", turn_start)) or turn_start)
+        if turn_start <= midpoint <= turn_end:
+            return str(turn.get("speaker") or "SPEAKER_00")
+    return best_speaker
+
+
+def align_ipa_turns_to_speakers(
+    *,
+    ipa_result: IPAResult,
+    speaker_payload: dict[str, Any],
+) -> IPAResult:
+    speaker_turns = list(speaker_payload.get("speaker_turns") or [])
+    if not ipa_result.turns or not speaker_turns:
+        return ipa_result
+
+    aligned_turns = [
+        IPATurn(
+            index=turn.index,
+            start=turn.start,
+            end=turn.end,
+            speaker=_best_speaker_for_interval(turn.start, turn.end, speaker_turns),
+            ipa=turn.ipa,
+            confidence=turn.confidence,
+        )
+        for turn in ipa_result.turns
+    ]
+    return IPAResult(
+        backend_name=ipa_result.backend_name,
+        status=ipa_result.status,
+        turns=aligned_turns,
+        warnings=ipa_result.warnings,
+        source_type=ipa_result.source_type,
+    )
+
+
+def _audio_ipa_device(compute_mode: str | None) -> tuple[str, list[str]]:
+    warnings: list[str] = []
+    try:
+        import torch
+    except Exception:
+        return "cpu", ["PyTorch is not available; audio-to-IPA cannot use GPU."]
+
+    if str(compute_mode or "").strip().lower() == "gpu":
+        cuda = getattr(torch, "cuda", None)
+        if callable(getattr(cuda, "is_available", None)) and cuda.is_available():
+            return "cuda", warnings
+        warnings.append("GPU was requested for audio-to-IPA, but CUDA is not available; using CPU.")
+    return "cpu", warnings
+
+
+@lru_cache(maxsize=2)
+def _load_audio_ipa_model(device: str) -> LoadedAudioIpaModel:
+    try:
+        import torch
+        from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
+    except Exception as exc:
+        raise RuntimeError(f"audio-to-IPA dependencies are not available: {exc}") from exc
+
+    processor = Wav2Vec2Processor.from_pretrained(AUDIO_TO_IPA_MODEL_ID)
+    model = Wav2Vec2ForCTC.from_pretrained(AUDIO_TO_IPA_MODEL_ID)
+    model.eval()
+    if hasattr(model, "to"):
+        model.to(device)
+    return LoadedAudioIpaModel(
+        model_id=AUDIO_TO_IPA_MODEL_ID,
+        device=device,
+        processor=processor,
+        model=model,
+        torch_module=torch,
+    )
+
+
+def _load_audio_ipa_waveform(audio_path: Any) -> tuple[Any, int]:
+    try:
+        import torchaudio
+    except Exception as exc:
+        raise RuntimeError(f"torchaudio is not available for audio-to-IPA: {exc}") from exc
+
+    waveform, sample_rate = torchaudio.load(str(audio_path))
+    if hasattr(waveform, "dim") and callable(getattr(waveform, "dim")) and waveform.dim() > 1:
+        waveform = waveform.mean(dim=0)
+    return waveform, int(sample_rate)
+
+
+def _waveform_duration_seconds(waveform: Any, sample_rate: int) -> float:
+    sample_count = int(getattr(waveform, "shape", [0])[-1] or 0)
+    if sample_rate <= 0:
+        return 0.0
+    return sample_count / float(sample_rate)
+
+
+def _slice_waveform(waveform: Any, sample_rate: int, start: float, end: float) -> Any:
+    start_sample = max(0, int(start * sample_rate))
+    end_sample = max(start_sample, int(end * sample_rate))
+    return waveform[..., start_sample:end_sample]
+
+
+def _resample_for_audio_ipa(waveform: Any, sample_rate: int) -> tuple[Any, int]:
+    if sample_rate == 16000:
+        return waveform, sample_rate
+    try:
+        import torchaudio
+    except Exception as exc:
+        raise RuntimeError(f"torchaudio resampling is not available for audio-to-IPA: {exc}") from exc
+    resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=16000)
+    return resampler(waveform), 16000
+
+
+def _waveform_to_float_list(waveform: Any) -> list[float]:
+    if hasattr(waveform, "detach"):
+        waveform = waveform.detach()
+    if hasattr(waveform, "cpu"):
+        waveform = waveform.cpu()
+    if hasattr(waveform, "numpy"):
+        return [float(value) for value in waveform.numpy().reshape(-1).tolist()]
+    return [float(value) for value in list(waveform)]
+
+
+def _decode_audio_ipa_waveform(
+    *,
+    waveform: Any,
+    sample_rate: int,
+    compute_mode: str | None,
+) -> tuple[str, float | None, str, list[str]]:
+    device, warnings = _audio_ipa_device(compute_mode)
+    loaded = _load_audio_ipa_model(device)
+    waveform, sample_rate = _resample_for_audio_ipa(waveform, sample_rate)
+    samples = _waveform_to_float_list(waveform)
+    if not samples:
+        return "", None, AUDIO_TO_IPA_BACKEND, warnings
+
+    inputs = loaded.processor(
+        samples,
+        sampling_rate=sample_rate,
+        return_tensors="pt",
+        padding=True,
+    )
+    input_values = inputs.input_values
+    if hasattr(input_values, "to"):
+        input_values = input_values.to(loaded.device)
+
+    with loaded.torch_module.no_grad():
+        logits = loaded.model(input_values).logits
+        predicted_ids = loaded.torch_module.argmax(logits, dim=-1)
+        decoded = loaded.processor.batch_decode(predicted_ids)
+
+    confidence: float | None = None
+    try:
+        probs = loaded.torch_module.nn.functional.softmax(logits, dim=-1)
+        confidence = float(probs.max(dim=-1).values.mean().item())
+    except Exception:
+        confidence = None
+
+    return _compact_text(decoded[0] if decoded else ""), confidence, AUDIO_TO_IPA_BACKEND, warnings
+
+
+def _audio_ipa_spans(
+    *,
+    cut_map: list[dict[str, float]],
+    duration_seconds: float,
+) -> list[dict[str, float]]:
+    if cut_map:
+        return cut_map
+    if duration_seconds <= 0:
+        return []
+    return [
+        {
+            "trimmed_start": 0.0,
+            "trimmed_end": duration_seconds,
+            "original_start": 0.0,
+            "original_end": duration_seconds,
+        }
+    ]
+
+
+def generate_audio_ipa_turns(
+    *,
+    audio_path: Any,
+    cut_map: list[dict[str, float]],
+    preferred_backend: str | None = None,
+    compute_mode: str | None = None,
+) -> IPAResult:
+    del preferred_backend
+    warnings: list[str] = []
+    try:
+        waveform, sample_rate = _load_audio_ipa_waveform(audio_path)
+        spans = _audio_ipa_spans(
+            cut_map=cut_map,
+            duration_seconds=_waveform_duration_seconds(waveform, sample_rate),
+        )
+        turns: list[IPATurn] = []
+        for index, span in enumerate(spans, start=1):
+            trimmed_start = float(span.get("trimmed_start", 0.0) or 0.0)
+            trimmed_end = float(span.get("trimmed_end", trimmed_start) or trimmed_start)
+            if trimmed_end <= trimmed_start:
+                continue
+            chunk = _slice_waveform(waveform, sample_rate, trimmed_start, trimmed_end)
+            ipa_text, confidence, backend_name, decode_warnings = _decode_audio_ipa_waveform(
+                waveform=chunk,
+                sample_rate=sample_rate,
+                compute_mode=compute_mode,
+            )
+            warnings.extend(decode_warnings)
+            if not ipa_text:
+                continue
+            turns.append(
+                IPATurn(
+                    index=index,
+                    start=float(span.get("original_start", trimmed_start) or 0.0),
+                    end=float(span.get("original_end", trimmed_end) or trimmed_end),
+                    speaker="",
+                    ipa=_ensure_slashes(ipa_text),
+                    confidence=confidence,
+                )
+            )
+    except Exception as exc:
+        return IPAResult(
+            backend_name=AUDIO_TO_IPA_BACKEND,
+            status="unavailable",
+            turns=[],
+            warnings=[f"Audio-to-IPA failed: {exc}"],
+            source_type="audio",
+        )
+
+    deduped_warnings = list(dict.fromkeys(row for row in warnings if str(row).strip()))
+    if not turns:
+        return IPAResult(
+            backend_name=AUDIO_TO_IPA_BACKEND,
+            status="unavailable",
+            turns=[],
+            warnings=deduped_warnings or ["Audio-to-IPA produced no IPA turns."],
+            source_type="audio",
+        )
+    return IPAResult(
+        backend_name=AUDIO_TO_IPA_BACKEND,
+        status="ok",
+        turns=turns,
+        warnings=deduped_warnings,
+        source_type="audio",
     )

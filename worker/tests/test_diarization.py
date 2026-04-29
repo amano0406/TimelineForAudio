@@ -185,6 +185,44 @@ class DiarizationMergeTests(unittest.TestCase):
         self.assertEqual(16000, fake_calls[0]["sample_rate"])
         self.assertIn("waveform", fake_calls[0])
 
+    def test_apply_speaker_diarization_fails_when_required_token_is_missing(self) -> None:
+        transcript_payload = {
+            "transcript_label": "turns_source",
+            "diarization_requested": True,
+            "segments": [
+                {
+                    "index": 1,
+                    "speaker": "SPEAKER_00",
+                    "text": "alpha",
+                    "original_start": 0.0,
+                    "original_end": 1.0,
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            audio_path = root / "sample.wav"
+            audio_path.write_bytes(b"RIFF")
+
+            with patch(
+                "timeline_for_audio_worker.diarization.load_settings",
+                return_value={"huggingfaceTermsConfirmed": True},
+            ):
+                with patch(
+                    "timeline_for_audio_worker.diarization.load_huggingface_token",
+                    return_value=None,
+                ):
+                    with self.assertRaisesRegex(RuntimeError, "Hugging Face token is not configured"):
+                        apply_speaker_diarization(
+                            source_name="sample.wav",
+                            audio_path=audio_path,
+                            transcript_dir=root / "transcript",
+                            analysis_dir=root / "analysis",
+                            transcript_payload=transcript_payload,
+                            compute_mode="cpu",
+                        )
+
     def test_apply_speaker_diarization_temporarily_forces_legacy_torch_checkpoint_load(self) -> None:
         seen_env_values: list[str | None] = []
 

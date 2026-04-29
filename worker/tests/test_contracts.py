@@ -17,17 +17,17 @@ class ContractsTests(unittest.TestCase):
             compute_mode="gpu",
             pipeline_version="2026-04-05-mvp1",
             conversion_signature="sig-123",
-            transcription_backend="faster-whisper",
-            transcription_model_id="medium",
-            supplemental_context_text="Known names: TimelineForAudio, WhisperX",
-            context_builder_version="context-builder-v2",
+            transcription_backend="zipa-large-crctc-300k-onnx-v1",
+            transcription_model_id="anyspeech/zipa-large-crctc-300k",
+            supplemental_context_text=None,
+            context_builder_version="",
             diarization_enabled=True,
             diarization_model_id="pyannote/speaker-diarization-community-1",
             vad_backend="silero-vad",
             vad_model_id="faster-whisper-default",
             reprocess_duplicates=False,
             token_enabled=True,
-            language_hint="ja",
+            language_hint=None,
             input_items=[
                 InputItem(
                     input_id="scan-0001",
@@ -49,24 +49,18 @@ class ContractsTests(unittest.TestCase):
         self.assertEqual("sig-123", payload["generation_signature"])
         self.assertEqual("sig-123", restored.conversion_signature)
         self.assertEqual("sig-123", restored.generation_signature)
-        self.assertEqual("sudachi-reading-ipa-v1", payload["ipa_backend"])
+        self.assertIsNone(payload["ipa_backend"])
         self.assertEqual("default", payload["vad_profile"])
-        self.assertEqual("ja", restored.language_hint)
-        self.assertEqual("local-transformers-japanese-p2g-v1", restored.reconstruction_backend)
-        self.assertEqual(
-            "Respair/Japanese_Phoneme_to_Grapheme_LLM",
-            restored.reconstruction_model_id,
-        )
-        self.assertEqual("ipa-turn-reconstruction-ja-v3", restored.reconstruction_prompt_version)
-        self.assertTrue(restored.readable_text_enabled)
-        self.assertEqual("sudachi-reading-ipa-v1", restored.ipa_backend)
+        self.assertIsNone(restored.language_hint)
+        self.assertIsNone(restored.reconstruction_backend)
+        self.assertIsNone(restored.reconstruction_model_id)
+        self.assertIsNone(restored.reconstruction_prompt_version)
+        self.assertFalse(restored.readable_text_enabled)
+        self.assertIsNone(restored.ipa_backend)
         self.assertEqual("default", restored.vad_profile)
-        self.assertEqual(
-            "Known names: TimelineForAudio, WhisperX",
-            restored.supplemental_context_text,
-        )
-        self.assertEqual("context-builder-v2", restored.context_builder_version)
-        self.assertEqual("sudachi-reading-ipa-v1", restored.ipa_backend)
+        self.assertIsNone(restored.supplemental_context_text)
+        self.assertEqual("", restored.context_builder_version)
+        self.assertIsNone(restored.ipa_backend)
         self.assertEqual("default", restored.vad_profile)
         self.assertTrue(restored.diarization_enabled)
         self.assertEqual(1, len(restored.input_items))
@@ -105,7 +99,7 @@ class ContractsTests(unittest.TestCase):
 
         self.assertEqual("sig-456", restored.generation_signature)
         self.assertEqual("ja,en", restored.language_hint)
-        self.assertEqual("ipa-aligned-text-fallback-v1", restored.reconstruction_backend)
+        self.assertIsNone(restored.reconstruction_backend)
         self.assertEqual("prior terms", restored.supplemental_context_text)
         self.assertEqual("context-builder-v2", restored.context_builder_version)
 

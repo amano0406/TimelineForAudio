@@ -57,7 +57,7 @@ echo
 echo "CLI examples:"
 echo "  ./cli.command settings init"
 echo "  ./cli.command settings status"
-echo "  ./cli.command refresh --ipa-only"
+echo "  ./cli.command refresh"
 echo "  ./cli.command jobs list"
 echo
 echo "Docker status:"

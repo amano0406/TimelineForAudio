@@ -6,8 +6,6 @@ from pathlib import Path
 import re
 from typing import Any
 
-from .signature import CONTEXT_BUILDER_VERSION
-from .ipa_backend import resolve_ipa_backend
 from .vad_profile import resolve_vad_profile
 
 _WINDOWS_DRIVE_RE = re.compile(r"^(?P<drive>[A-Za-z]):[\\/](?P<rest>.*)$")
@@ -151,10 +149,7 @@ def _default_settings_payload() -> dict[str, Any]:
         ),
         "huggingfaceTermsConfirmed": False,
         "computeMode": "cpu",
-        "contextBuilderVersion": CONTEXT_BUILDER_VERSION,
-        "ipaBackend": resolve_ipa_backend(None),
         "vadProfile": resolve_vad_profile(None),
-        "uiLanguage": "en",
     }
 
 
@@ -230,13 +225,10 @@ def load_settings() -> dict[str, Any]:
         payload["computeMode"] = "cpu"
     payload.pop("processingQuality", None)
     payload.pop("secondPassEnabled", None)
-    payload["contextBuilderVersion"] = (
-        str(payload.get("contextBuilderVersion") or CONTEXT_BUILDER_VERSION).strip()
-        or CONTEXT_BUILDER_VERSION
-    )
-    payload["ipaBackend"] = resolve_ipa_backend(str(payload.get("ipaBackend") or ""))
+    payload.pop("contextBuilderVersion", None)
+    payload.pop("ipaBackend", None)
+    payload.pop("uiLanguage", None)
     payload["vadProfile"] = resolve_vad_profile(str(payload.get("vadProfile") or ""))
-    payload["uiLanguage"] = str(payload.get("uiLanguage") or "en").strip() or "en"
     return payload
 
 
