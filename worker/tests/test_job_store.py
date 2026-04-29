@@ -82,6 +82,45 @@ class JobStoreTests(unittest.TestCase):
             self.assertEqual(2, len(items))
             self.assertEqual({"a.wav", "b.mp3"}, {item.display_name for item in items})
 
+    def test_collect_input_items_maps_windows_paths_inside_docker(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            mapped_root = root / "mapped-output"
+            sample_dir = mapped_root / "_validation-input"
+            sample_dir.mkdir(parents=True)
+            sample_file = sample_dir / "sample.mp3"
+            sample_file.write_bytes(b"sample")
+            previous_mappings = os.environ.get("TIMELINE_FOR_AUDIO_PATH_MAPPINGS")
+            os.environ["TIMELINE_FOR_AUDIO_PATH_MAPPINGS"] = json.dumps(
+                [
+                    {
+                        "host": r"C:\Users\amano\video\\",
+                        "container": str(mapped_root),
+                    }
+                ]
+            )
+            try:
+                settings = {
+                    "audioExtensions": [".mp3"],
+                    "inputRoots": [],
+                    "outputRoots": [{"id": "runs", "path": str(mapped_root), "enabled": True}],
+                    "huggingfaceTermsConfirmed": False,
+                }
+
+                items = collect_input_items(
+                    settings=settings,
+                    files=[Path(r"C:\Users\amano\video\_validation-input\sample.mp3")],
+                )
+            finally:
+                if previous_mappings is None:
+                    os.environ.pop("TIMELINE_FOR_AUDIO_PATH_MAPPINGS", None)
+                else:
+                    os.environ["TIMELINE_FOR_AUDIO_PATH_MAPPINGS"] = previous_mappings
+
+            self.assertEqual(1, len(items))
+            self.assertEqual("sample.mp3", items[0].display_name)
+            self.assertEqual(r"C:\Users\amano\video\_validation-input\sample.mp3", items[0].original_path)
+
     def test_create_refresh_job_uses_configured_input_roots(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -156,6 +195,9 @@ class JobStoreTests(unittest.TestCase):
                         "audio_id": "media-0001",
                         "source_hash": sha256_file(audio_file),
                         "conversion_signature": signature,
+                        "source_id": "meetings",
+                        "source_relative_path": "2026-04-01 12-00-00.wav",
+                        "source_file_identity": "meetings:2026-04-01 12-00-00.wav",
                     }
                 )
                 + "\n",
@@ -173,6 +215,75 @@ class JobStoreTests(unittest.TestCase):
             self.assertEqual(0, summary["queued_count"])
             self.assertEqual(1, summary["skipped_count"])
             self.assertEqual("unchanged", summary["skipped"][0]["reason"])
+            self.assertEqual(
+                "meetings:2026-04-01 12-00-00.wav",
+                summary["skipped"][0]["source_file_identity"],
+            )
+
+    def test_create_refresh_job_treats_renamed_same_hash_as_new_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_dir = root / "audio"
+            runs_root = root / "runs"
+            source_dir.mkdir()
+            renamed_audio = source_dir / "renamed-meeting.wav"
+            renamed_audio.write_bytes(b"stable-audio")
+            settings = {
+                "audioExtensions": [".wav"],
+                "inputRoots": [
+                    {
+                        "id": "meetings",
+                        "displayName": "Meetings",
+                        "path": str(source_dir),
+                        "enabled": True,
+                    }
+                ],
+                "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
+                "huggingfaceTermsConfirmed": False,
+                "computeMode": "cpu",
+                "uiLanguage": "ja",
+            }
+            signature = generation_signature_for_settings(
+                settings=settings,
+                readable_text_enabled=False,
+            )
+            prior_media = runs_root / "job-prior" / "media" / "media-0001" / "ipa"
+            prior_media.mkdir(parents=True)
+            (prior_media / "IPA.md").write_text("# IPA\n", encoding="utf-8")
+            catalog_dir = runs_root / ".timeline-for-audio"
+            catalog_dir.mkdir(parents=True)
+            (catalog_dir / "catalog.jsonl").write_text(
+                json.dumps(
+                    {
+                        "job_id": "job-prior",
+                        "run_dir": str(runs_root / "job-prior"),
+                        "audio_id": "media-0001",
+                        "source_hash": sha256_file(renamed_audio),
+                        "conversion_signature": signature,
+                        "source_id": "meetings",
+                        "source_relative_path": "original-meeting.wav",
+                        "source_file_identity": "meetings:original-meeting.wav",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            job_id, run_dir, summary = create_refresh_job(
+                settings=settings,
+                readable_text_enabled=False,
+            )
+
+            self.assertIsNotNone(job_id)
+            self.assertIsNotNone(run_dir)
+            self.assertEqual(1, summary["total_discovered"])
+            self.assertEqual(1, summary["queued_count"])
+            self.assertEqual(0, summary["skipped_count"])
+            request = json.loads((Path(str(run_dir)) / "request.json").read_text(encoding="utf-8"))
+            self.assertEqual(
+                "meetings:renamed-meeting.wav",
+                request["input_items"][0]["source_file_identity"],
+            )
 
     def test_create_job_writes_pending_contract_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

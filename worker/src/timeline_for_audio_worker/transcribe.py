@@ -120,6 +120,7 @@ class SegmentRecord:
     original_end: float
     speaker: str
     text: str
+    confidence: float | None = None
 
 
 def _map_trimmed_to_original(seconds: float, cut_map: list[dict[str, float]]) -> float:
@@ -151,6 +152,24 @@ def _timestamp_label(seconds: float) -> str:
     minutes, rem = divmod(rem, 60_000)
     secs, millis = divmod(rem, 1000)
     return f"{hours:02}:{minutes:02}:{secs:02}.{millis:03}"
+
+
+def _segment_confidence(segment: Any) -> float | None:
+    no_speech_prob = getattr(segment, "no_speech_prob", None)
+    if no_speech_prob is not None:
+        try:
+            return round(max(0.0, min(1.0, 1.0 - float(no_speech_prob))), 3)
+        except (TypeError, ValueError):
+            pass
+
+    avg_logprob = getattr(segment, "avg_logprob", None)
+    if avg_logprob is not None:
+        try:
+            value = 1.0 + max(-1.0, min(0.0, float(avg_logprob)))
+            return round(max(0.0, min(1.0, value)), 3)
+        except (TypeError, ValueError):
+            pass
+    return None
 
 
 def _build_word_rows(segment: Any, cut_map: list[dict[str, float]]) -> list[dict[str, Any]]:
@@ -197,6 +216,7 @@ def _build_records(
                 original_end=float(segment.get("original_end", end) or end),
                 speaker=speaker,
                 text=text,
+                confidence=segment.get("confidence"),
             )
         )
     return records
@@ -478,6 +498,7 @@ def transcribe_audio(
                     "original_end": _map_trimmed_to_original(float(getattr(segment, "end", segment.start) or segment.start), cut_map),
                     "text": getattr(segment, "text", ""),
                     "speaker": "SPEAKER_00",
+                    "confidence": _segment_confidence(segment),
                     "words": _build_word_rows(segment, cut_map),
                 }
                 for index, segment in enumerate(list(segments), start=1)
@@ -539,6 +560,7 @@ def transcribe_audio(
                 "original_end": _map_trimmed_to_original(float(getattr(segment, "end", segment.start) or segment.start), cut_map),
                 "text": getattr(segment, "text", ""),
                 "speaker": "SPEAKER_00",
+                "confidence": _segment_confidence(segment),
                 "words": _build_word_rows(segment, cut_map),
             }
             for index, segment in enumerate(list(segments), start=1)

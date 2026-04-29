@@ -2,23 +2,17 @@
   "schemaVersion": 1,
   "inputRoots": [
     {
-      "id": "videos",
-      "displayName": "Videos",
-      "path": "C:\\Users\\amano\\Videos\\",
-      "enabled": true
-    },
-    {
-      "id": "f-video",
-      "displayName": "F Video",
-      "path": "F:\\Video\\",
+      "id": "timeline-audio",
+      "displayName": "Timeline Audio",
+      "path": "C:\\TimelineData\\Audio\\",
       "enabled": true
     }
   ],
   "outputRoots": [
     {
-      "id": "runs",
-      "displayName": "Runs",
-      "path": "C:\\Users\\amano\\video\\",
+      "id": "master",
+      "displayName": "TimelineForAudio Master",
+      "path": "C:\\TimelineData\\AudioMaster\\",
       "enabled": true
     }
   ],

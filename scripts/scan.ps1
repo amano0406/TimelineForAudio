@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
-$tfa = Join-Path $root "tfa.ps1"
+$cli = Join-Path $root "cli.ps1"
 $arguments = @("scan")
 if ($Config) {
     $arguments += @("--config", $Config)
@@ -15,4 +15,4 @@ if ($Output) {
     $arguments += @("--output", $Output)
 }
 
-& $tfa @arguments
+& $cli @arguments

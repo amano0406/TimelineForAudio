@@ -36,8 +36,8 @@ def assert_cli_runtime_allowed() -> None:
             "TimelineForAudio CLI is Docker-only in normal use.",
             "",
             "Use the Docker wrapper from the repository root:",
-            "  Windows PowerShell: .\\tfa.ps1 settings status",
-            "  WSL/Unix backdoor: ./tfa.command settings status",
+            "  Windows PowerShell: .\\cli.ps1 settings status",
+            "  WSL/Unix backdoor: ./cli.command settings status",
             "",
             f"For tests only, set {ALLOW_HOST_CLI_ENV}=1 before running the CLI directly.",
         ]

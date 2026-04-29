@@ -236,6 +236,7 @@ class IPATurn:
     end: float
     speaker: str
     ipa: str
+    confidence: float | None = None
 
 
 @dataclass
@@ -577,6 +578,15 @@ def _ensure_slashes(value: str) -> str:
     return f"/{stripped}/"
 
 
+def _optional_float(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def generate_ipa_turns(
     *,
     transcript_payload: dict[str, Any],
@@ -621,6 +631,7 @@ def generate_ipa_turns(
                 ),
                 speaker=str(segment.get("speaker") or "SPEAKER_00"),
                 ipa=_ensure_slashes(ipa_text),
+                confidence=_optional_float(segment.get("confidence")),
             )
         )
 

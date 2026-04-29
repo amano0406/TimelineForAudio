@@ -4,8 +4,11 @@ import json
 import os
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 
+from timeline_for_audio_worker.cli import cmd_settings_input_root_set_enabled
 from timeline_for_audio_worker.settings import configured_path, init_settings, load_settings
 
 
@@ -99,6 +102,48 @@ class SettingsTests(unittest.TestCase):
 
         self.assertEqual(Path("/host/input/videos"), root_path)
         self.assertEqual(Path("/host/input/videos/sample/a.mp3"), child_path)
+
+    def test_input_root_can_be_disabled_and_enabled_without_removing_it(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            settings_path = root / "settings.json"
+            settings_path.write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "inputRoots": [
+                            {
+                                "id": "videos",
+                                "displayName": "Videos",
+                                "path": "C:\\Users\\amano\\Videos\\",
+                                "enabled": True,
+                            }
+                        ],
+                        "outputRoots": [],
+                        "audioExtensions": [".mp3"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            previous_settings = os.environ.get("TIMELINE_FOR_AUDIO_SETTINGS_PATH")
+            os.environ["TIMELINE_FOR_AUDIO_SETTINGS_PATH"] = str(settings_path)
+            try:
+                with redirect_stdout(StringIO()):
+                    cmd_settings_input_root_set_enabled("videos", False, as_json=True)
+                disabled = load_settings()["inputRoots"][0]
+                with redirect_stdout(StringIO()):
+                    cmd_settings_input_root_set_enabled("videos", True, as_json=True)
+                enabled = load_settings()["inputRoots"][0]
+            finally:
+                if previous_settings is None:
+                    os.environ.pop("TIMELINE_FOR_AUDIO_SETTINGS_PATH", None)
+                else:
+                    os.environ["TIMELINE_FOR_AUDIO_SETTINGS_PATH"] = previous_settings
+
+        self.assertEqual("videos", disabled["id"])
+        self.assertFalse(disabled["enabled"])
+        self.assertEqual("C:\\Users\\amano\\Videos\\", disabled["path"])
+        self.assertTrue(enabled["enabled"])
 
 
 if __name__ == "__main__":

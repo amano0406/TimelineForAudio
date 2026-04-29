@@ -71,6 +71,14 @@ def parse_args() -> argparse.Namespace:
     input_root_remove = input_root_subparsers.add_parser("remove", help="Remove an input directory.")
     input_root_remove.add_argument("--id", required=True)
     input_root_remove.add_argument("--json", action="store_true")
+    input_root_enable = input_root_subparsers.add_parser("enable", help="Enable an input directory.")
+    input_root_enable.add_argument("--id", required=True)
+    input_root_enable.add_argument("--json", action="store_true")
+    input_root_disable = input_root_subparsers.add_parser(
+        "disable", help="Disable an input directory without removing it."
+    )
+    input_root_disable.add_argument("--id", required=True)
+    input_root_disable.add_argument("--json", action="store_true")
     input_root_clear = input_root_subparsers.add_parser("clear", help="Remove all input directories.")
     input_root_clear.add_argument("--json", action="store_true")
     output_root = settings_subparsers.add_parser(
@@ -100,7 +108,7 @@ def parse_args() -> argparse.Namespace:
         "--directory", dest="directories", action="append", type=Path, default=[]
     )
     jobs_create.add_argument("--source-id", dest="source_ids", action="append", default=[])
-    jobs_create.add_argument("--output-root-id", type=str, default="runs")
+    jobs_create.add_argument("--output-root-id", type=str, default=None)
     jobs_create.add_argument("--language", type=str, required=False)
     jobs_create.add_argument("--ipa-backend", choices=["sudachi", "pyopenjtalk"], required=False)
     jobs_create.add_argument("--vad-profile", choices=["default", "loose", "strict"], required=False)
@@ -131,7 +139,7 @@ def parse_args() -> argparse.Namespace:
         "refresh", help="Read configured input directories and process changed audio only."
     )
     refresh_parser.add_argument("--source-id", dest="source_ids", action="append", default=[])
-    refresh_parser.add_argument("--output-root-id", type=str, default="runs")
+    refresh_parser.add_argument("--output-root-id", type=str, default=None)
     refresh_parser.add_argument("--language", type=str, required=False)
     refresh_parser.add_argument("--ipa-backend", choices=["sudachi", "pyopenjtalk"], required=False)
     refresh_parser.add_argument("--vad-profile", choices=["default", "loose", "strict"], required=False)
@@ -354,6 +362,26 @@ def cmd_settings_input_root_remove(root_id: str, as_json: bool) -> int:
         for row in _root_list_payload(settings, "inputRoots")
         if str(row.get("id") or "").lower() != root_id.strip().lower()
     ]
+    settings["inputRoots"] = rows
+    save_settings(settings)
+    _print_payload(_root_list_payload(load_settings(), "inputRoots"), as_json)
+    return 0
+
+
+def cmd_settings_input_root_set_enabled(root_id: str, enabled: bool, as_json: bool) -> int:
+    settings = load_settings()
+    rows = _root_list_payload(settings, "inputRoots")
+    normalized_id = root_id.strip().lower()
+    if not normalized_id:
+        raise ValueError("Input root id is required.")
+    matched = False
+    for row in rows:
+        if str(row.get("id") or "").lower() == normalized_id:
+            row["enabled"] = enabled
+            matched = True
+            break
+    if not matched:
+        raise ValueError(f"Input root was not found: {root_id}")
     settings["inputRoots"] = rows
     save_settings(settings)
     _print_payload(_root_list_payload(load_settings(), "inputRoots"), as_json)
@@ -686,6 +714,10 @@ def main() -> int:
                 )
             if args.input_root_command == "remove":
                 return cmd_settings_input_root_remove(args.id, args.json)
+            if args.input_root_command == "enable":
+                return cmd_settings_input_root_set_enabled(args.id, True, args.json)
+            if args.input_root_command == "disable":
+                return cmd_settings_input_root_set_enabled(args.id, False, args.json)
             if args.input_root_command == "clear":
                 return cmd_settings_input_root_clear(args.json)
         if args.settings_command == "output-root":

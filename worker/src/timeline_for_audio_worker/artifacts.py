@@ -185,11 +185,13 @@ def render_ipa(
         end = float(turn.get("end", start) or start)
         speaker = str(turn.get("speaker") or "SPEAKER_00")
         ipa = str(turn.get("ipa") or "").strip()
+        confidence = turn.get("confidence")
         lines.extend(
             [
                 f"## Turn {index:03d}",
                 f"Time: `{_timestamp_label(start)} - {_timestamp_label(end)}`",
                 f"Speaker: `{speaker}`",
+                *([f"Confidence: `{confidence}`"] if confidence is not None else []),
                 f"IPA: `{ipa}`",
                 "",
             ]

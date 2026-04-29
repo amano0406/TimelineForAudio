@@ -29,6 +29,8 @@ For every input item:
 - compute SHA-256
 - compute the generation signature
 - check duplicate state against `.timeline-for-audio/catalog.jsonl`
+- the duplicate key includes `source hash + generation signature + source file identity`
+- source file identity is based on input root id and relative path, so a renamed file is treated as a different file
 
 The worker writes `manifest.json` before heavy processing starts.
 
@@ -37,14 +39,17 @@ The worker writes `manifest.json` before heavy processing starts.
 The worker normalizes each input into a stable analysis format:
 
 1. decode the source audio with `ffmpeg`
-2. write mono `16kHz` `audio/normalized.wav`
-3. write `audio/cut_map.json`
+2. write full mono `16kHz` timeline copy to `audio/source-normalized.wav`
+3. scan the full copy for non-silent speech-candidate intervals
+4. write the speech-candidate processing audio to `audio/normalized.wav`
+5. write `audio/cut_map.json`
+6. write timeline event artifacts under `analysis/`
 
-In the current audio-only pipeline, `cut_map.json` is present for contract stability even when no trimming is applied.
+`cut_map.json` maps timestamps from `audio/normalized.wav` back to the original audio-relative timeline.
 
 ## 5. Cleanup-Source Transcription
 
-The worker calls `faster-whisper` to generate cleanup-oriented source text from the full recording.
+The worker calls `faster-whisper` to generate cleanup-oriented source text from the speech-candidate processing audio.
 
 - language: derived from the CLI language setting when available
 - device: `cpu` or `cuda`
@@ -85,7 +90,7 @@ Artifacts written here:
 
 ## 8. Diarization Enrichment
 
-If `pyannote/speaker-diarization-community-1` is available and the Hugging Face prerequisites are satisfied, diarization runs on the normalized audio and aligns speaker turns to the current turn spans.
+If `pyannote/speaker-diarization-community-1` is available and the Hugging Face prerequisites are satisfied, diarization runs on the full normalized timeline copy and aligns speaker turns to the current turn spans.
 
 The worker preloads the normalized audio with `torchaudio`, passes waveform + sample rate into `pyannote`, keeps the current turn text fixed, and assigns speakers from diarization turns to turn timestamps for downstream IPA and readable-text generation.
 
@@ -101,6 +106,22 @@ Artifacts written here:
 - `transcript/turns_speaker_spans.json`
 - `analysis/diarization_turns.json`
 
+Speaker labels remain generic machine labels. The worker does not infer real names, identity, gender, age, or speaker attributes.
+
+## 8.5 Timeline Events
+
+The worker records the original audio timeline as candidate events:
+
+- `speech_candidate`
+- `silence_or_noise_candidate`
+
+`silence_or_noise_candidate` means the interval was not selected for speech-focused processing. It is not a semantic classification of the sound.
+
+Artifacts written here:
+
+- `analysis/timeline_events.json`
+- `analysis/Timeline Events.md`
+
 ## 9. IPA Generation
 
 The worker derives IPA per turn and keeps speaker + timestamp + IPA aligned as the canonical intermediate.
@@ -109,6 +130,12 @@ Artifacts written here:
 
 - `ipa/ipa_turns.json`
 - `ipa/IPA.md`
+- `review/review_data.json`
+- `review/review.html`
+- `review/process_data.json`
+- `review/process.html`
+
+`review.html` is a local inspection helper for checking IPA tokens against a selected local audio file. It does not embed the audio file. `process.html` is a local inspection helper that links the generated source, audio, cut-map, transcript, diarization, and IPA files in processing order.
 
 ## 10. Readable-Text Reconstruction
 

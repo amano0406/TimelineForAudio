@@ -935,6 +935,18 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_path.parent.mkdir(parents=True, exist_ok=True)
                 output_path.write_bytes(b"normalized")
 
+            def fake_trim_audio(input_path: Path, output_path: Path, duration_seconds: float):
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"trimmed")
+                return [
+                    {
+                        "original_start": 2.0,
+                        "original_end": 4.0,
+                        "trimmed_start": 0.0,
+                        "trimmed_end": 2.0,
+                    }
+                ]
+
             def fake_transcribe_audio(**kwargs):
                 transcribe_calls.append(kwargs)
                 transcript_label = kwargs["transcript_label"]
@@ -974,6 +986,7 @@ class ProcessorQueueTests(unittest.TestCase):
 
             with (
                 patch.object(processor, "extract_audio", side_effect=fake_extract_audio),
+                patch.object(processor, "trim_audio", side_effect=fake_trim_audio),
                 patch.object(processor, "transcribe_audio", side_effect=fake_transcribe_audio),
                 patch(
                     "timeline_for_audio_worker.processor.build_context_documents",
@@ -1078,11 +1091,27 @@ class ProcessorQueueTests(unittest.TestCase):
             self.assertEqual(2, len(transcribe_calls))
             self.assertEqual("cleanup_source", transcribe_calls[0]["transcript_label"])
             self.assertFalse(transcribe_calls[0]["diarization_enabled"])
+            self.assertEqual(
+                [
+                    {
+                        "original_start": 2.0,
+                        "original_end": 4.0,
+                        "trimmed_start": 0.0,
+                        "trimmed_end": 2.0,
+                    }
+                ],
+                transcribe_calls[0]["cut_map"],
+            )
             self.assertEqual("turns_source", transcribe_calls[1]["transcript_label"])
             self.assertTrue(transcribe_calls[1]["diarization_enabled"])
+            self.assertEqual(transcribe_calls[0]["cut_map"], transcribe_calls[1]["cut_map"])
             self.assertEqual(
                 "turns_source",
                 apply_speaker_diarization.call_args.kwargs["transcript_payload"]["transcript_label"],
+            )
+            self.assertEqual(
+                "source-normalized.wav",
+                apply_speaker_diarization.call_args.kwargs["audio_path"].name,
             )
             self.assertEqual("Known spelling: TimelineForAudio", build_context_documents.call_args.kwargs["supplemental_context_text"])
             self.assertEqual(
@@ -1105,6 +1134,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 "turns_source",
                 analyze_audio.call_args.kwargs["transcript_payload"]["transcript_label"],
             )
+            self.assertEqual("source-normalized.wav", analyze_audio.call_args.kwargs["audio_path"].name)
             self.assertEqual(
                 "turns_source",
                 generate_ipa_turns.call_args.kwargs["transcript_payload"]["transcript_label"],
@@ -1126,11 +1156,66 @@ class ProcessorQueueTests(unittest.TestCase):
             self.assertTrue((job_dir / "media" / manifest_item.media_id / "ipa" / "IPA.md").exists())
             self.assertTrue((job_dir / "media" / manifest_item.media_id / "readable-text" / "Readable Text.md").exists())
             self.assertTrue((job_dir / "media" / manifest_item.media_id / "ipa" / "ipa_turns.json").exists())
+            self.assertTrue(
+                (job_dir / "media" / manifest_item.media_id / "review" / "review.html").exists()
+            )
+            self.assertTrue(
+                (job_dir / "media" / manifest_item.media_id / "review" / "review_data.json").exists()
+            )
+            self.assertTrue(
+                (job_dir / "media" / manifest_item.media_id / "review" / "process.html").exists()
+            )
+            self.assertTrue(
+                (job_dir / "media" / manifest_item.media_id / "review" / "process_data.json").exists()
+            )
+            self.assertTrue(
+                (
+                    job_dir
+                    / "media"
+                    / manifest_item.media_id
+                    / "analysis"
+                    / "timeline_events.json"
+                ).exists()
+            )
+            self.assertTrue(
+                (
+                    job_dir
+                    / "media"
+                    / manifest_item.media_id
+                    / "analysis"
+                    / "Timeline Events.md"
+                ).exists()
+            )
+            cut_map_payload = json.loads(
+                (
+                    job_dir
+                    / "media"
+                    / manifest_item.media_id
+                    / "audio"
+                    / "cut_map.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(transcribe_calls[0]["cut_map"], cut_map_payload)
             source_info = json.loads(
                 (job_dir / "media" / manifest_item.media_id / "source.json").read_text(encoding="utf-8")
             )
             self.assertIsNone(source_info["requested_ipa_backend"])
             self.assertEqual("stub-ipa", source_info["effective_ipa_backend"])
+            self.assertEqual(1, source_info["speech_candidate_count"])
+            self.assertEqual(2, source_info["silence_or_noise_candidate_count"])
+            artifacts_payload = json.loads(
+                (job_dir / "media" / manifest_item.media_id / "artifacts.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertIn(
+                "review",
+                {artifact["kind"] for artifact in artifacts_payload["artifacts"]},
+            )
+            self.assertIn(
+                "process_review",
+                {artifact["kind"] for artifact in artifacts_payload["artifacts"]},
+            )
             self.assertTrue(
                 (
                     job_dir

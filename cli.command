@@ -24,6 +24,7 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 compose_args=(-f docker-compose.yml)
+can_start_worker=true
 if command -v pwsh >/dev/null 2>&1; then
   pwsh -NoLogo -NoProfile -File "./scripts/prepare-docker-paths.ps1" -RepoRoot "$(pwd)" >/dev/null
   compose_args+=(-f .docker/docker-compose.paths.yml)
@@ -31,12 +32,16 @@ elif command -v powershell >/dev/null 2>&1; then
   powershell -NoLogo -NoProfile -File "./scripts/prepare-docker-paths.ps1" -RepoRoot "$(pwd)" >/dev/null
   compose_args+=(-f .docker/docker-compose.paths.yml)
 else
-  echo "PowerShell was not found; Docker will run without generated host path mounts."
+  echo "PowerShell was not found; cannot start or update Docker host path mounts from this WSL/Unix shell."
+  echo "Trying to use an already-running worker. Use PowerShell on Windows for refresh or path changes."
+  can_start_worker=false
 fi
 
 if command -v nvidia-smi >/dev/null 2>&1; then
   compose_args+=(-f docker-compose.gpu.yml)
 fi
 
-run_compose_locked "${compose_args[@]}" up -d --remove-orphans worker
+if [[ "${can_start_worker}" == "true" ]]; then
+  run_compose_locked "${compose_args[@]}" up -d --remove-orphans worker
+fi
 exec docker compose "${compose_args[@]}" exec -T worker python -m timeline_for_audio_worker "$@"

@@ -29,6 +29,16 @@ if [ -z "$python_cmd" ]; then
   exit 1
 fi
 
-echo "Running Python lint..."
-"$python_cmd" -m ruff check worker/src worker/tests
-"$python_cmd" -m ruff format --check worker/src worker/tests
+if "$python_cmd" -m ruff --version >/dev/null 2>&1; then
+  echo "Running Python lint..."
+  "$python_cmd" -m ruff check worker/src worker/tests
+  "$python_cmd" -m ruff format --check worker/src worker/tests
+else
+  echo "ruff is not installed; skipping ruff checks."
+fi
+
+echo "Running Python syntax check..."
+"$python_cmd" -m compileall -q worker/src worker/tests
+
+echo "Running Python tests..."
+PYTHONPATH=worker/src "$python_cmd" -m unittest discover -s worker/tests -p 'test_*.py'

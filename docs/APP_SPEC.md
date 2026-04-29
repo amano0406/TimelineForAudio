@@ -12,22 +12,27 @@ The system prioritizes:
 - Docker-driven local processing
 - readable job output for LLM workflows
 - local processing over cloud dependencies
+- preserving the original audio timeline
 - per-turn timestamps and speaker alignment
+- speech-candidate processing for long recordings
+- generic speaker labels without identity inference
 
 ## App Model
 
 - `worker`: Python CLI and worker daemon inside Docker
 - `docker compose`: required worker container runtime for normal use
-- `start.ps1` / `tfa.ps1`: Windows PowerShell front door
-- `start.bat` / `tfa.bat`: thin compatibility wrappers around the PowerShell scripts
-- `start.command` / `tfa.command`: WSL/Unix backdoor wrappers
+- `start.ps1` / `cli.ps1`: Windows PowerShell front door
+- `start.bat` / `cli.bat` / `stop.bat` / `uninstall.bat`: Windows launchers for the matching PowerShell scripts
+- `start.command` / `cli.command` / `stop.command` / `uninstall.command`: WSL/Unix backdoor wrappers
+- `uninstall.ps1`: removes this project's Docker resources when the user intentionally uninstalls the app, then optionally removes saved app data, `settings.json`, and `.env`
 - `.docker/docker-compose.paths.yml`: generated local Docker bind-mount override
 - coordination: filesystem job directories
+- runtime code path: Docker uses dependencies from the image and the CLI source mounted from `/workspace/worker/src`
 
 ## CLI Flow
 
 1. start the Docker worker with `start.ps1`
-2. run CLI commands through `tfa.ps1`
+2. run CLI commands through `cli.ps1`
 3. save settings when needed
 4. create local `settings.json` with `settings init` when missing
 5. register stable input directories with `settings input-root` when the local defaults need changes
@@ -41,7 +46,7 @@ The system prioritizes:
 
 The CLI supports:
 
-- `settings input-root list/add/remove/clear`
+- `settings input-root list/add/remove/enable/disable/clear`
 - `settings output-root list/set`
 - `settings init`
 - `scan`
@@ -83,18 +88,27 @@ Every job writes:
 Each processed media item writes:
 
 - `source.json`
+- `audio/source-normalized.wav`
 - `audio/normalized.wav`
 - `audio/cut_map.json`
-- `transcript/cleanup_source.json`
-- `transcript/cleanup_source.md`
+- `transcript/cleanup-source.json`
+- `transcript/cleanup-source.md`
 - `transcript/context_primary.txt`
 - `transcript/context_secondary.txt` when provided
 - `transcript/context_merged.txt`
 - `transcript/context_report.json`
-- `transcript/turns_source.json`
-- `transcript/turns_source.md`
+- `transcript/turns-source.json`
+- `transcript/turns-source.md`
+- `transcript/turns-source_words.json`
+- `transcript/turns-source_speaker_spans.json`
 - `transcript/transcript_delta.json`
 - `analysis/diarization_turns.json`
+- `analysis/timeline_events.json`
+- `analysis/Timeline Events.md`
+- `review/review.html`
+- `review/review_data.json`
+- `review/process.html`
+- `review/process_data.json`
 - `ipa/ipa_turns.json`
 - `ipa/IPA.md`
 - `readable-text/readable_text_turns.json` when readable text is enabled
@@ -135,6 +149,11 @@ Stored in repository-local `settings.json`:
 
 `settings.example.json` is tracked by Git. `settings.json` is local-only and ignored by Git.
 
+Current default paths:
+
+- input: `C:\TimelineData\Audio\`
+- master output: `C:\TimelineData\AudioMaster\`
+
 Stored separately under app data:
 
 - Hugging Face token
@@ -152,8 +171,10 @@ Default app data root:
 
 ## Duplicate Handling
 
-- duplicate key: `source hash + generation signature`
+- duplicate key: `source hash + generation signature + source file identity`
+- source file identity: `<input-root-id>:<relative-path>`
 - default `refresh` policy: skip unchanged files before creating processing work
+- changing only the file name or relative path makes the item a different file
 - stale catalog entries are processed again
 - `--reprocess-duplicates` forces processing even when the duplicate key matches
 - reuse / skip is automatic at the file level
@@ -182,3 +203,26 @@ The profile is written into `request.json`, transcript metadata, `source.json`, 
 - use `pyannote` only if token and terms confirmation are present
 - otherwise continue without diarization
 - diarization failures should not fail the whole job
+- speaker labels stay generic, such as `SPEAKER_00`
+- the app does not infer real names, identity, gender, age, or speaker attributes
+
+## Timeline Preservation
+
+- the original source file is never edited
+- `audio/source-normalized.wav` is the full normalized processing copy
+- `audio/normalized.wav` is the speech-candidate processing copy
+- `audio/cut_map.json` maps speech-candidate audio timestamps back to the original timeline
+- transcription and IPA turns are written with original audio-relative timestamps
+- `analysis/timeline_events.json` records `speech_candidate` and `silence_or_noise_candidate` intervals
+- `silence_or_noise_candidate` is a conservative candidate label, not a semantic sound classification
+
+## Review Artifact
+
+- `review/review.html` is a local inspection helper, not a primary user-facing export
+- audio is not embedded in the review HTML
+- the reviewer selects the matching local audio file in the browser
+- the page synchronizes audio playback with IPA token rows from `review/review_data.json`
+- source text is kept as a review aid, but IPA is the visible word-list value
+- word-level sync falls back to segment-level rows when word timestamps are unavailable
+- `review/process.html` is a local inspection helper for tracing which generated files were used at each processing stage
+- `review/process.html` links to source metadata, normalized audio, cut map, transcript, diarization, and IPA artifacts

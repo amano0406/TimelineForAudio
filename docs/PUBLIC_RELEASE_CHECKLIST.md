@@ -6,7 +6,7 @@ Use this checklist before switching the repository from private to public.
 
 - no real Hugging Face token is committed
 - `.env`, `runs/`, `uploads/`, `app-data/`, `outputs/`, and local caches are ignored
-- config samples use generic placeholder paths instead of personal paths
+- local path defaults in `settings.example.json` are intentional for the target operator, or have been replaced with generic paths before public release
 - generated ZIPs, artifacts, or job outputs are not tracked
 
 ## Build And Test
@@ -20,11 +20,11 @@ Use this checklist before switching the repository from private to public.
 
 - `start.ps1` starts the worker container on Windows
 - `start.command` still works as the WSL/Unix backdoor
-- `tfa.ps1 settings status` works without a token
-- `tfa.ps1 settings save` can store language, compute mode, and Hugging Face token
-- `tfa.ps1 jobs create` can create a job from one local audio file
-- `tfa.ps1 jobs create --ipa-only` skips readable-text reconstruction
-- `tfa.ps1 jobs archive` works for a completed job
+- `cli.ps1 settings status` works without a token
+- `cli.ps1 settings save` can store language, compute mode, and Hugging Face token
+- `cli.ps1 jobs create` can create a job from one local audio file
+- `cli.ps1 jobs create --ipa-only` skips readable-text reconstruction
+- `cli.ps1 jobs archive` works for a completed job
 - generated `.docker/docker-compose.paths.yml` maps configured input/output directories correctly
 - manual cleanup guidance is clear and does not require deleting original input audio
 

@@ -36,7 +36,9 @@ elif command -v powershell >/dev/null 2>&1; then
   powershell -NoLogo -NoProfile -File "./scripts/prepare-docker-paths.ps1" -RepoRoot "$(pwd)" >/dev/null
   path_compose_args=(-f .docker/docker-compose.paths.yml)
 else
-  echo "PowerShell was not found; Docker will run without generated host path mounts."
+  echo "PowerShell was not found; cannot generate Docker host path mounts from Windows settings."
+  echo "Start through PowerShell on Windows, or install pwsh for this WSL/Unix backdoor."
+  exit 1
 fi
 
 compose_args=(-f docker-compose.yml)
@@ -53,10 +55,10 @@ echo
 echo "TimelineForAudio worker is running."
 echo
 echo "CLI examples:"
-echo "  ./tfa.command settings init"
-echo "  ./tfa.command settings status"
-echo "  ./tfa.command refresh --ipa-only"
-echo "  ./tfa.command jobs list"
+echo "  ./cli.command settings init"
+echo "  ./cli.command settings status"
+echo "  ./cli.command refresh --ipa-only"
+echo "  ./cli.command jobs list"
 echo
 echo "Docker status:"
 docker compose "${compose_args[@]}" ps

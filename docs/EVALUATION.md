@@ -32,13 +32,13 @@ The evaluator also accepts `speaker_segments`, `segments`, `ipa_turns`, `readabl
 Evaluate a direct artifact path:
 
 ```powershell
-.\tfa.ps1 evaluate --prediction ".\outputs\job-...\media\media-0001\ipa\ipa_turns.json" --reference ".\references\case-001.json" --json
+.\cli.ps1 evaluate --prediction ".\outputs\job-...\media\media-0001\ipa\ipa_turns.json" --reference ".\references\case-001.json" --json
 ```
 
 Evaluate by job:
 
 ```powershell
-.\tfa.ps1 evaluate --job-id job-YYYYMMDD-HHMMSS-xxxxxxxx --media-id media-0001 --artifact-kind ipa --reference ".\references\case-001.json" --json
+.\cli.ps1 evaluate --job-id job-YYYYMMDD-HHMMSS-xxxxxxxx --media-id media-0001 --artifact-kind ipa --reference ".\references\case-001.json" --json
 ```
 
 If the job has exactly one media item, `--media-id` can be omitted.

@@ -80,6 +80,31 @@ def _enabled_input_roots(settings: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def _source_root_for_id(settings: dict[str, Any], source_id: str) -> dict[str, Any] | None:
+    for root in _enabled_input_roots(settings):
+        if str(root.get("id") or "").lower() == str(source_id or "").lower():
+            return root
+    return None
+
+
+def _relative_path_label(path: Path, root_path: Path | None = None) -> str:
+    try:
+        if root_path is not None:
+            return path.resolve().relative_to(root_path.resolve()).as_posix()
+    except ValueError:
+        pass
+    try:
+        return path.resolve().as_posix()
+    except Exception:
+        return path.as_posix()
+
+
+def _source_file_identity(source_id: str, relative_path: str) -> str:
+    source = str(source_id or "local").strip() or "local"
+    relative = str(relative_path or "").strip().replace("\\", "/").lstrip("/")
+    return f"{source}:{relative}"
+
+
 def app_config_from_settings(settings: dict[str, Any]) -> Any:
     from .config import AppConfig, SourceDirectory
 
@@ -122,8 +147,14 @@ def collect_input_items(
     rows: list[InputItem] = []
     seen_paths: set[str] = set()
 
-    def add_path(path: Path, source_kind: str, source_id: str) -> None:
-        resolved = path.resolve()
+    def add_path(
+        path: Path,
+        source_kind: str,
+        source_id: str,
+        source_root_path: Path | None = None,
+    ) -> None:
+        original_path = str(path)
+        resolved = configured_path(path).resolve()
         key = str(resolved).lower()
         if key in seen_paths:
             return
@@ -133,14 +164,17 @@ def collect_input_items(
             return
         seen_paths.add(key)
         size_bytes = resolved.stat().st_size
+        relative_path = _relative_path_label(resolved, source_root_path)
         rows.append(
             InputItem(
                 input_id=f"{source_kind[:4]}-{len(rows) + 1:04d}",
                 source_kind=source_kind,
                 source_id=source_id,
-                original_path=str(resolved),
+                original_path=original_path,
                 display_name=resolved.name,
                 size_bytes=size_bytes,
+                source_relative_path=relative_path,
+                source_file_identity=_source_file_identity(source_id, relative_path),
             )
         )
 
@@ -148,11 +182,16 @@ def collect_input_items(
         add_path(file_path, "local_file", "local")
 
     for directory in directories or []:
-        resolved_directory = directory.resolve()
+        resolved_directory = configured_path(directory).resolve()
         if not resolved_directory.exists() or not resolved_directory.is_dir():
             raise ValueError(f"Input directory was not found: {resolved_directory}")
         for file_path in _iter_audio_files(resolved_directory, allowed_extensions):
-            add_path(file_path, "local_directory", str(resolved_directory))
+            add_path(
+                file_path,
+                "local_directory",
+                str(resolved_directory),
+                source_root_path=resolved_directory,
+            )
 
     if source_ids:
         selected_ids = {value.lower() for value in source_ids}
@@ -172,8 +211,12 @@ def collect_input_items(
                 continue
             if source_name.lower() not in selected_ids:
                 continue
+            root_path = configured_path(str(source_root.get("path") or "")).resolve()
             add_path(
-                Path(str(row["path"])), "mounted_root", str(source_root.get("id") or source_name)
+                Path(str(row["path"])),
+                "mounted_root",
+                str(source_root.get("id") or source_name),
+                source_root_path=root_path,
             )
 
     return rows
@@ -738,7 +781,15 @@ def create_refresh_job(
         if not source_path.exists() or not source_path.is_file():
             continue
         file_hash = sha256_file(source_path)
-        duplicate = catalog.get(catalog_key(file_hash, generation_signature))
+        source_root = _source_root_for_id(settings, source_name)
+        source_root_path = (
+            configured_path(str(source_root.get("path") or "")).resolve()
+            if source_root is not None
+            else None
+        )
+        relative_path = _relative_path_label(source_path, source_root_path)
+        source_file_identity = _source_file_identity(source_name, relative_path)
+        duplicate = catalog.get(catalog_key(file_hash, generation_signature, source_file_identity))
         if (
             duplicate
             and not reprocess_duplicates
@@ -748,6 +799,8 @@ def create_refresh_job(
                 {
                     "path": str(source_path),
                     "source_id": source_name,
+                    "source_relative_path": relative_path,
+                    "source_file_identity": source_file_identity,
                     "reason": "unchanged",
                     "source_hash": file_hash,
                     "duplicate_of": duplicate.get("audio_id") or duplicate.get("media_id"),
@@ -763,6 +816,8 @@ def create_refresh_job(
                 original_path=str(source_path.resolve()),
                 display_name=source_path.name,
                 size_bytes=int(row.get("size_bytes") or source_path.stat().st_size),
+                source_relative_path=relative_path,
+                source_file_identity=source_file_identity,
             )
         )
 

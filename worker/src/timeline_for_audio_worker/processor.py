@@ -7,6 +7,7 @@ import threading
 import traceback
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+import hashlib
 from pathlib import Path
 from time import monotonic
 from typing import Any, Callable
@@ -23,7 +24,7 @@ from .context_builder import CONTEXT_BUILDER_VERSION, build_context_documents
 from .contracts import JobRequest, JobResult, JobStatus, ManifestItem
 from .diarization import apply_speaker_diarization
 from .eta import build_eta_predictor, estimate_remaining_seconds
-from .ffmpeg_utils import extract_audio, probe_audio
+from .ffmpeg_utils import extract_audio, probe_audio, trim_audio
 from .fs_utils import (
     append_log,
     ensure_dir,
@@ -39,7 +40,9 @@ from .hashing import sha256_file
 from .ipa_backend import EXPERIMENTAL_PYOPENJTALK_IPA_BACKEND, generate_ipa_turns
 from .pass_diff import write_transcript_delta
 from .reconstruction import reconstruct_readable_text
-from .settings import load_settings, uploads_root
+from .review_artifact import write_process_review_artifact, write_review_artifact
+from .settings import configured_path, load_settings, uploads_root
+from .timeline_events import write_timeline_events
 from .transcribe import transcribe_audio
 from .vad_profile import vad_config_for_profile
 
@@ -523,8 +526,8 @@ def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
 
 def _resolve_input_path(item: Any) -> Path:
     if item.uploaded_path:
-        return Path(item.uploaded_path)
-    return Path(item.original_path)
+        return configured_path(str(item.uploaded_path))
+    return configured_path(str(item.original_path))
 
 
 def _job_sources_accessible(job_dir: Path) -> bool:
@@ -537,7 +540,9 @@ def _job_sources_accessible(job_dir: Path) -> bool:
 
 def _make_media_id(item: Any, file_hash: str) -> str:
     stem = slugify(Path(item.display_name or Path(item.original_path).stem).stem)
-    return f"{stem}-{file_hash[:8] or short_id()}"
+    identity = str(getattr(item, "source_file_identity", "") or "").strip()
+    suffix = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:8] if identity else file_hash[:8]
+    return f"{stem}-{suffix or short_id()}"
 
 
 def _collect_pending_jobs() -> list[Path]:
@@ -607,6 +612,8 @@ def _process_one_item(
         "input_id": item.input_id,
         "source_kind": item.source_kind,
         "source_id": item.source_id,
+        "source_relative_path": getattr(item, "source_relative_path", None),
+        "source_file_identity": getattr(item, "source_file_identity", None),
         "original_path": item.original_path,
         "resolved_path": str(source_path),
         "display_name": item.display_name,
@@ -642,17 +649,38 @@ def _process_one_item(
     }
     write_json_atomic(media_dir / "source.json", source_info)
 
+    source_normalized_audio_path = audio_dir / "source-normalized.wav"
     normalized_audio_path = audio_dir / "normalized.wav"
 
     if ensure_not_delete_requested:
         ensure_not_delete_requested("extract_audio")
     if on_stage:
         on_stage("extract_audio", "Preparing audio input.")
-    extract_audio(source_path, normalized_audio_path)
+    extract_audio(source_path, source_normalized_audio_path)
+    cut_map = trim_audio(
+        source_normalized_audio_path,
+        normalized_audio_path,
+        manifest_item.duration_seconds,
+    )
     if ensure_not_delete_requested:
         ensure_not_delete_requested("extract_audio")
-    cut_map: list[dict[str, float]] = []
     write_json_atomic(audio_dir / "cut_map.json", cut_map)
+    timeline_payload = write_timeline_events(
+        source_info=source_info,
+        source_name=item.display_name,
+        duration_seconds=manifest_item.duration_seconds,
+        cut_map=cut_map,
+        output_dir=analysis_dir,
+    )
+    source_info["full_timeline_audio_path"] = str(source_normalized_audio_path)
+    source_info["speech_candidate_audio_path"] = str(normalized_audio_path)
+    source_info["cut_map_path"] = "audio/cut_map.json"
+    source_info["timeline_events_path"] = "analysis/timeline_events.json"
+    source_info["speech_candidate_count"] = timeline_payload.get("speech_candidate_count", 0)
+    source_info["silence_or_noise_candidate_count"] = timeline_payload.get(
+        "silence_or_noise_candidate_count", 0
+    )
+    write_json_atomic(media_dir / "source.json", source_info)
 
     if ensure_not_delete_requested:
         ensure_not_delete_requested("transcribe_cleanup_source")
@@ -712,7 +740,7 @@ def _process_one_item(
         on_stage("diarize_audio", "Aligning speaker turns.")
     turns_source_payload = apply_speaker_diarization(
         source_name=item.display_name,
-        audio_path=normalized_audio_path,
+        audio_path=source_normalized_audio_path,
         transcript_dir=transcript_dir,
         analysis_dir=analysis_dir,
         transcript_payload=turns_source_payload,
@@ -740,7 +768,7 @@ def _process_one_item(
     manifest_item.speaker_count_note = speaker_count_metadata["speaker_count_note"]
     audio_feature_summary = analyze_audio(
         source_name=item.display_name,
-        audio_path=normalized_audio_path,
+        audio_path=source_normalized_audio_path,
         duration_seconds=manifest_item.duration_seconds,
         transcript_payload=turns_source_payload,
         output_dir=analysis_dir,
@@ -789,6 +817,7 @@ def _process_one_item(
             "end": turn.end,
             "speaker": turn.speaker,
             "ipa": turn.ipa,
+            "confidence": getattr(turn, "confidence", None),
         }
         for turn in ipa_result.turns
     ]
@@ -814,6 +843,14 @@ def _process_one_item(
             "turn_count": len(ipa_result.turns),
             "turns": ipa_turn_rows,
         },
+    )
+    write_review_artifact(
+        media_dir=media_dir,
+        source_info=source_info,
+        transcript_payload=turns_source_payload,
+        ipa_turns=ipa_turn_rows,
+        preferred_backend=request.ipa_backend,
+        speaker_count=manifest_item.speaker_count,
     )
     readable_text_turn_count = 0
     readable_text_warnings: list[str] = []
@@ -896,6 +933,26 @@ def _process_one_item(
     )
     if ipa_artifact is not None:
         artifacts.append(ipa_artifact)
+    timeline_events_artifact = register_artifact(
+        media_dir=media_dir,
+        kind="timeline_events",
+        title="Timeline Events",
+        display_name="Timeline Events",
+        role="support",
+        path=analysis_dir / "Timeline Events.md",
+    )
+    if timeline_events_artifact is not None:
+        artifacts.append(timeline_events_artifact)
+    review_artifact = register_artifact(
+        media_dir=media_dir,
+        kind="review",
+        title="IPA Review",
+        display_name="IPA Review",
+        role="support",
+        path=media_dir / "review" / "review.html",
+    )
+    if review_artifact is not None:
+        artifacts.append(review_artifact)
     if request.readable_text_enabled:
         readable_text_artifact = register_artifact(
             media_dir=media_dir,
@@ -907,6 +964,26 @@ def _process_one_item(
         )
         if readable_text_artifact is not None:
             artifacts.append(readable_text_artifact)
+    write_process_review_artifact(
+        media_dir=media_dir,
+        source_info=source_info,
+        cleanup_source_payload=cleanup_source_payload,
+        turns_source_payload=turns_source_payload,
+        timeline_payload=timeline_payload,
+        ipa_turns=ipa_turn_rows,
+        readable_text_enabled=request.readable_text_enabled,
+        readable_text_turn_count=readable_text_turn_count,
+    )
+    process_review_artifact = register_artifact(
+        media_dir=media_dir,
+        kind="process_review",
+        title="Processing Review",
+        display_name="Processing Review",
+        role="support",
+        path=media_dir / "review" / "process.html",
+    )
+    if process_review_artifact is not None:
+        artifacts.append(process_review_artifact)
     write_media_artifacts_index(
         media_dir=media_dir,
         media_id=str(manifest_item.media_id),
@@ -1043,6 +1120,9 @@ def process_job(job_dir: Path | None = None) -> bool:
                         duplicate_status="new",
                         audio_id=_make_media_id(input_item, fallback_hash),
                         status="skipped_invalid",
+                        source_id=input_item.source_id,
+                        source_relative_path=input_item.source_relative_path,
+                        source_file_identity=input_item.source_file_identity,
                         extension=source_path.suffix.lstrip(".").lower() or None,
                         diarization_enabled=request.diarization_enabled,
                         model_id=request.transcription_model_id,
@@ -1075,6 +1155,9 @@ def process_job(job_dir: Path | None = None) -> bool:
                         duplicate_status="new",
                         audio_id=_make_media_id(input_item, file_hash),
                         status="skipped_too_short",
+                        source_id=input_item.source_id,
+                        source_relative_path=input_item.source_relative_path,
+                        source_file_identity=input_item.source_file_identity,
                         container_name=media_probe.get("container_name"),
                         extension=media_probe.get("extension"),
                         audio_codec=media_probe.get("audio_codec"),
@@ -1093,7 +1176,13 @@ def process_job(job_dir: Path | None = None) -> bool:
                 _write_manifest(job_dir, request.job_id, manifest_items)
                 _write_status(job_dir, status)
                 continue
-            duplicate = catalog.get(catalog_key(file_hash, request.conversion_signature))
+            duplicate = catalog.get(
+                catalog_key(
+                    file_hash,
+                    request.conversion_signature,
+                    input_item.source_file_identity,
+                )
+            )
             duplicate_status = "new"
             duplicate_of = None
             duplicate_artifact_path = _resolve_duplicate_artifact_path(duplicate)
@@ -1128,6 +1217,9 @@ def process_job(job_dir: Path | None = None) -> bool:
                     duplicate_of=duplicate_of or None,
                     audio_id=_make_media_id(input_item, file_hash),
                     status="queued",
+                    source_id=input_item.source_id,
+                    source_relative_path=input_item.source_relative_path,
+                    source_file_identity=input_item.source_file_identity,
                     container_name=media_probe.get("container_name"),
                     extension=media_probe.get("extension"),
                     audio_codec=media_probe.get("audio_codec"),
@@ -1406,6 +1498,10 @@ def process_job(job_dir: Path | None = None) -> bool:
                         "audio_id": manifest_item.media_id,
                         "source_hash": manifest_item.sha256,
                         "conversion_signature": manifest_item.conversion_signature,
+                        "source_id": manifest_item.source_id,
+                        "source_relative_path": manifest_item.source_relative_path,
+                        "source_file_identity": manifest_item.source_file_identity,
+                        "file_name": manifest_item.file_name,
                         "original_path": manifest_item.original_path,
                         "duration_seconds": manifest_item.duration_seconds,
                         "created_at": now_iso(),

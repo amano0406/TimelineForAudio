@@ -21,6 +21,8 @@ class InputItem:
     display_name: str
     size_bytes: int = 0
     uploaded_path: str | None = None
+    source_relative_path: str | None = None
+    source_file_identity: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -310,6 +312,9 @@ class ManifestItem:
     speaker_confidence_summary: dict[str, Any] = field(default_factory=dict)
     diarization_quality_summary: dict[str, Any] = field(default_factory=dict)
     optional_voice_feature_summary: dict[str, Any] = field(default_factory=dict)
+    source_id: str | None = None
+    source_relative_path: str | None = None
+    source_file_identity: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)

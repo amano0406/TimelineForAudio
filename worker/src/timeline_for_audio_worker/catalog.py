@@ -11,8 +11,22 @@ def catalog_path(output_root: Path) -> Path:
     return output_root / ".timeline-for-audio" / "catalog.jsonl"
 
 
-def catalog_key(source_hash: str, conversion_signature: str) -> str:
-    return f"{source_hash.strip().lower()}::{conversion_signature.strip().lower()}"
+def normalize_file_identity(value: str | None) -> str:
+    normalized = str(value or "").strip().replace("\\", "/").rstrip("/")
+    return normalized.lower()
+
+
+def catalog_key(
+    source_hash: str,
+    conversion_signature: str,
+    source_file_identity: str | None = None,
+) -> str:
+    identity = normalize_file_identity(source_file_identity)
+    hash_part = source_hash.strip().lower()
+    signature_part = conversion_signature.strip().lower()
+    if identity:
+        return f"{identity}::{hash_part}::{signature_part}"
+    return f"{hash_part}::{signature_part}"
 
 
 def load_catalog(output_root: Path) -> dict[str, dict[str, Any]]:
@@ -27,7 +41,7 @@ def load_catalog(output_root: Path) -> dict[str, dict[str, Any]]:
         file_hash = str(row.get("source_hash") or row.get("sha256") or "")
         conversion_signature = str(row.get("conversion_signature") or "")
         if file_hash and conversion_signature:
-            rows[catalog_key(file_hash, conversion_signature)] = row
+            rows[catalog_key(file_hash, conversion_signature, row.get("source_file_identity"))] = row
     return rows
 
 

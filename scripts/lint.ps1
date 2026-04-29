@@ -39,6 +39,28 @@ function Resolve-Python {
 
 $python = Resolve-Python
 
-Write-Host "Running Python lint..."
-Invoke-CheckedCommand $python -m ruff check worker/src worker/tests
-Invoke-CheckedCommand $python -m ruff format --check worker/src worker/tests
+$ruffAvailable = $false
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+& $python -m ruff --version > $null 2>&1
+$ruffExitCode = $LASTEXITCODE
+$ErrorActionPreference = $previousErrorActionPreference
+if ($ruffExitCode -eq 0) {
+    $ruffAvailable = $true
+}
+
+if ($ruffAvailable) {
+    Write-Host "Running Python lint..."
+    Invoke-CheckedCommand $python -m ruff check worker/src worker/tests
+    Invoke-CheckedCommand $python -m ruff format --check worker/src worker/tests
+}
+else {
+    Write-Host "ruff is not installed; skipping ruff checks."
+}
+
+Write-Host "Running Python syntax check..."
+Invoke-CheckedCommand $python -m compileall -q worker/src worker/tests
+
+Write-Host "Running Python tests..."
+$env:PYTHONPATH = "worker/src"
+Invoke-CheckedCommand $python -m unittest discover -s worker/tests -p "test_*.py"
