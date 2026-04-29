@@ -36,7 +36,7 @@ def resolve_job_prediction_path(
 ) -> Path:
     media_root = run_dir / "media"
     if not media_root.exists():
-        raise ValueError(f"Job does not contain a media directory: {run_dir}")
+        raise ValueError(f"Run does not contain a media directory: {run_dir}")
 
     if media_id:
         media_dir = media_root / media_id
@@ -46,7 +46,7 @@ def resolve_job_prediction_path(
         candidates = sorted(path for path in media_root.iterdir() if path.is_dir())
         if len(candidates) != 1:
             raise ValueError(
-                "Media id is required when a job contains zero or multiple media items."
+                "Media id is required when a run contains zero or multiple media items."
             )
         media_dir = candidates[0]
 

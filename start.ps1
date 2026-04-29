@@ -31,7 +31,7 @@ Write-Host "CLI examples:"
 Write-Host "  .\cli.ps1 settings init"
 Write-Host "  .\cli.ps1 settings status"
 Write-Host "  .\cli.ps1 refresh"
-Write-Host "  .\cli.ps1 jobs list"
+Write-Host "  .\cli.ps1 runs list"
 Write-Host ""
 Write-Host "Docker status:"
 & $docker compose @composeArgs ps

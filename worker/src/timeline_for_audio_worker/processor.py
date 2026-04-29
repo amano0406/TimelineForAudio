@@ -449,7 +449,7 @@ def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
         [
             "# Run Info",
             "",
-            f"- Job ID: `{request.job_id}`",
+            f"- Run ID: `{request.job_id}`",
             f"- Created At: `{request.created_at}`",
             f"- Profile: `{request.profile}`",
             f"- Compute Mode: `{request.compute_mode}`",
@@ -457,7 +457,7 @@ def _write_support_docs(job_dir: Path, request: JobRequest) -> None:
             f"- Input Count: `{len(request.input_items)}`",
             f"- Reprocess Duplicates: `{request.reprocess_duplicates}`",
             "",
-            "This run uses file-based coordination between CLI-created job files and the Python worker.",
+            "This run uses file-based coordination between CLI-created run files and the Python worker.",
             "",
         ]
     )
@@ -1009,7 +1009,7 @@ def process_job(job_dir: Path | None = None) -> bool:
         job_id=request.job_id,
         state="running",
         current_stage="preflight",
-        message="Preparing job.",
+        message="Preparing run.",
         items_total=len(request.input_items),
         progress_percent=1.0 if request.input_items else 0.0,
         started_at=now_iso(),
@@ -1035,7 +1035,7 @@ def process_job(job_dir: Path | None = None) -> bool:
     try:
         _write_status(job_dir, status)
         _write_result(job_dir, result)
-        append_log(log_path, f"[{now_iso()}] Starting job {request.job_id}")
+        append_log(log_path, f"[{now_iso()}] Starting run {request.job_id}")
         for index, input_item in enumerate(request.input_items, start=1):
             _raise_if_delete_requested(job_dir, "preflight")
             status.current_media = input_item.display_name
@@ -1528,7 +1528,7 @@ def process_job(job_dir: Path | None = None) -> bool:
 
         status.state = "failed" if has_failures else "completed"
         status.current_stage = "failed" if has_failures else "completed"
-        status.message = "Job finished with errors." if has_failures else "Job completed."
+        status.message = "Run finished with errors." if has_failures else "Run completed."
         status.warnings = warnings
         status.current_media = None
         status.current_media_elapsed_sec = 0.0

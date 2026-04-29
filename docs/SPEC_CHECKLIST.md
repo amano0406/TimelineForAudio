@@ -50,4 +50,4 @@
 - [x] Docker経由のCLIを通常入口にする
 - [x] Windows PowerShellを正面玄関にする
 - [x] WSL/Unix wrapperは開発者向け裏口として残す
-- [x] CLIテストで設定、job、artifact、再利用判定を検証する
+- [x] CLIテストで設定、run、artifact、再利用判定を検証する

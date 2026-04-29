@@ -400,7 +400,7 @@ def _build_export_package(
 
     if not exported_rows:
         title = _artifact_export_title(normalized_artifact_kind)
-        raise ValueError(f"No completed {title} artifacts are available to download for this job.")
+        raise ValueError(f"No completed {title} artifacts are available to download for this run.")
 
     _write_export_index_html(
         export_root=export_root,
@@ -476,8 +476,8 @@ def _write_export_index_html(
             "<body>",
             '  <section class="panel">',
             "    <h1>TimelineForAudio export</h1>",
-            f"    <p>Job ID: <code>{html.escape(job_id)}</code></p>",
-            f"    <p>This package contains the {_artifact_export_title(artifact_kind)} export for the selected job.</p>",
+            f"    <p>Run ID: <code>{html.escape(job_id)}</code></p>",
+            f"    <p>This package contains the {_artifact_export_title(artifact_kind)} export for the selected run.</p>",
             "  </section>",
             '  <section class="panel">',
             "    <h2>Top-level files</h2>",

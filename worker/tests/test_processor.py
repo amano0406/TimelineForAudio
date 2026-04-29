@@ -405,7 +405,7 @@ class ProcessorQueueTests(unittest.TestCase):
             self.assertEqual(1, status_payload["items_done"])
             self.assertEqual(1, status_payload["items_skipped"])
             self.assertEqual(0, status_payload["items_failed"])
-            self.assertEqual("Job completed.", status_payload["message"])
+            self.assertEqual("Run completed.", status_payload["message"])
             self.assertEqual(1, result_payload["processed_count"])
             self.assertEqual(1, result_payload["skipped_count"])
             self.assertEqual(0, result_payload["error_count"])

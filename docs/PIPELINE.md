@@ -2,11 +2,11 @@
 
 ## 1. Request Creation
 
-The CLI creates a `job-*` directory under the configured output root.
+The CLI creates an internal run directory under the configured output root.
 
 The request contains:
 
-- job id
+- run id
 - output root
 - input items
 - compute mode
@@ -106,6 +106,6 @@ Each turn contains:
 
 ## 7. Archive
 
-`jobs archive` exports the timeline JSON package.
+`runs archive` exports the timeline JSON package.
 
 The audio file itself is not embedded in the archive.

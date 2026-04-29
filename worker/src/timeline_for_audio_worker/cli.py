@@ -14,8 +14,6 @@ from .vad_profile import resolve_vad_profile
 from .job_store import (
     build_run_archive,
     app_config_from_settings,
-    collect_input_items,
-    create_job,
     create_refresh_job,
     find_run_dir,
     list_runs,
@@ -90,36 +88,20 @@ def parse_args() -> argparse.Namespace:
     output_root_set.add_argument("--display-name", required=False)
     output_root_set.add_argument("--json", action="store_true")
 
-    jobs_parser = subparsers.add_parser("jobs", help="Create or inspect jobs.")
-    jobs_subparsers = jobs_parser.add_subparsers(dest="jobs_command", required=True)
-    jobs_list = jobs_subparsers.add_parser("list", help="List runs in the configured output root.")
-    jobs_list.add_argument("--json", action="store_true")
-    jobs_show = jobs_subparsers.add_parser("show", help="Show one run request/status/result.")
-    jobs_show.add_argument("--job-id", type=str, required=True)
-    jobs_show.add_argument("--json", action="store_true")
-    jobs_create = jobs_subparsers.add_parser(
-        "create", help="Create a job from files, directories, or configured source roots."
+    runs_parser = subparsers.add_parser("runs", help="Inspect or archive past refresh runs.")
+    runs_subparsers = runs_parser.add_subparsers(dest="runs_command", required=True)
+    runs_list = runs_subparsers.add_parser("list", help="List runs in the configured output root.")
+    runs_list.add_argument("--json", action="store_true")
+    runs_show = runs_subparsers.add_parser("show", help="Show one run request/status/result.")
+    runs_show.add_argument("--run-id", type=str, required=True)
+    runs_show.add_argument("--json", action="store_true")
+    runs_archive = runs_subparsers.add_parser(
+        "archive", help="Create a ZIP archive for one completed run."
     )
-    jobs_create.add_argument("--file", dest="files", action="append", type=Path, default=[])
-    jobs_create.add_argument(
-        "--directory", dest="directories", action="append", type=Path, default=[]
-    )
-    jobs_create.add_argument("--source-id", dest="source_ids", action="append", default=[])
-    jobs_create.add_argument("--output-root-id", type=str, default=None)
-    jobs_create.add_argument("--vad-profile", choices=["default", "loose", "strict"], required=False)
-    jobs_create.add_argument("--reprocess-duplicates", action="store_true")
-    jobs_create.add_argument("--queue-only", action="store_true")
-    jobs_create.add_argument("--json", action="store_true")
-    jobs_run = jobs_subparsers.add_parser("run", help="Run one existing queued job.")
-    jobs_run.add_argument("--job-id", type=str, required=True)
-    jobs_run.add_argument("--json", action="store_true")
-    jobs_archive = jobs_subparsers.add_parser(
-        "archive", help="Create a ZIP archive for one completed job."
-    )
-    jobs_archive.add_argument("--job-id", type=str, required=True)
-    jobs_archive.add_argument("--output", type=Path, required=False)
-    jobs_archive.add_argument("--artifact-kind", choices=["timeline"], default="timeline")
-    jobs_archive.add_argument("--json", action="store_true")
+    runs_archive.add_argument("--run-id", type=str, required=True)
+    runs_archive.add_argument("--output", type=Path, required=False)
+    runs_archive.add_argument("--artifact-kind", choices=["timeline"], default="timeline")
+    runs_archive.add_argument("--json", action="store_true")
 
     scan_parser = subparsers.add_parser(
         "scan", help="Scan configured source directories for audio files."
@@ -141,7 +123,7 @@ def parse_args() -> argparse.Namespace:
         "evaluate", help="Compare produced turn artifact JSON with a reference JSON."
     )
     evaluate_parser.add_argument("--prediction", type=Path, required=False)
-    evaluate_parser.add_argument("--job-id", type=str, required=False)
+    evaluate_parser.add_argument("--run-id", type=str, required=False)
     evaluate_parser.add_argument("--media-id", type=str, required=False)
     evaluate_parser.add_argument(
         "--artifact-kind",
@@ -155,11 +137,11 @@ def parse_args() -> argparse.Namespace:
     evaluate_parser.add_argument("--output-dir", type=Path, required=False)
     evaluate_parser.add_argument("--json", action="store_true")
 
-    run_parser = subparsers.add_parser("run-job", help="Run one specific job directory.")
-    run_parser.add_argument("--job-dir", type=Path, required=True)
+    run_parser = subparsers.add_parser("process-run", help="Process one specific internal run directory.")
+    run_parser.add_argument("--run-dir", type=Path, required=True)
 
     daemon_parser = subparsers.add_parser(
-        "daemon", help="Poll output roots and process pending jobs."
+        "daemon", help="Poll output roots and process pending runs."
     )
     daemon_parser.add_argument("--poll-interval", type=int, default=5)
 
@@ -189,10 +171,10 @@ def cmd_scan(config_path: Path | None, output: Path | None) -> int:
     return 0
 
 
-def cmd_run_job(job_dir: Path) -> int:
+def cmd_process_run(run_dir: Path) -> int:
     from .processor import process_job
 
-    process_job(job_dir)
+    process_job(run_dir)
     return 0
 
 
@@ -260,11 +242,11 @@ def _print_payload(payload: dict[str, object] | list[dict[str, object]], as_json
 
     if isinstance(payload, list):
         if not payload:
-            print("No jobs found.")
+            print("No runs found.")
             return
         for row in payload:
             print(
-                f"{row.get('job_id')} | {row.get('state')} | "
+                f"{row.get('run_id')} | {row.get('state')} | "
                 f"{row.get('items_done', 0)}/{row.get('items_total', 0)} | "
                 f"{row.get('current_stage', '')} | {row.get('run_dir', '')}"
             )
@@ -404,15 +386,35 @@ def cmd_settings_output_root_set(
     return 0
 
 
-def cmd_jobs_list(as_json: bool) -> int:
-    _print_payload(list_runs(), as_json)
+def _rename_internal_id_to_run_id(payload: object) -> object:
+    if isinstance(payload, str):
+        exact_replacements = {
+            "Job completed.": "Run completed.",
+            "Job finished with errors.": "Run finished with errors.",
+            "Preparing job.": "Preparing run.",
+        }
+        return exact_replacements.get(payload, payload)
+    if isinstance(payload, dict):
+        renamed = {
+            ("run_id" if key == "job_id" else key): _rename_internal_id_to_run_id(value)
+            for key, value in payload.items()
+        }
+        return renamed
+    if isinstance(payload, list):
+        return [_rename_internal_id_to_run_id(item) for item in payload]
+    return payload
+
+
+def cmd_runs_list(as_json: bool) -> int:
+    rows = _rename_internal_id_to_run_id(list_runs())
+    _print_payload(rows, as_json)
     return 0
 
 
-def cmd_jobs_show(job_id: str, as_json: bool) -> int:
-    run_dir = find_run_dir(job_id)
+def cmd_runs_show(run_id: str, as_json: bool) -> int:
+    run_dir = find_run_dir(run_id)
     payload = {
-        "job_id": job_id,
+        "run_id": run_id,
         "run_dir": str(run_dir),
         "request": json.loads(
             (run_dir / "request.json").read_text(encoding="utf-8-sig", errors="replace")
@@ -424,90 +426,14 @@ def cmd_jobs_show(job_id: str, as_json: bool) -> int:
             (run_dir / "result.json").read_text(encoding="utf-8-sig", errors="replace")
         ),
     }
-    _print_payload(payload, as_json)
+    _print_payload(_rename_internal_id_to_run_id(payload), as_json)
     return 0
 
 
-def cmd_jobs_create(
-    *,
-    files: list[Path],
-    directories: list[Path],
-    source_ids: list[str],
-    output_root_id: str,
-    vad_profile: str | None,
-    reprocess_duplicates: bool,
-    queue_only: bool,
-    as_json: bool,
-) -> int:
-    settings = load_settings()
-    input_items = collect_input_items(
-        settings=settings,
-        files=files,
-        directories=directories,
-        source_ids=source_ids,
-    )
-    if not input_items:
-        raise ValueError("No input audio files were selected.")
-
-    job_id, run_dir = create_job(
-        settings=settings,
-        input_items=input_items,
-        output_root_id=output_root_id,
-        reprocess_duplicates=reprocess_duplicates,
-        vad_profile=vad_profile,
-    )
-
-    payload: dict[str, object] = {
-        "job_id": job_id,
-        "run_dir": str(run_dir),
-        "state": "pending",
-        "input_count": len(input_items),
-        "artifact": "speaker-acoustic-units-timeline",
-        "vad_profile": resolve_vad_profile(vad_profile or str(settings.get("vadProfile") or "")),
-        "queue_only": queue_only,
-    }
-
-    if not queue_only:
-        from .processor import process_job
-
-        process_job(run_dir)
-        status = json.loads(
-            (run_dir / "status.json").read_text(encoding="utf-8-sig", errors="replace")
-        )
-        result = json.loads(
-            (run_dir / "result.json").read_text(encoding="utf-8-sig", errors="replace")
-        )
-        payload["state"] = status.get("state", "unknown")
-        payload["status"] = status
-        payload["result"] = result
-
-    _print_payload(payload, as_json)
-    return 0
-
-
-def cmd_jobs_run(job_id: str, as_json: bool) -> int:
-    from .processor import process_job
-
-    run_dir = find_run_dir(job_id)
-    process_job(run_dir)
+def cmd_runs_archive(run_id: str, output: Path | None, artifact_kind: str, as_json: bool) -> int:
+    archive_path = build_run_archive(run_id, output=output, artifact_kind=artifact_kind)
     payload = {
-        "job_id": job_id,
-        "run_dir": str(run_dir),
-        "status": json.loads(
-            (run_dir / "status.json").read_text(encoding="utf-8-sig", errors="replace")
-        ),
-        "result": json.loads(
-            (run_dir / "result.json").read_text(encoding="utf-8-sig", errors="replace")
-        ),
-    }
-    _print_payload(payload, as_json)
-    return 0
-
-
-def cmd_jobs_archive(job_id: str, output: Path | None, artifact_kind: str, as_json: bool) -> int:
-    archive_path = build_run_archive(job_id, output=output, artifact_kind=artifact_kind)
-    payload = {
-        "job_id": job_id,
+        "run_id": run_id,
         "artifact_kind": artifact_kind,
         "archive_path": str(archive_path),
     }
@@ -525,23 +451,24 @@ def cmd_refresh(
     as_json: bool,
 ) -> int:
     settings = load_settings()
-    job_id, run_dir, summary = create_refresh_job(
+    run_id, run_dir, summary = create_refresh_job(
         settings=settings,
         source_ids=source_ids,
         output_root_id=output_root_id,
         reprocess_duplicates=reprocess_duplicates,
         vad_profile=vad_profile,
     )
+    summary = _rename_internal_id_to_run_id(summary)
     payload: dict[str, object] = {
-        "state": "skipped" if job_id is None else "pending",
-        "job_id": job_id,
+        "state": "skipped" if run_id is None else "pending",
+        "run_id": run_id,
         "run_dir": str(run_dir) if run_dir is not None else None,
         "artifact": "speaker-acoustic-units-timeline",
         "vad_profile": resolve_vad_profile(vad_profile or str(settings.get("vadProfile") or "")),
         "queue_only": queue_only,
         **summary,
     }
-    if job_id is not None and run_dir is not None and not queue_only:
+    if run_id is not None and run_dir is not None and not queue_only:
         from .processor import process_job
 
         process_job(run_dir)
@@ -552,9 +479,9 @@ def cmd_refresh(
             (run_dir / "result.json").read_text(encoding="utf-8-sig", errors="replace")
         )
         payload["state"] = status.get("state", "unknown")
-        payload["status"] = status
-        payload["result"] = result
-    _print_payload(payload, as_json)
+        payload["status"] = _rename_internal_id_to_run_id(status)
+        payload["result"] = _rename_internal_id_to_run_id(result)
+    _print_payload(_rename_internal_id_to_run_id(payload), as_json)
     return 0
 
 
@@ -569,7 +496,7 @@ def _format_metric(value: object) -> str:
 def cmd_evaluate(
     *,
     prediction_path: Path | None,
-    job_id: str | None,
+    run_id: str | None,
     media_id: str | None,
     artifact_kind: str,
     reference_path: Path,
@@ -583,12 +510,12 @@ def cmd_evaluate(
         write_evaluation_report,
     )
 
-    if prediction_path is not None and job_id is not None:
-        raise ValueError("Use either --prediction or --job-id, not both.")
+    if prediction_path is not None and run_id is not None:
+        raise ValueError("Use either --prediction or --run-id, not both.")
     if prediction_path is None:
-        if not job_id:
-            raise ValueError("Either --prediction or --job-id is required.")
-        run_dir = find_run_dir(job_id)
+        if not run_id:
+            raise ValueError("Either --prediction or --run-id is required.")
+        run_dir = find_run_dir(run_id)
         normalized_artifact_kind = normalize_evaluation_artifact_kind(artifact_kind)
         prediction_path = resolve_job_prediction_path(
             run_dir=run_dir,
@@ -606,8 +533,8 @@ def cmd_evaluate(
         reference_path=reference_path,
     )
     payload["artifact_kind"] = normalized_artifact_kind
-    if job_id:
-        payload["job_id"] = job_id
+    if run_id:
+        payload["run_id"] = run_id
     if media_id:
         payload["media_id"] = media_id
     if output_dir is not None:
@@ -680,26 +607,13 @@ def main() -> int:
                     display_name=args.display_name,
                     as_json=args.json,
                 )
-    if args.command == "jobs":
-        if args.jobs_command == "list":
-            return cmd_jobs_list(args.json)
-        if args.jobs_command == "show":
-            return cmd_jobs_show(args.job_id, args.json)
-        if args.jobs_command == "create":
-            return cmd_jobs_create(
-                files=args.files,
-                directories=args.directories,
-                source_ids=args.source_ids,
-                output_root_id=args.output_root_id,
-                vad_profile=args.vad_profile,
-                reprocess_duplicates=args.reprocess_duplicates,
-                queue_only=args.queue_only,
-                as_json=args.json,
-            )
-        if args.jobs_command == "run":
-            return cmd_jobs_run(args.job_id, args.json)
-        if args.jobs_command == "archive":
-            return cmd_jobs_archive(args.job_id, args.output, args.artifact_kind, args.json)
+    if args.command == "runs":
+        if args.runs_command == "list":
+            return cmd_runs_list(args.json)
+        if args.runs_command == "show":
+            return cmd_runs_show(args.run_id, args.json)
+        if args.runs_command == "archive":
+            return cmd_runs_archive(args.run_id, args.output, args.artifact_kind, args.json)
     if args.command == "scan":
         return cmd_scan(args.config, args.output)
     if args.command == "refresh":
@@ -714,15 +628,15 @@ def main() -> int:
     if args.command == "evaluate":
         return cmd_evaluate(
             prediction_path=args.prediction,
-            job_id=args.job_id,
+            run_id=args.run_id,
             media_id=args.media_id,
             artifact_kind=args.artifact_kind,
             reference_path=args.reference,
             output_dir=args.output_dir,
             as_json=args.json,
         )
-    if args.command == "run-job":
-        return cmd_run_job(args.job_dir)
+    if args.command == "process-run":
+        return cmd_process_run(args.run_dir)
     if args.command == "daemon":
         return cmd_daemon(args.poll_interval)
     raise ValueError(f"Unsupported command: {args.command}")

@@ -76,9 +76,9 @@ Use PowerShell from the project directory.
 .\cli.ps1 settings init
 .\cli.ps1 settings save --token <HUGGING_FACE_TOKEN> --terms-confirmed --compute-mode gpu
 .\cli.ps1 refresh
-.\cli.ps1 jobs list
-.\cli.ps1 jobs show --job-id job-YYYYMMDD-HHMMSS-xxxxxxxx
-.\cli.ps1 jobs archive --job-id job-YYYYMMDD-HHMMSS-xxxxxxxx
+.\cli.ps1 runs list
+.\cli.ps1 runs show --run-id <RUN_ID>
+.\cli.ps1 runs archive --run-id <RUN_ID>
 .\stop.ps1
 ```
 

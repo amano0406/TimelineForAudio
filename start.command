@@ -58,7 +58,7 @@ echo "CLI examples:"
 echo "  ./cli.command settings init"
 echo "  ./cli.command settings status"
 echo "  ./cli.command refresh"
-echo "  ./cli.command jobs list"
+echo "  ./cli.command runs list"
 echo
 echo "Docker status:"
 docker compose "${compose_args[@]}" ps

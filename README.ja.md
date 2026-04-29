@@ -91,16 +91,16 @@ repo ルートで実行します。
 - `settings output-root list/set`
 - `scan`
 - `refresh`
-- `jobs list`
-- `jobs show`
-- `jobs archive`
+- `runs list`
+- `runs show`
+- `runs archive`
 - `evaluate`
 
 例:
 
 ```powershell
-.\cli.ps1 jobs list
-.\cli.ps1 jobs show --job-id job-YYYYMMDD-HHMMSS-xxxxxxxx
-.\cli.ps1 jobs archive --job-id job-YYYYMMDD-HHMMSS-xxxxxxxx
-.\cli.ps1 evaluate --job-id job-YYYYMMDD-HHMMSS-xxxxxxxx --artifact-kind timeline --reference ".\references\case-001.json" --json
+.\cli.ps1 runs list
+.\cli.ps1 runs show --run-id <RUN_ID>
+.\cli.ps1 runs archive --run-id <RUN_ID>
+.\cli.ps1 evaluate --run-id <RUN_ID> --artifact-kind timeline --reference ".\references\case-001.json" --json
 ```
