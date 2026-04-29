@@ -962,6 +962,8 @@ class ProcessorQueueTests(unittest.TestCase):
                         model_id="zipa-model",
                         status="ok",
                         unit_type="phone_like",
+                        execution_provider="CUDAExecutionProvider",
+                        available_execution_providers=("CUDAExecutionProvider", "CPUExecutionProvider"),
                         warnings=[],
                         turns=[
                             SimpleNamespace(
@@ -989,8 +991,16 @@ class ProcessorQueueTests(unittest.TestCase):
             self.assertTrue((media_dir / "ai-raw" / "speaker-turns.raw.json").exists())
             self.assertTrue((media_dir / "ai-raw" / "acoustic-units.raw.json").exists())
             self.assertTrue((media_dir / "segments" / "speech-candidates.json").exists())
+            raw_acoustic_units = json.loads(
+                (media_dir / "ai-raw" / "acoustic-units.raw.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual("CUDAExecutionProvider", raw_acoustic_units["execution_provider"])
             timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
             self.assertEqual("speaker-acoustic-units-timeline", timeline["artifact_type"])
+            self.assertEqual(
+                "CUDAExecutionProvider",
+                timeline["pipeline"]["acoustic_unit_execution_provider"],
+            )
             self.assertEqual("SPEAKER_01", timeline["turns"][0]["speaker"])
             self.assertEqual("ko n ni chi wa", timeline["turns"][0]["acoustic_units"])
             artifacts_payload = json.loads(

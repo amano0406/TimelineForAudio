@@ -20,6 +20,8 @@ The current provisional model set is:
 
 The output contract intentionally uses `acoustic_units` instead of IPA, phoneme, or phone. The backend may change later without changing the primary artifact shape.
 
+When `computeMode` is `gpu`, the GPU worker uses `onnxruntime-gpu` and asks ZIPA ONNX Runtime to prefer `CUDAExecutionProvider`. The raw acoustic-unit artifact records the actual provider used so GPU fallback is visible.
+
 ## First-Run Downloads
 
 On first use, the worker may download:
@@ -69,4 +71,3 @@ It contains:
 - optional absolute timestamp when recording origin can be inferred
 - speaker label
 - acoustic units
-

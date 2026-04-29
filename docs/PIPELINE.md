@@ -81,6 +81,8 @@ ai-raw/acoustic-units.raw.json
 
 The output field is named `acoustic_units` rather than IPA, phoneme, or phone so that the backend can change without changing the product contract.
 
+In GPU mode, ZIPA uses ONNX Runtime with `CUDAExecutionProvider` when it is available. The worker records the actual execution provider in `ai-raw/acoustic-units.raw.json` and in the primary timeline pipeline metadata.
+
 ## 6. Timeline Assembly
 
 The worker aligns acoustic-unit spans to diarization turns by timestamp overlap.

@@ -5,6 +5,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from .runtime_profile import normalize_compute_mode
+
 ACOUSTIC_UNIT_BACKEND = "zipa-large-crctc-300k-onnx-v1"
 ACOUSTIC_UNIT_MODEL_ID = "anyspeech/zipa-large-crctc-300k"
 ACOUSTIC_UNIT_MODEL_FILE = "model.onnx"
@@ -27,6 +29,8 @@ class AcousticUnitResult:
     model_id: str
     status: str
     unit_type: str
+    execution_provider: str | None
+    available_execution_providers: tuple[str, ...]
     turns: list[AcousticUnitTurn]
     warnings: list[str]
 
@@ -38,6 +42,9 @@ class LoadedZipaModel:
     extractor: Any
     torch_module: Any
     numpy_module: Any
+    execution_provider: str
+    available_execution_providers: tuple[str, ...]
+    warnings: tuple[str, ...]
 
 
 def _compact_text(value: Any) -> str:
@@ -109,6 +116,24 @@ def _load_tokens(path: Path) -> dict[int, str]:
     return rows
 
 
+def _providers_for_compute_mode(ort_module: Any, compute_mode: str | None) -> tuple[list[str], list[str]]:
+    available = tuple(str(provider) for provider in ort_module.get_available_providers())
+    warnings: list[str] = []
+    if normalize_compute_mode(compute_mode) == "gpu":
+        if "CUDAExecutionProvider" in available:
+            providers = ["CUDAExecutionProvider"]
+            if "CPUExecutionProvider" in available:
+                providers.append("CPUExecutionProvider")
+            return providers, warnings
+        warnings.append(
+            "GPU compute mode was requested, but ONNX Runtime CUDAExecutionProvider "
+            "is not available. ZIPA is using CPUExecutionProvider."
+        )
+    if "CPUExecutionProvider" in available:
+        return ["CPUExecutionProvider"], warnings
+    return list(available), warnings
+
+
 def _ctc_greedy_decode(log_probs: Any, vocab: dict[int, str], numpy_module: Any) -> list[str]:
     if len(log_probs.shape) == 3:
         log_probs = log_probs[0]
@@ -127,7 +152,7 @@ def _ctc_greedy_decode(log_probs: Any, vocab: dict[int, str], numpy_module: Any)
 
 
 @lru_cache(maxsize=2)
-def _load_zipa_model() -> LoadedZipaModel:
+def _load_zipa_model(compute_mode: str) -> LoadedZipaModel:
     try:
         import numpy as np
         import onnxruntime as ort
@@ -143,7 +168,8 @@ def _load_zipa_model() -> LoadedZipaModel:
     tokens_path = Path(
         hf_hub_download(repo_id=ACOUSTIC_UNIT_MODEL_ID, filename=ACOUSTIC_UNIT_TOKENS_FILE)
     )
-    session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
+    providers, provider_warnings = _providers_for_compute_mode(ort, compute_mode)
+    session = ort.InferenceSession(str(model_path), providers=providers or None)
     extractor = Fbank(FbankConfig(num_filters=80, dither=0.0, snip_edges=False))
     return LoadedZipaModel(
         session=session,
@@ -151,11 +177,17 @@ def _load_zipa_model() -> LoadedZipaModel:
         extractor=extractor,
         torch_module=torch,
         numpy_module=np,
+        execution_provider=str(session.get_providers()[0]) if session.get_providers() else "",
+        available_execution_providers=tuple(str(provider) for provider in ort.get_available_providers()),
+        warnings=tuple(provider_warnings),
     )
 
 
-def _decode_zipa_waveform(waveform: Any, sample_rate: int) -> tuple[str, float | None]:
-    loaded = _load_zipa_model()
+def _decode_zipa_waveform(
+    waveform: Any,
+    sample_rate: int,
+    loaded: LoadedZipaModel,
+) -> tuple[str, float | None]:
     if int(sample_rate) != 16000:
         raise RuntimeError("ZIPA acoustic unit extraction requires 16000 Hz audio.")
     if hasattr(waveform, "dim") and waveform.dim() > 1:
@@ -187,9 +219,12 @@ def generate_acoustic_unit_turns(
     cut_map: list[dict[str, float]],
     compute_mode: str | None = None,
 ) -> AcousticUnitResult:
-    del compute_mode
     warnings: list[str] = []
+    loaded: LoadedZipaModel | None = None
     try:
+        normalized_compute_mode = normalize_compute_mode(compute_mode)
+        loaded = _load_zipa_model(normalized_compute_mode)
+        warnings.extend(loaded.warnings)
         waveform, sample_rate = _load_waveform(audio_path)
         spans = _candidate_spans(
             cut_map=cut_map,
@@ -202,7 +237,7 @@ def generate_acoustic_unit_turns(
             if trimmed_end <= trimmed_start:
                 continue
             chunk = _slice_waveform(waveform, sample_rate, trimmed_start, trimmed_end)
-            text, confidence = _decode_zipa_waveform(chunk, sample_rate)
+            text, confidence = _decode_zipa_waveform(chunk, sample_rate, loaded)
             if not text:
                 continue
             turns.append(
@@ -220,6 +255,8 @@ def generate_acoustic_unit_turns(
             model_id=ACOUSTIC_UNIT_MODEL_ID,
             status="unavailable",
             unit_type=ACOUSTIC_UNIT_TYPE,
+            execution_provider=loaded.execution_provider if loaded else None,
+            available_execution_providers=loaded.available_execution_providers if loaded else (),
             turns=[],
             warnings=[f"Acoustic unit extraction failed: {exc}"],
         )
@@ -231,6 +268,8 @@ def generate_acoustic_unit_turns(
             model_id=ACOUSTIC_UNIT_MODEL_ID,
             status="unavailable",
             unit_type=ACOUSTIC_UNIT_TYPE,
+            execution_provider=loaded.execution_provider if loaded else None,
+            available_execution_providers=loaded.available_execution_providers if loaded else (),
             turns=[],
             warnings=warnings,
         )
@@ -239,6 +278,8 @@ def generate_acoustic_unit_turns(
         model_id=ACOUSTIC_UNIT_MODEL_ID,
         status="ok",
         unit_type=ACOUSTIC_UNIT_TYPE,
+        execution_provider=loaded.execution_provider if loaded else None,
+        available_execution_providers=loaded.available_execution_providers if loaded else (),
         turns=turns,
         warnings=warnings,
     )

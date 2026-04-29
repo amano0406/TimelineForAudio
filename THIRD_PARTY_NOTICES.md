@@ -17,7 +17,7 @@ These are the direct worker dependencies currently pinned in `worker/requirement
 | `torch` | `2.8.0+cpu` | BSD-3-Clause |
 | `torchaudio` | `2.8.0+cpu` | BSD-style |
 | `pyannote.audio` | `4.0.1` | MIT |
-| `onnxruntime` | `1.23.2` | MIT |
+| `onnxruntime` / `onnxruntime-gpu` | `1.23.2` | MIT |
 | `lhotse` | `1.32.0` | Apache-2.0 |
 | `huggingface_hub` | `0.36.0` | Apache-2.0 |
 | `soundfile` | `0.13.1` | BSD-3-Clause |
