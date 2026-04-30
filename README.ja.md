@@ -102,6 +102,7 @@ Hugging Face token も `settings.json` に保存します。
 - `settings input-root list/add/remove/enable/disable/clear`
 - `settings output-root list/set`
 - `scan`
+- `models list`
 - `refresh`
 - `refresh --max-items <N>`
 - `runs list`
@@ -119,3 +120,12 @@ Hugging Face token も `settings.json` に保存します。
 ```
 
 `refresh` はデフォルトで対象を全件キューに入れます。実データ確認や失敗範囲を小さくしたい場合だけ、`refresh --max-items 1` のように件数を指定します。
+
+使用モデルと確認先を一覧にする場合は次を使います。
+
+```powershell
+.\cli.ps1 models list --json
+.\cli.ps1 models list --include-remote --json
+```
+
+`--include-remote` は Hugging Face API から license / gated / tags などを取得します。利用条件の最終確認は、出力される Hugging Face のモデルページで行ってください。

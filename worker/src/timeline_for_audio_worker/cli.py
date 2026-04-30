@@ -22,6 +22,7 @@ from .run_store import (
     list_runs,
     settings_snapshot,
 )
+from .model_inventory import build_model_inventory
 from .settings import (
     init_settings,
     load_huggingface_token,
@@ -124,6 +125,20 @@ def parse_args() -> argparse.Namespace:
     files_list.add_argument("--probe", action="store_true")
     files_list.add_argument("--json", action="store_true")
 
+    models_parser = subparsers.add_parser(
+        "models", help="List models and model-like components used by the current pipeline."
+    )
+    models_subparsers = models_parser.add_subparsers(dest="models_command", required=True)
+    models_list = models_subparsers.add_parser("list", help="List configured model inventory.")
+    models_list.add_argument(
+        "--include-remote",
+        "--remote",
+        action="store_true",
+        help="Fetch Hugging Face metadata such as license and gated status.",
+    )
+    models_list.add_argument("--output", type=Path, required=False)
+    models_list.add_argument("--json", action="store_true")
+
     refresh_parser = subparsers.add_parser(
         "refresh", help="Read configured input directories and process changed audio only."
     )
@@ -189,6 +204,34 @@ def cmd_scan(config_path: Path | None, output: Path | None, as_json: bool) -> in
 def cmd_files_list(*, include_probe: bool, as_json: bool) -> int:
     rows = list_audio_file_rows(include_probe=include_probe)
     _print_payload(rows, as_json)
+    return 0
+
+
+def cmd_models_list(*, include_remote: bool, output: Path | None, as_json: bool) -> int:
+    payload = build_model_inventory(
+        settings=load_settings(),
+        include_remote=include_remote,
+    )
+    if output:
+        write_json(output, payload)
+    if as_json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    print(f"pipeline_version: {payload['pipeline']['pipeline_version']}")
+    print(f"compute_mode: {payload['pipeline']['compute_mode']}")
+    print(f"generation_signature: {payload['pipeline']['generation_signature']}")
+    for row in payload["models"]:
+        print(
+            f"{row['role']}: {row['model_id']} | "
+            f"{row['source']} | {row['backend']} | required={row['required']}"
+        )
+        if row.get("url"):
+            print(f"  url: {row['url']}")
+        remote = row.get("huggingface")
+        if isinstance(remote, dict):
+            license_value = remote.get("license") or "unknown"
+            gated = remote.get("gated")
+            print(f"  hf: status={remote.get('remote_status')} license={license_value} gated={gated}")
     return 0
 
 
@@ -745,6 +788,13 @@ def main() -> int:
     if args.command == "files":
         if args.files_command == "list":
             return cmd_files_list(include_probe=args.probe, as_json=args.json)
+    if args.command == "models":
+        if args.models_command == "list":
+            return cmd_models_list(
+                include_remote=args.include_remote,
+                output=args.output,
+                as_json=args.json,
+            )
     if args.command == "refresh":
         return cmd_refresh(
             source_ids=args.source_ids,

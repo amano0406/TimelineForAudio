@@ -16,6 +16,15 @@ The request contains:
 
 Language hints and supplemental text are not used by this product.
 
+For licensing and usage-condition checks, the CLI can list the current model inventory:
+
+```text
+models list --json
+models list --include-remote --json
+```
+
+Remote metadata comes from the Hugging Face model API when requested.
+
 ## 2. Preflight
 
 For every input item the worker:

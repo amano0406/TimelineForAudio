@@ -88,6 +88,15 @@ Use PowerShell from the project directory.
 
 Use `.\cli.ps1 refresh --reprocess-duplicates` only when you intentionally want to recompute unchanged files.
 
+List model inventory for license and usage-condition review:
+
+```powershell
+.\cli.ps1 models list --json
+.\cli.ps1 models list --include-remote --json
+```
+
+`--include-remote` asks the Hugging Face API for license / gated / tags metadata. Treat the upstream model page as the final source of truth.
+
 ## Required External Setup
 
 - Windows with Docker Desktop installed and running.
