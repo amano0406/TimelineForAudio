@@ -141,7 +141,7 @@ def _default_settings_payload() -> dict[str, Any]:
     return {
         "schemaVersion": 1,
         "inputRoots": default_input_roots(),
-        "outputRoots": default_output_roots(),
+        "outputRoot": default_output_root(),
         "audioExtensions": load_runtime_defaults().get(
             "audioExtensions", [".mp3", ".wav", ".m4a", ".aac", ".flac"]
         ),
@@ -150,7 +150,7 @@ def _default_settings_payload() -> dict[str, Any]:
     }
 
 
-def _normalize_root_rows(rows: Any, *, fallback: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _normalize_input_root_rows(rows: Any, *, fallback: list[dict[str, Any]]) -> list[dict[str, Any]]:
     normalized: list[dict[str, Any]] = []
     if isinstance(rows, list):
         for index, row in enumerate(rows, start=1):
@@ -160,45 +160,45 @@ def _normalize_root_rows(rows: Any, *, fallback: list[dict[str, Any]]) -> list[d
             if not root_path:
                 continue
             root_id = str(row.get("id") or row.get("name") or f"root-{index}").strip()
-            display_name = str(row.get("displayName") or row.get("name") or root_id).strip()
             normalized.append(
                 {
                     "id": root_id,
-                    "displayName": display_name or root_id,
                     "path": root_path,
-                    "enabled": bool(row.get("enabled", True)),
                 }
             )
     return normalized or fallback
 
 
+def _normalize_output_root(value: Any, *, fallback: dict[str, Any]) -> dict[str, Any]:
+    if isinstance(value, list):
+        value = next((row for row in value if isinstance(row, dict) and row.get("path")), None)
+    if isinstance(value, dict):
+        root_path = str(value.get("path") or "").strip()
+        if root_path:
+            return {"path": root_path}
+    return fallback
+
+
 def default_input_roots() -> list[dict[str, Any]]:
     defaults = load_runtime_defaults()
-    return _normalize_root_rows(
+    return _normalize_input_root_rows(
         defaults.get("inputRoots", []),
         fallback=[
             {
                 "id": "uploads",
-                "displayName": "Uploads",
                 "path": str(uploads_root()),
-                "enabled": True,
             }
         ],
     )
 
 
-def default_output_roots() -> list[dict[str, Any]]:
+def default_output_root() -> dict[str, Any]:
     defaults = load_runtime_defaults()
-    return _normalize_root_rows(
-        defaults.get("outputRoots", []),
-        fallback=[
-            {
-                "id": "runs",
-                "displayName": "Runs",
-                "path": str(outputs_root()),
-                "enabled": True,
-            }
-        ],
+    return _normalize_output_root(
+        defaults.get("outputRoot"),
+        fallback={
+            "path": str(outputs_root()),
+        },
     )
 
 
@@ -209,13 +209,13 @@ def load_settings() -> dict[str, Any]:
         payload = _default_settings_payload()
     if "audioExtensions" not in payload:
         payload["audioExtensions"] = payload.get("videoExtensions", [])
-    payload["inputRoots"] = _normalize_root_rows(
+    payload["inputRoots"] = _normalize_input_root_rows(
         payload.get("inputRoots", default_input_roots()),
         fallback=[] if "inputRoots" in payload else default_input_roots(),
     )
-    payload["outputRoots"] = _normalize_root_rows(
-        payload.get("outputRoots", default_output_roots()),
-        fallback=[] if "outputRoots" in payload else default_output_roots(),
+    payload["outputRoot"] = _normalize_output_root(
+        payload.get("outputRoot", default_output_root()),
+        fallback={} if "outputRoot" in payload else default_output_root(),
     )
     payload["computeMode"] = str(payload.get("computeMode") or "cpu").strip().lower()
     if payload["computeMode"] not in {"cpu", "gpu"}:
@@ -237,6 +237,14 @@ def load_huggingface_token() -> str | None:
 
 def save_settings(payload: dict[str, Any]) -> None:
     payload = dict(payload)
+    payload["inputRoots"] = _normalize_input_root_rows(
+        payload.get("inputRoots", []),
+        fallback=[],
+    )
+    payload["outputRoot"] = _normalize_output_root(
+        payload.get("outputRoot"),
+        fallback={},
+    )
     payload.pop("processingQuality", None)
     payload.pop("secondPassEnabled", None)
     payload["huggingfaceToken"] = str(payload.get("huggingfaceToken") or "").strip()
@@ -249,15 +257,13 @@ def init_settings() -> dict[str, Any]:
     if path.exists():
         return {
             "created": False,
-            "settings_path": str(path),
-            "message": "settings.json already exists.",
+            "path": str(path),
         }
     payload = load_settings()
     save_settings(payload)
     return {
         "created": True,
-        "settings_path": str(path),
-        "message": "settings.json was created.",
+        "path": str(path),
     }
 
 

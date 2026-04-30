@@ -99,9 +99,6 @@ foreach ($root in @($settings.inputRoots)) {
     if ($null -eq $root) {
         continue
     }
-    if ($root.PSObject.Properties.Name -contains "enabled" -and -not [bool]$root.enabled) {
-        continue
-    }
     $inputIndex += 1
     $id = Convert-ToSafeSegment -Value ([string]$root.id) -Fallback "input-$inputIndex"
     Add-Mount `
@@ -113,21 +110,13 @@ foreach ($root in @($settings.inputRoots)) {
         -CreateIfMissing $false
 }
 
-$outputIndex = 0
-foreach ($root in @($settings.outputRoots)) {
-    if ($null -eq $root) {
-        continue
-    }
-    if ($root.PSObject.Properties.Name -contains "enabled" -and -not [bool]$root.enabled) {
-        continue
-    }
-    $outputIndex += 1
-    $id = Convert-ToSafeSegment -Value ([string]$root.id) -Fallback "output-$outputIndex"
+$outputRoot = $settings.outputRoot
+if ($null -ne $outputRoot) {
     Add-Mount `
         -Mappings $mappings `
         -VolumeLines $volumeLines `
-        -HostPath ([string]$root.path) `
-        -ContainerPath "/host/output/$id" `
+        -HostPath ([string]$outputRoot.path) `
+        -ContainerPath "/host/output/master" `
         -ReadOnly $false `
         -CreateIfMissing $true
 }

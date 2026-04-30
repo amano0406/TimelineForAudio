@@ -42,8 +42,13 @@ fi
 
 requires_configured_worker=false
 case "${1:-}" in
-  refresh|process-run|daemon)
+  process-run|daemon)
     requires_configured_worker=true
+    ;;
+  items)
+    if [[ "${2:-}" == "refresh" ]]; then
+      requires_configured_worker=true
+    fi
     ;;
 esac
 

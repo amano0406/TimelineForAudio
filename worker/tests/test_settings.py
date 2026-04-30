@@ -8,7 +8,7 @@ from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
 
-from timeline_for_audio_worker.cli import cmd_settings_input_root_set_enabled
+from timeline_for_audio_worker.cli import cmd_settings_inputs_add, cmd_settings_inputs_remove
 from timeline_for_audio_worker.settings import configured_path, init_settings, load_settings
 
 
@@ -25,19 +25,12 @@ class SettingsTests(unittest.TestCase):
                         "inputRoots": [
                             {
                                 "id": "videos",
-                                "displayName": "Videos",
                                 "path": "C:\\Users\\amano\\Videos\\",
-                                "enabled": True,
                             }
                         ],
-                        "outputRoots": [
-                            {
-                                "id": "runs",
-                                "displayName": "Runs",
-                                "path": "C:\\Users\\amano\\video\\",
-                                "enabled": True,
-                            }
-                        ],
+                        "outputRoot": {
+                            "path": "C:\\Users\\amano\\video\\",
+                        },
                         "audioExtensions": [".mp3"],
                         "huggingfaceToken": "",
                         "computeMode": "cpu",
@@ -103,7 +96,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(Path("/host/input/videos"), root_path)
         self.assertEqual(Path("/host/input/videos/sample/a.mp3"), child_path)
 
-    def test_input_root_can_be_disabled_and_enabled_without_removing_it(self) -> None:
+    def test_inputs_add_generates_id_and_remove_deletes_row(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             settings_path = root / "settings.json"
@@ -114,12 +107,10 @@ class SettingsTests(unittest.TestCase):
                         "inputRoots": [
                             {
                                 "id": "videos",
-                                "displayName": "Videos",
                                 "path": "C:\\Users\\amano\\Videos\\",
-                                "enabled": True,
                             }
                         ],
-                        "outputRoots": [],
+                        "outputRoot": {},
                         "audioExtensions": [".mp3"],
                     }
                 ),
@@ -129,21 +120,25 @@ class SettingsTests(unittest.TestCase):
             os.environ["TIMELINE_FOR_AUDIO_SETTINGS_PATH"] = str(settings_path)
             try:
                 with redirect_stdout(StringIO()):
-                    cmd_settings_input_root_set_enabled("videos", False, as_json=True)
-                disabled = load_settings()["inputRoots"][0]
+                    cmd_settings_inputs_add(path=Path("C:\\TimelineData\\Audio\\"), as_json=True)
+                rows_after_add = load_settings()["inputRoots"]
+                generated_id = next(
+                    row["id"]
+                    for row in rows_after_add
+                    if row["path"] == "C:\\TimelineData\\Audio\\"
+                )
                 with redirect_stdout(StringIO()):
-                    cmd_settings_input_root_set_enabled("videos", True, as_json=True)
-                enabled = load_settings()["inputRoots"][0]
+                    cmd_settings_inputs_remove(generated_id, as_json=True)
+                rows_after_remove = load_settings()["inputRoots"]
             finally:
                 if previous_settings is None:
                     os.environ.pop("TIMELINE_FOR_AUDIO_SETTINGS_PATH", None)
                 else:
                     os.environ["TIMELINE_FOR_AUDIO_SETTINGS_PATH"] = previous_settings
 
-        self.assertEqual("videos", disabled["id"])
-        self.assertFalse(disabled["enabled"])
-        self.assertEqual("C:\\Users\\amano\\Videos\\", disabled["path"])
-        self.assertTrue(enabled["enabled"])
+        self.assertTrue(generated_id.startswith("input-"))
+        self.assertEqual(2, len(rows_after_add))
+        self.assertEqual(["videos"], [row["id"] for row in rows_after_remove])
 
 
 if __name__ == "__main__":

@@ -9,12 +9,15 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from timeline_for_audio_worker.run_store import (
-    build_run_archive,
+    build_items_archive,
     collect_input_items,
     create_run,
     create_refresh_run,
     generation_signature_for_settings,
+    list_items,
+    list_audio_file_rows,
     list_runs,
+    remove_items,
     settings_snapshot,
 )
 from timeline_for_audio_worker.hashing import sha256_file
@@ -72,7 +75,7 @@ class RunStoreTests(unittest.TestCase):
             settings = {
                 "audioExtensions": [".wav", ".mp3"],
                 "inputRoots": [],
-                "outputRoots": [{"id": "runs", "path": str(root / "runs"), "enabled": True}],
+                "outputRoot": {"path": str(root / "runs")},
             }
 
             items = collect_input_items(settings=settings, files=[file_a], directories=[source_dir])
@@ -101,7 +104,7 @@ class RunStoreTests(unittest.TestCase):
                 settings = {
                     "audioExtensions": [".mp3"],
                     "inputRoots": [],
-                    "outputRoots": [{"id": "runs", "path": str(mapped_root), "enabled": True}],
+                    "outputRoot": {"path": str(mapped_root)},
                 }
 
                 items = collect_input_items(
@@ -131,12 +134,10 @@ class RunStoreTests(unittest.TestCase):
                 "inputRoots": [
                     {
                         "id": "meetings",
-                        "displayName": "Meetings",
                         "path": str(source_dir),
-                        "enabled": True,
                     }
                 ],
-                "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
+                "outputRoot": {"path": str(runs_root)},
                 "computeMode": "cpu",
                 "uiLanguage": "ja",
             }
@@ -165,12 +166,10 @@ class RunStoreTests(unittest.TestCase):
                 "inputRoots": [
                     {
                         "id": "meetings",
-                        "displayName": "Meetings",
                         "path": str(source_dir),
-                        "enabled": True,
                     }
                 ],
-                "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
+                "outputRoot": {"path": str(runs_root)},
                 "computeMode": "cpu",
                 "uiLanguage": "ja",
             }
@@ -229,12 +228,10 @@ class RunStoreTests(unittest.TestCase):
                 "inputRoots": [
                     {
                         "id": "meetings",
-                        "displayName": "Meetings",
                         "path": str(source_dir),
-                        "enabled": True,
                     }
                 ],
-                "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
+                "outputRoot": {"path": str(runs_root)},
                 "computeMode": "cpu",
                 "uiLanguage": "ja",
             }
@@ -280,6 +277,155 @@ class RunStoreTests(unittest.TestCase):
                 request["input_items"][0]["source_file_identity"],
             )
 
+    def test_remove_items_removes_catalog_row_and_media_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_dir = root / "audio"
+            runs_root = root / "runs"
+            source_dir.mkdir()
+            target_audio = source_dir / "target.wav"
+            other_audio = source_dir / "other.wav"
+            target_audio.write_bytes(b"target-audio")
+            other_audio.write_bytes(b"other-audio")
+            settings = {
+                "audioExtensions": [".wav"],
+                "inputRoots": [
+                    {
+                        "id": "meetings",
+                        "path": str(source_dir),
+                    }
+                ],
+                "outputRoot": {"path": str(runs_root)},
+                "computeMode": "cpu",
+            }
+            signature = generation_signature_for_settings(settings=settings)
+            target_media = runs_root / "run-prior" / "media" / "media-0001"
+            other_media = runs_root / "run-prior" / "media" / "media-0002"
+            (target_media / "timeline").mkdir(parents=True)
+            (other_media / "timeline").mkdir(parents=True)
+            (target_media / "timeline" / "speaker-acoustic-units-timeline.json").write_text(
+                '{"turns":[{"speaker":"SPEAKER_00"}]}',
+                encoding="utf-8",
+            )
+            (other_media / "timeline" / "speaker-acoustic-units-timeline.json").write_text(
+                '{"turns":[]}',
+                encoding="utf-8",
+            )
+            catalog_dir = runs_root / ".timeline-for-audio"
+            catalog_dir.mkdir(parents=True)
+            catalog_path = catalog_dir / "catalog.jsonl"
+            catalog_path.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "run_id": "run-prior",
+                                "run_dir": str(runs_root / "run-prior"),
+                                "media_id": "media-0001",
+                                "source_hash": sha256_file(target_audio),
+                                "conversion_signature": signature,
+                                "source_id": "meetings",
+                                "source_relative_path": "target.wav",
+                                "source_file_identity": "meetings:target.wav",
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "run_id": "run-prior",
+                                "run_dir": str(runs_root / "run-prior"),
+                                "media_id": "media-0002",
+                                "source_hash": sha256_file(other_audio),
+                                "conversion_signature": signature,
+                                "source_id": "meetings",
+                                "source_relative_path": "other.wav",
+                                "source_file_identity": "meetings:other.wav",
+                            }
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            items = list_items(settings=settings)
+            target_item = next(
+                item for item in items if item["source_file_identity"] == "meetings:target.wav"
+            )
+
+            payload = remove_items(
+                item_ids=[str(target_item["item_id"])],
+                settings=settings,
+            )
+
+            self.assertEqual(1, payload["catalog_rows_removed"])
+            self.assertEqual(1, payload["media_dirs_removed"])
+            self.assertEqual([target_item["item_id"]], payload["requested_item_ids"])
+            self.assertFalse(target_media.exists())
+            self.assertTrue(other_media.exists())
+            self.assertTrue((runs_root / "run-prior").exists())
+            remaining_catalog = catalog_path.read_text(encoding="utf-8")
+            self.assertNotIn("meetings:target.wav", remaining_catalog)
+            self.assertIn("meetings:other.wav", remaining_catalog)
+            rows = list_audio_file_rows(settings=settings)
+            status_by_name = {row["file_name"]: row["status"] for row in rows}
+            self.assertEqual("unprocessed", status_by_name["target.wav"])
+            self.assertEqual("completed", status_by_name["other.wav"])
+
+    def test_remove_items_dry_run_does_not_remove_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_dir = root / "audio"
+            runs_root = root / "runs"
+            source_dir.mkdir()
+            audio_file = source_dir / "target.wav"
+            audio_file.write_bytes(b"target-audio")
+            settings = {
+                "audioExtensions": [".wav"],
+                "inputRoots": [
+                    {
+                        "id": "meetings",
+                        "path": str(source_dir),
+                    }
+                ],
+                "outputRoot": {"path": str(runs_root)},
+                "computeMode": "cpu",
+            }
+            signature = generation_signature_for_settings(settings=settings)
+            media_dir = runs_root / "run-prior" / "media" / "media-0001"
+            (media_dir / "timeline").mkdir(parents=True)
+            (media_dir / "timeline" / "speaker-acoustic-units-timeline.json").write_text(
+                '{"turns":[]}',
+                encoding="utf-8",
+            )
+            catalog_dir = runs_root / ".timeline-for-audio"
+            catalog_dir.mkdir(parents=True)
+            catalog_path = catalog_dir / "catalog.jsonl"
+            original_catalog = json.dumps(
+                {
+                    "run_id": "run-prior",
+                    "run_dir": str(runs_root / "run-prior"),
+                    "media_id": "media-0001",
+                    "source_hash": sha256_file(audio_file),
+                    "conversion_signature": signature,
+                    "source_file_identity": "meetings:target.wav",
+                }
+            )
+            catalog_path.write_text(original_catalog + "\n", encoding="utf-8")
+
+            item_id = str(list_items(settings=settings)[0]["item_id"])
+
+            payload = remove_items(
+                item_ids=[item_id],
+                settings=settings,
+                dry_run=True,
+            )
+
+            self.assertTrue(payload["dry_run"])
+            self.assertEqual(1, payload["catalog_rows_removed"])
+            self.assertEqual(0, payload["media_dirs_removed"])
+            self.assertTrue(media_dir.exists())
+            self.assertEqual(original_catalog + "\n", catalog_path.read_text(encoding="utf-8"))
+
     def test_create_refresh_run_queues_all_items_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -293,12 +439,10 @@ class RunStoreTests(unittest.TestCase):
                 "inputRoots": [
                     {
                         "id": "meetings",
-                        "displayName": "Meetings",
                         "path": str(source_dir),
-                        "enabled": True,
                     }
                 ],
-                "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
+                "outputRoot": {"path": str(runs_root)},
                 "computeMode": "cpu",
             }
 
@@ -326,12 +470,10 @@ class RunStoreTests(unittest.TestCase):
                 "inputRoots": [
                     {
                         "id": "meetings",
-                        "displayName": "Meetings",
                         "path": str(source_dir),
-                        "enabled": True,
                     }
                 ],
-                "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
+                "outputRoot": {"path": str(runs_root)},
                 "computeMode": "cpu",
             }
 
@@ -355,7 +497,7 @@ class RunStoreTests(unittest.TestCase):
                 settings = {
                     "audioExtensions": [".wav"],
                     "inputRoots": [],
-                    "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
+                    "outputRoot": {"path": str(runs_root)},
                     "computeMode": "gpu",
                 }
                 save_settings(settings)
@@ -384,7 +526,7 @@ class RunStoreTests(unittest.TestCase):
             settings = {
                 "audioExtensions": [".wav"],
                 "inputRoots": [],
-                "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
+                "outputRoot": {"path": str(runs_root)},
             }
 
             source_file = root / "sample.wav"
@@ -403,7 +545,7 @@ class RunStoreTests(unittest.TestCase):
             settings = {
                 "audioExtensions": [".wav"],
                 "inputRoots": [],
-                "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
+                "outputRoot": {"path": str(runs_root)},
             }
 
             first_file = root / "first.wav"
@@ -425,121 +567,89 @@ class RunStoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             with isolated_settings_environment(root):
+                source_dir = root / "audio"
+                source_dir.mkdir()
                 settings = {
                     "audioExtensions": [".wav"],
-                    "inputRoots": [],
-                    "outputRoots": [{"id": "runs", "path": str(root / "runs"), "enabled": True}],
+                    "inputRoots": [{"id": "meetings", "path": str(source_dir)}],
+                    "outputRoot": {"path": str(root / "runs")},
+                    "huggingfaceToken": "hf_test_value",
                 }
                 save_settings(settings)
-                save_huggingface_token("hf_test_value")
 
                 snapshot = settings_snapshot(settings)
-                self.assertTrue(snapshot["has_token"])
-                self.assertTrue(snapshot["ready"])
+                self.assertEqual("ready", snapshot["setup"]["state"])
+                self.assertEqual([], snapshot["setup"]["blocking_reasons"])
+                self.assertTrue(snapshot["token"]["configured"])
+                self.assertEqual("cpu", snapshot["compute"]["mode"])
 
-    def test_build_run_archive_creates_zip_file(self) -> None:
+    def test_build_items_archive_uses_item_ids(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
+            source_dir = root / "audio"
             runs_root = root / "runs"
+            source_dir.mkdir()
+            audio_file = source_dir / "target.wav"
+            audio_file.write_bytes(b"target-audio")
             settings = {
                 "audioExtensions": [".wav"],
-                "inputRoots": [],
-                "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
+                "inputRoots": [
+                    {
+                        "id": "meetings",
+                        "path": str(source_dir),
+                    }
+                ],
+                "outputRoot": {"path": str(runs_root)},
+                "computeMode": "cpu",
             }
-
-            source_file = root / "sample.wav"
-            source_file.write_bytes(b"sample")
-            items = collect_input_items(settings=settings, files=[source_file])
-            run_id, run_dir = create_run(settings=settings, input_items=items)
-            (run_dir / "result.json").write_text(
-                json.dumps({"run_id": run_id, "state": "completed"}, ensure_ascii=False),
-                encoding="utf-8",
-            )
-            media_dir = run_dir / "media" / "sample-12345678"
+            signature = generation_signature_for_settings(settings=settings)
+            media_dir = runs_root / "run-prior" / "media" / "media-0001"
             (media_dir / "timeline").mkdir(parents=True)
             (media_dir / "timeline" / "speaker-acoustic-units-timeline.json").write_text(
                 '{"turns":[]}', encoding="utf-8"
             )
-            (media_dir / "source.json").write_text(
+            (media_dir / "source").mkdir()
+            (media_dir / "source" / "source-record.json").write_text(
                 json.dumps(
                     {
                         "display_name": "20260324_125832.wav",
-                        "original_path": str(source_file),
+                        "original_path": str(audio_file),
                         "captured_at": "2026-03-24T12:58:32+09:00",
                     },
                     ensure_ascii=False,
                 ),
                 encoding="utf-8",
             )
-            (run_dir / "CONVERSION_INFO.md").write_text("# Conversion Info\n", encoding="utf-8")
-            (media_dir / "analysis").mkdir(parents=True)
-            (media_dir / "analysis" / "speaker_summary.md").write_text(
-                "# Speaker Summary\n", encoding="utf-8"
+            catalog_dir = runs_root / ".timeline-for-audio"
+            catalog_dir.mkdir(parents=True)
+            (catalog_dir / "catalog.jsonl").write_text(
+                json.dumps(
+                    {
+                        "run_id": "run-prior",
+                        "run_dir": str(runs_root / "run-prior"),
+                        "media_id": "media-0001",
+                        "source_hash": sha256_file(audio_file),
+                        "conversion_signature": signature,
+                        "source_id": "meetings",
+                        "source_relative_path": "target.wav",
+                        "source_file_identity": "meetings:target.wav",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
             )
 
-            archive_path = build_run_archive(run_id, settings=settings)
+            item_id = str(list_items(settings=settings)[0]["item_id"])
+            archive_path = build_items_archive(item_ids=[item_id], settings=settings)
 
             self.assertTrue(archive_path.exists())
-            self.assertEqual(".zip", archive_path.suffix)
-            self.assertTrue(archive_path.name.endswith("-timeline.zip"))
             with zipfile.ZipFile(archive_path) as archive:
                 names = set(archive.namelist())
                 self.assertIn("README.html", names)
-                self.assertNotIn("index.html", names)
-                self.assertNotIn("README.md", names)
-                self.assertIn("CONVERSION_INFO.md", names)
-                self.assertNotIn("TRANSCRIPTION_INFO.md", names)
-                self.assertIn("timeline/2026-03-24 12-58-32.json", names)
-                self.assertNotIn("timelines/2026-03-24 12-58-32.md", names)
-                readme_html = archive.read("README.html").decode("utf-8")
-                self.assertIn("CONVERSION_INFO.md", readme_html)
-                self.assertIn("timeline/2026-03-24 12-58-32.json", readme_html)
-                self.assertNotIn("timelines/2026-03-24 12-58-32.md", readme_html)
-                self.assertNotIn("README.md", readme_html)
-
-    def test_build_run_archive_can_create_timeline_zip(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            runs_root = root / "runs"
-            settings = {
-                "audioExtensions": [".wav"],
-                "inputRoots": [],
-                "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
-            }
-
-            source_file = root / "sample.wav"
-            source_file.write_bytes(b"sample")
-            items = collect_input_items(settings=settings, files=[source_file])
-            run_id, run_dir = create_run(settings=settings, input_items=items)
-            (run_dir / "result.json").write_text(
-                json.dumps({"run_id": run_id, "state": "completed"}, ensure_ascii=False),
-                encoding="utf-8",
-            )
-            media_dir = run_dir / "media" / "sample-12345678"
-            (media_dir / "timeline").mkdir(parents=True)
-            (media_dir / "timeline" / "speaker-acoustic-units-timeline.json").write_text(
-                '{"turns":[]}', encoding="utf-8"
-            )
-            (media_dir / "source.json").write_text(
-                json.dumps(
-                    {
-                        "display_name": "20260324_125832.wav",
-                        "original_path": str(source_file),
-                        "captured_at": "2026-03-24T12:58:32+09:00",
-                    },
-                    ensure_ascii=False,
-                ),
-                encoding="utf-8",
-            )
-            (run_dir / "CONVERSION_INFO.md").write_text("# Conversion Info\n", encoding="utf-8")
-
-            archive_path = build_run_archive(run_id, settings=settings, artifact_kind="timeline")
-
-            self.assertTrue(archive_path.exists())
-            self.assertTrue(archive_path.name.endswith("-timeline.zip"))
-            with zipfile.ZipFile(archive_path) as archive:
-                names = set(archive.namelist())
-                self.assertIn("timeline/2026-03-24 12-58-32.json", names)
+                self.assertIn("items.json", names)
+                self.assertIn("items/2026-03-24 12-58-32.json", names)
+                manifest = json.loads(archive.read("items.json").decode("utf-8"))
+                self.assertEqual(item_id, manifest["items"][0]["item_id"])
 
 
 if __name__ == "__main__":

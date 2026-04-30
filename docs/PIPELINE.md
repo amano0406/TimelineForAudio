@@ -43,7 +43,7 @@ source hash + generation signature + source file identity
 
 `source file identity` includes the configured input root id and relative path. A renamed file is therefore treated as a different source.
 
-`refresh` queues all changed files by default. `refresh --max-items <N>` limits one invocation when a smaller test or retry batch is safer.
+`items refresh` queues all changed files by default. `items refresh --max-items <N>` limits one invocation when a smaller test or retry batch is safer.
 
 ## 3. Audio Preparation
 
@@ -67,12 +67,6 @@ Current model:
 pyannote/speaker-diarization-community-1
 ```
 
-Output:
-
-```text
-ai-raw/speaker-turns.raw.json
-```
-
 If diarization cannot run, the media item fails. The worker does not create fallback speakers.
 
 ## 5. Acoustic Unit Extraction
@@ -83,15 +77,9 @@ Current backend:
 anyspeech/zipa-large-crctc-300k via ONNX Runtime
 ```
 
-Output:
-
-```text
-ai-raw/acoustic-units.raw.json
-```
-
 The output field is named `acoustic_units` rather than IPA, phoneme, or phone so that the backend can change without changing the product contract.
 
-In GPU mode, ZIPA uses ONNX Runtime with `CUDAExecutionProvider` when it is available. The worker records the actual execution provider in `ai-raw/acoustic-units.raw.json` and in the primary timeline pipeline metadata.
+In GPU mode, ZIPA uses ONNX Runtime with `CUDAExecutionProvider` when it is available. The worker records the actual execution provider in the primary timeline pipeline metadata.
 
 Speech candidate ranges are processed in small chunks before being merged back into original timeline turns. This keeps long recordings from failing late because one large inference request exhausted memory.
 
@@ -116,9 +104,9 @@ Each turn contains:
 - `unit_type`
 - `confidence`
 
-## 7. Archive
+## 7. Item Download
 
-`runs archive` exports the timeline JSON package.
+`items download` exports timeline JSON packages for selected managed items.
 
 The audio file itself is not embedded in the archive.
 

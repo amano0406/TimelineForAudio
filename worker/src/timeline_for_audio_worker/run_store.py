@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import hashlib
 import json
 import re
 import shutil
@@ -10,7 +11,7 @@ from pathlib import Path, PureWindowsPath
 from typing import Any
 from uuid import uuid4
 
-from .catalog import catalog_key, load_catalog
+from .catalog import catalog_key, catalog_path, load_catalog, normalize_file_identity
 from .contracts import InputItem, RunRequest, RunResult, RunStatus
 from .discovery import discover_audio
 from .fs_utils import ensure_dir, now_iso, slugify, write_text
@@ -50,26 +51,22 @@ def _allowed_extensions(settings: dict[str, Any]) -> set[str]:
 def _enabled_output_root(
     settings: dict[str, Any], output_root_id: str | None = None
 ) -> dict[str, Any]:
-    enabled = [
-        root
-        for root in settings.get("outputRoots", [])
-        if root.get("enabled", True) and root.get("path")
-    ]
-    if output_root_id:
-        for root in enabled:
-            if str(root.get("id") or "").lower() == output_root_id.lower():
-                return root
-        raise ValueError(f"Output root not found or disabled: {output_root_id}")
-    if not enabled:
-        raise ValueError("No enabled output root is configured.")
-    return enabled[0]
+    if output_root_id and str(output_root_id).lower() != "master":
+        raise ValueError("Only the master output root is supported.")
+    root = settings.get("outputRoot")
+    if isinstance(root, dict) and root.get("path"):
+        return {"id": "master", "path": str(root["path"])}
+    raise ValueError("No master output root is configured.")
 
 
 def _enabled_input_roots(settings: dict[str, Any]) -> list[dict[str, Any]]:
     return [
-        root
+        {
+            "id": str(root.get("id") or "source"),
+            "path": str(root.get("path") or ""),
+        }
         for root in settings.get("inputRoots", [])
-        if root.get("enabled", True) and root.get("path")
+        if isinstance(root, dict) and root.get("path")
     ]
 
 
@@ -126,7 +123,7 @@ def app_config_from_settings(settings: dict[str, Any]) -> Any:
         project_name="TimelineForAudio",
         source_directories=[
             SourceDirectory(
-                name=str(root.get("id") or root.get("displayName") or "source"),
+                name=str(root.get("id") or "source"),
                 path=str(configured_path(str(root.get("path") or ""))),
                 recursive=bool(root.get("recursive", True)),
             )
@@ -279,11 +276,10 @@ def list_runs(settings: dict[str, Any] | None = None) -> list[dict[str, Any]]:
 
 
 def _enabled_output_root_list(settings: dict[str, Any]) -> list[dict[str, Any]]:
-    return [
-        root
-        for root in settings.get("outputRoots", [])
-        if root.get("enabled", True) and root.get("path")
-    ]
+    try:
+        return [_enabled_output_root(settings)]
+    except ValueError:
+        return []
 
 
 def get_active_run(settings: dict[str, Any] | None = None) -> dict[str, Any] | None:
@@ -302,47 +298,6 @@ def find_run_dir(run_id: str, settings: dict[str, Any] | None = None) -> Path:
     raise ValueError(f"Run not found: {run_id}")
 
 
-def build_run_archive(
-    run_id: str,
-    *,
-    settings: dict[str, Any] | None = None,
-    output: Path | None = None,
-    artifact_kind: str = "timeline",
-) -> Path:
-    run_dir = find_run_dir(run_id, settings)
-    normalized_artifact_kind = _normalize_export_artifact_kind(artifact_kind)
-    archive_stem = f"{run_id}-{normalized_artifact_kind}"
-    archive_base = (output if output is not None else run_dir.parent / archive_stem).resolve()
-    archive_base.parent.mkdir(parents=True, exist_ok=True)
-    archive_path = archive_base.with_suffix(".zip")
-    if archive_path.exists():
-        archive_path.unlink()
-
-    staging_root = Path(
-        tempfile.mkdtemp(prefix=f"{archive_stem}-export-", dir=str(archive_base.parent))
-    )
-    try:
-        _build_export_package(run_dir, run_id, staging_root, normalized_artifact_kind)
-        created = shutil.make_archive(str(archive_base), "zip", root_dir=str(staging_root))
-        return Path(created)
-    finally:
-        shutil.rmtree(staging_root, ignore_errors=True)
-
-
-def _conversion_info_candidate_paths(run_dir: Path) -> list[Path]:
-    return [
-        run_dir / "CONVERSION_INFO.md",
-        run_dir / "TRANSCRIPTION_INFO.md",
-    ]
-
-
-def _find_conversion_info_path(run_dir: Path) -> Path | None:
-    for candidate in _conversion_info_candidate_paths(run_dir):
-        if candidate.exists():
-            return candidate
-    return None
-
-
 def _normalize_export_artifact_kind(value: str | None) -> str:
     normalized = str(value or "timeline").strip().lower()
     if normalized in {
@@ -357,82 +312,6 @@ def _normalize_export_artifact_kind(value: str | None) -> str:
 
 def _artifact_export_title(artifact_kind: str) -> str:
     return "Speaker Acoustic Units Timeline"
-
-
-def _build_export_package(
-    run_dir: Path,
-    run_id: str,
-    export_root: Path,
-    artifact_kind: str,
-) -> None:
-    normalized_artifact_kind = _normalize_export_artifact_kind(artifact_kind)
-    artifact_root = export_root / normalized_artifact_kind
-    artifact_root.mkdir(parents=True, exist_ok=True)
-    timelines: list[dict[str, str]] = []
-    media_root = run_dir / "media"
-    if media_root.exists():
-        for media_dir in sorted(media_root.iterdir()):
-            if not media_dir.is_dir():
-                continue
-            timeline_path = media_dir / "timeline" / "speaker-acoustic-units-timeline.json"
-            if not timeline_path.exists():
-                continue
-            source_path = media_dir / "source" / "source-record.json"
-            if not source_path.exists():
-                source_path = media_dir / "source.json"
-            source_info = (
-                json.loads(source_path.read_text(encoding="utf-8-sig", errors="replace"))
-                if source_path.exists()
-                else {}
-            )
-            label = _best_export_label(media_dir.name, source_info)
-            timelines.append(
-                {
-                    "media_id": media_dir.name,
-                    "timeline_path": str(timeline_path),
-                    "label": label,
-                    "source_path": str(source_info.get("original_path") or ""),
-                }
-            )
-
-    timelines.sort(key=lambda row: (row["label"], row["media_id"]))
-
-    conversion_info_path = _find_conversion_info_path(run_dir)
-    if conversion_info_path is not None:
-        shutil.copy2(conversion_info_path, export_root / "CONVERSION_INFO.md")
-
-    used_names: set[str] = set()
-    exported_rows: list[dict[str, str]] = []
-    for row in timelines:
-        source_path = Path(row["timeline_path"])
-        if not source_path.exists():
-            continue
-        timeline_file_name = _ensure_unique_export_file_name(f"{row['label']}.json", used_names)
-        destination = artifact_root / timeline_file_name
-        destination.write_text(
-            source_path.read_text(encoding="utf-8", errors="replace"),
-            encoding="utf-8",
-        )
-        exported_row = {
-            "label": row["label"],
-            "source_path": row["source_path"],
-            "artifact_path": f"{artifact_root.name}/{timeline_file_name}",
-        }
-        exported_rows.append(exported_row)
-
-    if not exported_rows:
-        title = _artifact_export_title(normalized_artifact_kind)
-        raise ValueError(f"No completed {title} artifacts are available to download for this run.")
-
-    _write_export_index_html(
-        export_root=export_root,
-        run_id=run_id,
-        artifact_kind=normalized_artifact_kind,
-        exported_rows=exported_rows,
-        has_conversion_info=(export_root / "CONVERSION_INFO.md").exists(),
-        has_failure_report=(export_root / "FAILURE_REPORT.md").exists(),
-        has_worker_log=(export_root / "logs" / "worker.log").exists(),
-    )
 
 
 def _write_export_index_html(
@@ -682,17 +561,352 @@ def create_run(
 def _artifact_path_from_catalog_row(row: dict[str, Any] | None) -> Path | None:
     if not row:
         return None
-    run_dir = row.get("run_dir")
-    media_id = row.get("audio_id") or row.get("media_id")
-    if not run_dir or not media_id:
+    media_dir = _media_dir_from_catalog_row(row)
+    if media_dir is None:
         return None
-    media_dir = Path(str(run_dir)) / "media" / str(media_id)
     for candidate in (
         media_dir / "timeline" / "speaker-acoustic-units-timeline.json",
     ):
         if candidate.exists():
             return candidate
     return None
+
+
+def item_id_from_catalog_row(row: dict[str, Any]) -> str:
+    source_hash = str(row.get("source_hash") or row.get("sha256") or "").strip()
+    conversion_signature = str(row.get("conversion_signature") or "").strip()
+    source_file_identity = str(row.get("source_file_identity") or "").strip()
+    media_id = str(row.get("audio_id") or row.get("media_id") or "").strip()
+    run_id = str(row.get("run_id") or row.get("job_id") or "").strip()
+    seed = "::".join(
+        part
+        for part in (
+            normalize_file_identity(source_file_identity),
+            source_hash.lower(),
+            conversion_signature.lower(),
+            run_id,
+            media_id,
+        )
+        if part
+    )
+    if not seed:
+        seed = json.dumps(row, ensure_ascii=False, sort_keys=True)
+    return f"item-{hashlib.sha256(seed.encode('utf-8')).hexdigest()[:12]}"
+
+
+def _media_dir_from_catalog_row(row: dict[str, Any] | None) -> Path | None:
+    if not row:
+        return None
+    run_dir = row.get("run_dir")
+    media_id = row.get("audio_id") or row.get("media_id")
+    if not run_dir or not media_id:
+        return None
+    return Path(str(run_dir)) / "media" / str(media_id)
+
+
+def _safe_media_dir_from_catalog_row(
+    row: dict[str, Any],
+    *,
+    output_root_path: Path,
+) -> Path | None:
+    media_dir = _media_dir_from_catalog_row(row)
+    run_dir = row.get("run_dir")
+    if media_dir is None or not run_dir:
+        return None
+    try:
+        resolved_output = output_root_path.resolve(strict=False)
+        resolved_run = Path(str(run_dir)).resolve(strict=False)
+        resolved_media_root = (resolved_run / "media").resolve(strict=False)
+        resolved_media = media_dir.resolve(strict=False)
+        resolved_run.relative_to(resolved_output)
+        resolved_media.relative_to(resolved_media_root)
+    except Exception:
+        return None
+    if resolved_media == resolved_media_root:
+        return None
+    return resolved_media
+
+
+def _catalog_rows_for_output_root(output_root_path: Path) -> list[tuple[str, dict[str, Any]]]:
+    path = catalog_path(output_root_path)
+    if not path.exists():
+        return []
+    rows: list[tuple[str, dict[str, Any]]] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        rows.append((line, row))
+    return rows
+
+
+def _source_info_from_media_dir(media_dir: Path | None) -> dict[str, Any]:
+    if media_dir is None:
+        return {}
+    for candidate in (
+        media_dir / "source" / "source-record.json",
+        media_dir / "source.json",
+    ):
+        if not candidate.exists():
+            continue
+        try:
+            return json.loads(candidate.read_text(encoding="utf-8-sig", errors="replace"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+    return {}
+
+
+def list_items(
+    *,
+    settings: dict[str, Any] | None = None,
+    output_root_id: str | None = None,
+) -> list[dict[str, Any]]:
+    settings = settings or load_settings()
+    output_root = _enabled_output_root(settings, output_root_id)
+    output_root_path = configured_path(str(output_root["path"])).resolve()
+    rows: list[dict[str, Any]] = []
+    for _, row in _catalog_rows_for_output_root(output_root_path):
+        media_dir = _safe_media_dir_from_catalog_row(row, output_root_path=output_root_path)
+        artifact_path = _artifact_path_from_catalog_row(row)
+        media_id = str(row.get("audio_id") or row.get("media_id") or "")
+        source_info = _source_info_from_media_dir(media_dir)
+        timeline_summary = _timeline_summary_from_artifact(artifact_path)
+        source_relative_path = str(row.get("source_relative_path") or "")
+        source_display_name = (
+            str(source_info.get("display_name") or "").strip()
+            or Path(source_relative_path).name
+            or Path(str(source_info.get("original_path") or "")).name
+            or media_id
+        )
+        rows.append(
+            {
+                "item_id": item_id_from_catalog_row(row),
+                "media_id": media_id,
+                "run_id": row.get("run_id") or row.get("job_id"),
+                "run_dir": row.get("run_dir"),
+                "source_id": row.get("source_id"),
+                "source_relative_path": source_relative_path,
+                "source_file_identity": row.get("source_file_identity"),
+                "source_file_name": source_display_name,
+                "source_hash": row.get("source_hash") or row.get("sha256"),
+                "conversion_signature": row.get("conversion_signature"),
+                "duration_sec": row.get("duration_seconds") or row.get("duration_sec"),
+                "status": "available" if artifact_path is not None else "missing_artifact",
+                "artifact_path": str(artifact_path) if artifact_path is not None else "",
+                "media_dir": str(media_dir) if media_dir is not None else "",
+                "turn_count": int(timeline_summary["turn_count"]),
+                "speaker_count": int(timeline_summary["speaker_count"]),
+            }
+        )
+    rows.sort(
+        key=lambda item: (
+            str(item.get("source_file_name") or "").lower(),
+            str(item.get("item_id") or ""),
+        )
+    )
+    return rows
+
+
+def remove_items(
+    *,
+    item_ids: list[str],
+    settings: dict[str, Any] | None = None,
+    output_root_id: str | None = None,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    settings = settings or load_settings()
+    requested: dict[str, str] = {}
+    for value in item_ids:
+        normalized = str(value or "").strip().lower()
+        if normalized:
+            requested[normalized] = str(value)
+    if not requested:
+        raise ValueError("At least one item id is required.")
+
+    output_root = _enabled_output_root(settings, output_root_id)
+    output_root_path = configured_path(str(output_root["path"])).resolve()
+    path = catalog_path(output_root_path)
+    media_dirs: dict[str, Path] = {}
+    unsafe_media_dirs: list[str] = []
+    removed_rows: list[dict[str, Any]] = []
+    kept_lines: list[str] = []
+    matched_item_ids: set[str] = set()
+
+    if path.exists():
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                kept_lines.append(line)
+                continue
+
+            item_id = item_id_from_catalog_row(row).lower()
+            if item_id not in requested:
+                kept_lines.append(line)
+                continue
+
+            matched_item_ids.add(item_id)
+            media_dir = _safe_media_dir_from_catalog_row(row, output_root_path=output_root_path)
+            if media_dir is not None:
+                media_dirs[str(media_dir)] = media_dir
+            else:
+                raw_media_dir = _media_dir_from_catalog_row(row)
+                if raw_media_dir is not None:
+                    unsafe_media_dirs.append(str(raw_media_dir))
+            removed_rows.append(
+                {
+                    "item_id": item_id_from_catalog_row(row),
+                    "source_file_identity": row.get("source_file_identity"),
+                    "run_id": row.get("run_id") or row.get("job_id"),
+                    "media_id": row.get("audio_id") or row.get("media_id"),
+                    "run_dir": row.get("run_dir"),
+                }
+            )
+
+    missing = [
+        original
+        for normalized, original in requested.items()
+        if normalized not in matched_item_ids
+    ]
+    media_dir_rows = sorted(media_dirs.values(), key=lambda item: str(item).lower())
+
+    if removed_rows and not dry_run:
+        if kept_lines:
+            path.write_text("\n".join(kept_lines) + "\n", encoding="utf-8")
+        else:
+            path.unlink(missing_ok=True)
+            try:
+                path.parent.rmdir()
+            except OSError:
+                pass
+        for media_dir in media_dir_rows:
+            shutil.rmtree(media_dir, ignore_errors=True)
+
+    return {
+        "dry_run": dry_run,
+        "requested_item_ids": list(requested.values()),
+        "matched_count": len(matched_item_ids),
+        "missing_item_ids": missing,
+        "catalog_rows_removed": len(removed_rows),
+        "media_dirs_removed": 0 if dry_run else len(media_dir_rows),
+        "media_dirs": [str(path) for path in media_dir_rows],
+        "unsafe_media_dirs": unsafe_media_dirs,
+        "removed_rows": removed_rows,
+    }
+
+
+def build_items_archive(
+    *,
+    item_ids: list[str],
+    settings: dict[str, Any] | None = None,
+    output_root_id: str | None = None,
+    output: Path | None = None,
+) -> Path:
+    settings = settings or load_settings()
+    requested = {str(value or "").strip().lower(): str(value) for value in item_ids if str(value or "").strip()}
+    if not requested:
+        raise ValueError("At least one item id is required.")
+
+    output_root = _enabled_output_root(settings, output_root_id)
+    output_root_path = configured_path(str(output_root["path"])).resolve()
+    catalog_rows = [row for _, row in _catalog_rows_for_output_root(output_root_path)]
+    matched_rows = [
+        row for row in catalog_rows if item_id_from_catalog_row(row).lower() in requested
+    ]
+    matched_ids = {item_id_from_catalog_row(row).lower() for row in matched_rows}
+    missing = [
+        original for normalized, original in requested.items() if normalized not in matched_ids
+    ]
+    if missing:
+        raise ValueError(f"Item not found: {', '.join(missing)}")
+
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    archive_base = (
+        output.with_suffix("") if output is not None and output.suffix.lower() == ".zip" else output
+    )
+    if archive_base is None:
+        archive_base = output_root_path / f"timelineforaudio-items-{timestamp}"
+    archive_base = archive_base.resolve()
+    archive_base.parent.mkdir(parents=True, exist_ok=True)
+    archive_path = archive_base.with_suffix(".zip")
+    if archive_path.exists():
+        archive_path.unlink()
+
+    staging_root = Path(
+        tempfile.mkdtemp(prefix=f"{archive_base.name}-export-", dir=str(archive_base.parent))
+    )
+    try:
+        artifact_root = staging_root / "items"
+        artifact_root.mkdir(parents=True, exist_ok=True)
+        used_names: set[str] = set()
+        exported_rows: list[dict[str, str]] = []
+        items_manifest: list[dict[str, Any]] = []
+        for row in matched_rows:
+            artifact_path = _artifact_path_from_catalog_row(row)
+            if artifact_path is None:
+                continue
+            media_dir = _safe_media_dir_from_catalog_row(row, output_root_path=output_root_path)
+            source_info = _source_info_from_media_dir(media_dir)
+            media_id = str(row.get("audio_id") or row.get("media_id") or "")
+            item_id = item_id_from_catalog_row(row)
+            label = _best_export_label(media_id, source_info)
+            destination_name = _ensure_unique_export_file_name(f"{label}.json", used_names)
+            destination = artifact_root / destination_name
+            destination.write_text(
+                artifact_path.read_text(encoding="utf-8", errors="replace"),
+                encoding="utf-8",
+            )
+            exported_rows.append(
+                {
+                    "label": label,
+                    "source_path": str(source_info.get("original_path") or row.get("source_file_identity") or ""),
+                    "artifact_path": f"{artifact_root.name}/{destination_name}",
+                }
+            )
+            items_manifest.append(
+                {
+                    "item_id": item_id,
+                    "media_id": media_id,
+                    "run_id": row.get("run_id") or row.get("job_id"),
+                    "source_file_identity": row.get("source_file_identity"),
+                    "source_hash": row.get("source_hash") or row.get("sha256"),
+                    "artifact_path": f"{artifact_root.name}/{destination_name}",
+                }
+            )
+
+        if not exported_rows:
+            raise ValueError("No completed item artifacts are available to download.")
+
+        (staging_root / "items.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "generated_at": now_iso(),
+                    "items": items_manifest,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        _write_export_index_html(
+            export_root=staging_root,
+            run_id="selected-items",
+            artifact_kind="timeline",
+            exported_rows=exported_rows,
+            has_conversion_info=False,
+            has_failure_report=False,
+            has_worker_log=False,
+        )
+        created = shutil.make_archive(str(archive_base), "zip", root_dir=str(staging_root))
+        return Path(created)
+    finally:
+        shutil.rmtree(staging_root, ignore_errors=True)
 
 
 def generation_signature_for_settings(
@@ -1029,7 +1243,7 @@ def list_audio_file_rows(
             {
                 "source_id": source_id,
                 "source_display_name": str(
-                    (source_root or {}).get("displayName") or source_id or "Audio"
+                    source_id or "Audio"
                 ),
                 "root_path": original_root_path,
                 "relative_path": relative_path,
@@ -1075,15 +1289,33 @@ def _iter_run_dirs(output_path: Path) -> list[Path]:
 
 def settings_snapshot(settings: dict[str, Any] | None = None) -> dict[str, Any]:
     settings = settings or load_settings()
-    token = load_huggingface_token()
+    token = str(settings.get("huggingfaceToken") or "").strip() or None
+    inputs = _enabled_input_roots(settings)
+    output_roots = _enabled_output_root_list(settings)
+    blocking_reasons: list[str] = []
+    if not token:
+        blocking_reasons.append("needs_token")
+    if not inputs:
+        blocking_reasons.append("needs_input")
+    if not output_roots:
+        blocking_reasons.append("needs_master")
+    setup_state = "ready" if not blocking_reasons else blocking_reasons[0]
+    token_payload: dict[str, Any] = {
+        "configured": bool(token),
+    }
+    if token:
+        token_payload["preview"] = token_preview(token)
     return {
-        "has_token": bool(token),
-        "token_preview": token_preview(token),
-        "ready": bool(token),
-        "diarization_required": True,
-        "compute_mode": str(settings.get("computeMode") or "cpu"),
-        "input_roots": _enabled_input_roots(settings),
-        "output_roots": _enabled_output_root_list(settings),
+        "setup": {
+            "state": setup_state,
+            "blocking_reasons": blocking_reasons,
+        },
+        "token": token_payload,
+        "compute": {
+            "mode": str(settings.get("computeMode") or "cpu"),
+        },
+        "inputs": inputs,
+        "master": {"path": output_roots[0]["path"]} if output_roots else None,
     }
 
 

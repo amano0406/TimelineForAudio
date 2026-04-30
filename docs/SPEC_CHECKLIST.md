@@ -30,8 +30,6 @@
 
 - [x] `source/source-record.json`
 - [x] `segments/speech-candidates.json`
-- [x] `ai-raw/speaker-turns.raw.json`
-- [x] `ai-raw/acoustic-units.raw.json`
 - [x] `timeline/speaker-acoustic-units-timeline.json`
 - [x] `timeline/speaker-acoustic-units-timeline.md`
 - [x] `artifacts.json`
@@ -42,10 +40,10 @@
 - [x] 入力ディレクトリを `settings.json` で固定管理する
 - [x] 出力ディレクトリを `settings.json` で固定管理する
 - [x] `settings.example.json` はGit管理し、`settings.json` はGit管理しない
-- [x] `refresh` は設定済み入力ディレクトリを読む
+- [x] `items refresh` は設定済み入力ディレクトリを読む
 - [x] `source hash + generation signature + source file identity` が同じ場合は再処理を避ける
 - [x] ファイル名または相対パスが変わった場合は別ファイルとして扱う
-- [x] `refresh --max-items` で小さなバッチに分割できる
+- [x] `items refresh --max-items` で小さなバッチに分割できる
 
 ## Verification
 

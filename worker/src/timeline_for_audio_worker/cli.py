@@ -14,12 +14,14 @@ from .discovery import discover_audio
 from .fs_utils import now_iso
 from .runtime_guard import assert_cli_runtime_allowed
 from .run_store import (
-    build_run_archive,
     app_config_from_settings,
+    build_items_archive,
     create_refresh_run,
     find_run_dir,
+    list_items,
     list_audio_file_rows,
     list_runs,
+    remove_items,
     settings_snapshot,
 )
 from .model_inventory import build_model_inventory
@@ -55,75 +57,79 @@ def parse_args() -> argparse.Namespace:
     settings_save = settings_subparsers.add_parser("save", help="Save local settings.")
     settings_save.add_argument("--token", type=str, required=False)
     settings_save.add_argument("--compute-mode", choices=["cpu", "gpu"], required=False)
-    settings_save.add_argument("--input-roots-json", type=str, required=False)
-    settings_save.add_argument("--output-roots-json", type=str, required=False)
     settings_save.add_argument("--json", action="store_true")
-    input_root = settings_subparsers.add_parser(
-        "input-root", help="Manage configured input directories."
+    inputs = settings_subparsers.add_parser(
+        "inputs", help="Manage configured input directories."
     )
-    input_root_subparsers = input_root.add_subparsers(dest="input_root_command", required=True)
-    input_root_list = input_root_subparsers.add_parser("list", help="List input directories.")
-    input_root_list.add_argument("--json", action="store_true")
-    input_root_add = input_root_subparsers.add_parser("add", help="Add or update an input directory.")
-    input_root_add.add_argument("--id", required=True)
-    input_root_add.add_argument("--path", type=Path, required=True)
-    input_root_add.add_argument("--display-name", required=False)
-    input_root_add.add_argument("--disabled", action="store_true")
-    input_root_add.add_argument("--json", action="store_true")
-    input_root_remove = input_root_subparsers.add_parser("remove", help="Remove an input directory.")
-    input_root_remove.add_argument("--id", required=True)
-    input_root_remove.add_argument("--json", action="store_true")
-    input_root_enable = input_root_subparsers.add_parser("enable", help="Enable an input directory.")
-    input_root_enable.add_argument("--id", required=True)
-    input_root_enable.add_argument("--json", action="store_true")
-    input_root_disable = input_root_subparsers.add_parser(
-        "disable", help="Disable an input directory without removing it."
+    inputs_subparsers = inputs.add_subparsers(dest="inputs_command", required=True)
+    inputs_list = inputs_subparsers.add_parser("list", help="List input directories.")
+    inputs_list.add_argument("--json", action="store_true")
+    inputs_add = inputs_subparsers.add_parser("add", help="Add an input directory.")
+    inputs_add.add_argument("path", type=Path)
+    inputs_add.add_argument("--json", action="store_true")
+    inputs_remove = inputs_subparsers.add_parser("remove", help="Remove an input directory.")
+    inputs_remove.add_argument("id")
+    inputs_remove.add_argument("--json", action="store_true")
+    inputs_clear = inputs_subparsers.add_parser("clear", help="Remove all input directories.")
+    inputs_clear.add_argument("--json", action="store_true")
+    master = settings_subparsers.add_parser(
+        "master", help="Manage the single master output directory."
     )
-    input_root_disable.add_argument("--id", required=True)
-    input_root_disable.add_argument("--json", action="store_true")
-    input_root_clear = input_root_subparsers.add_parser("clear", help="Remove all input directories.")
-    input_root_clear.add_argument("--json", action="store_true")
-    output_root = settings_subparsers.add_parser(
-        "output-root", help="Manage the configured output directory."
-    )
-    output_root_subparsers = output_root.add_subparsers(dest="output_root_command", required=True)
-    output_root_list = output_root_subparsers.add_parser("list", help="List output directories.")
-    output_root_list.add_argument("--json", action="store_true")
-    output_root_set = output_root_subparsers.add_parser("set", help="Set the primary output directory.")
-    output_root_set.add_argument("--id", default="runs")
-    output_root_set.add_argument("--path", type=Path, required=True)
-    output_root_set.add_argument("--display-name", required=False)
-    output_root_set.add_argument("--json", action="store_true")
+    master_subparsers = master.add_subparsers(dest="master_command", required=True)
+    master_show = master_subparsers.add_parser("show", help="Show the master output directory.")
+    master_show.add_argument("--json", action="store_true")
+    master_set = master_subparsers.add_parser("set", help="Set the master output directory.")
+    master_set.add_argument("path", type=Path)
+    master_set.add_argument("--json", action="store_true")
 
-    runs_parser = subparsers.add_parser("runs", help="Inspect or archive past refresh runs.")
+    runs_parser = subparsers.add_parser("runs", help="Inspect past item refresh runs.")
     runs_subparsers = runs_parser.add_subparsers(dest="runs_command", required=True)
     runs_list = runs_subparsers.add_parser("list", help="List runs in the configured output root.")
     runs_list.add_argument("--json", action="store_true")
     runs_show = runs_subparsers.add_parser("show", help="Show one run request/status/result.")
     runs_show.add_argument("--run-id", type=str, required=True)
     runs_show.add_argument("--json", action="store_true")
-    runs_archive = runs_subparsers.add_parser(
-        "archive", help="Create a ZIP archive for one completed run."
-    )
-    runs_archive.add_argument("--run-id", type=str, required=True)
-    runs_archive.add_argument("--output", type=Path, required=False)
-    runs_archive.add_argument("--artifact-kind", choices=["timeline"], default="timeline")
-    runs_archive.add_argument("--json", action="store_true")
-
-    scan_parser = subparsers.add_parser(
-        "scan", help="Scan configured source directories for audio files."
-    )
-    scan_parser.add_argument("--config", type=Path, required=False)
-    scan_parser.add_argument("--output", type=Path, required=False)
-    scan_parser.add_argument("--json", action="store_true")
 
     files_parser = subparsers.add_parser(
-        "files", help="Show configured audio files as user-facing file rows."
+        "files", help="Inspect source audio files in configured input directories."
     )
     files_subparsers = files_parser.add_subparsers(dest="files_command", required=True)
     files_list = files_subparsers.add_parser("list", help="List configured audio files.")
     files_list.add_argument("--probe", action="store_true")
     files_list.add_argument("--json", action="store_true")
+    files_scan = files_subparsers.add_parser(
+        "scan", help="Scan configured source directories and return raw discovery rows."
+    )
+    files_scan.add_argument("--config", type=Path, required=False)
+    files_scan.add_argument("--output", type=Path, required=False)
+    files_scan.add_argument("--json", action="store_true")
+
+    items_parser = subparsers.add_parser(
+        "items", help="Manage TimelineForAudio analysis items and generated data."
+    )
+    items_subparsers = items_parser.add_subparsers(dest="items_command", required=True)
+    items_list = items_subparsers.add_parser("list", help="List managed analysis items.")
+    items_list.add_argument("--json", action="store_true")
+    items_refresh = items_subparsers.add_parser(
+        "refresh", help="Read configured input directories and process changed audio only."
+    )
+    items_refresh.add_argument("--source-id", dest="source_ids", action="append", default=[])
+    items_refresh.add_argument("--reprocess-duplicates", action="store_true")
+    items_refresh.add_argument("--max-items", "--limit", dest="max_items", type=int, required=False)
+    items_refresh.add_argument("--queue-only", action="store_true")
+    items_refresh.add_argument("--json", action="store_true")
+    items_remove = items_subparsers.add_parser(
+        "remove", help="Remove managed item data without deleting source audio."
+    )
+    items_remove.add_argument("--item-id", required=True)
+    items_remove.add_argument("--dry-run", action="store_true")
+    items_remove.add_argument("--json", action="store_true")
+    items_download = items_subparsers.add_parser(
+        "download", help="Create a ZIP package for one or more managed items."
+    )
+    items_download.add_argument("--item-id", required=True)
+    items_download.add_argument("--output", type=Path, required=False)
+    items_download.add_argument("--json", action="store_true")
 
     models_parser = subparsers.add_parser(
         "models", help="List models and model-like components used by the current pipeline."
@@ -138,16 +144,6 @@ def parse_args() -> argparse.Namespace:
     )
     models_list.add_argument("--output", type=Path, required=False)
     models_list.add_argument("--json", action="store_true")
-
-    refresh_parser = subparsers.add_parser(
-        "refresh", help="Read configured input directories and process changed audio only."
-    )
-    refresh_parser.add_argument("--source-id", dest="source_ids", action="append", default=[])
-    refresh_parser.add_argument("--output-root-id", type=str, default=None)
-    refresh_parser.add_argument("--reprocess-duplicates", action="store_true")
-    refresh_parser.add_argument("--max-items", "--limit", dest="max_items", type=int, required=False)
-    refresh_parser.add_argument("--queue-only", action="store_true")
-    refresh_parser.add_argument("--json", action="store_true")
 
     evaluate_parser = subparsers.add_parser(
         "evaluate", help="Compare produced turn artifact JSON with a reference JSON."
@@ -204,6 +200,53 @@ def cmd_scan(config_path: Path | None, output: Path | None, as_json: bool) -> in
 def cmd_files_list(*, include_probe: bool, as_json: bool) -> int:
     rows = list_audio_file_rows(include_probe=include_probe)
     _print_payload(rows, as_json)
+    return 0
+
+
+def _split_cli_ids(value: str) -> list[str]:
+    rows: list[str] = []
+    for part in str(value or "").replace("\n", ",").split(","):
+        normalized = part.strip()
+        if normalized:
+            rows.append(normalized)
+    return rows
+
+
+def cmd_items_list(*, as_json: bool) -> int:
+    rows = list_items()
+    _print_payload(rows, as_json)
+    return 0
+
+
+def cmd_items_remove(
+    *,
+    item_id_value: str,
+    dry_run: bool,
+    as_json: bool,
+) -> int:
+    payload = remove_items(
+        item_ids=_split_cli_ids(item_id_value),
+        dry_run=dry_run,
+    )
+    _print_payload(payload, as_json)
+    return 0
+
+
+def cmd_items_download(
+    *,
+    item_id_value: str,
+    output: Path | None,
+    as_json: bool,
+) -> int:
+    archive_path = build_items_archive(
+        item_ids=_split_cli_ids(item_id_value),
+        output=output,
+    )
+    payload = {
+        "archive_path": str(archive_path),
+        "item_ids": _split_cli_ids(item_id_value),
+    }
+    _print_payload(payload, as_json)
     return 0
 
 
@@ -325,14 +368,27 @@ def _print_payload(payload: dict[str, object] | list[dict[str, object]], as_json
 
     if isinstance(payload, list):
         if not payload:
-            print("No runs found.")
+            print("No rows found.")
             return
         for row in payload:
-            print(
-                f"{row.get('run_id')} | {row.get('state')} | "
-                f"{row.get('items_done', 0)}/{row.get('items_total', 0)} | "
-                f"{row.get('current_stage', '')} | {row.get('run_dir', '')}"
-            )
+            if "item_id" in row:
+                print(
+                    f"{row.get('item_id')} | {row.get('status')} | "
+                    f"{row.get('source_file_name', '')} | {row.get('run_id', '')}"
+                )
+            elif "file_name" in row:
+                print(
+                    f"{row.get('status')} | {row.get('file_name')} | "
+                    f"{row.get('source_file_identity', '')}"
+                )
+            elif "run_id" in row:
+                print(
+                    f"{row.get('run_id')} | {row.get('state')} | "
+                    f"{row.get('items_done', 0)}/{row.get('items_total', 0)} | "
+                    f"{row.get('current_stage', '')} | {row.get('run_dir', '')}"
+                )
+            else:
+                print(json.dumps(row, ensure_ascii=False))
         return
 
     for key, value in payload.items():
@@ -344,47 +400,17 @@ def cmd_settings_status(as_json: bool) -> int:
     return 0
 
 
-def _root_rows_from_json(value: str, *, default_id: str | None = None) -> list[dict[str, object]]:
-    try:
-        payload = json.loads(value)
-    except json.JSONDecodeError as exc:
-        raise ValueError("Folder settings were not valid JSON.") from exc
-    if not isinstance(payload, list):
-        raise ValueError("Folder settings must be a JSON array.")
-
-    rows: list[dict[str, object]] = []
-    for index, row in enumerate(payload, start=1):
-        if not isinstance(row, dict):
-            continue
-        root_path = str(row.get("path") or "").strip()
-        if not root_path:
-            continue
-        root_id = str(row.get("id") or default_id or f"root-{index}").strip()
-        display_name = str(row.get("displayName") or row.get("display_name") or root_id).strip()
-        rows.append(
-            {
-                "id": root_id,
-                "displayName": display_name or root_id,
-                "path": root_path,
-                "enabled": bool(row.get("enabled", True)),
-            }
-        )
-    return rows
-
-
 def _validate_token_value(token: str | None) -> dict[str, object]:
     value = str(token or "").strip()
     if not value:
         return {
             "valid": False,
             "status": "missing",
-            "message": "Hugging Face token が設定されていません。",
         }
     if not value.startswith("hf_") or len(value) < 20:
         return {
             "valid": False,
             "status": "invalid_format",
-            "message": "token の形式が正しくなさそうです。hf_ で始まる Hugging Face token を入力してください。",
         }
 
     request = urllib.request.Request(
@@ -401,25 +427,25 @@ def _validate_token_value(token: str | None) -> dict[str, object]:
             return {
                 "valid": True,
                 "status": "ok",
-                "message": f"token を確認できました: {name}",
+                "account_name": name,
             }
     except urllib.error.HTTPError as exc:
         if exc.code in {401, 403}:
             return {
                 "valid": False,
                 "status": "rejected",
-                "message": "Hugging Face が token を拒否しました。token の値と権限を確認してください。",
+                "http_status": exc.code,
             }
         return {
             "valid": False,
             "status": "remote_error",
-            "message": f"Hugging Face から HTTP {exc.code} が返りました。",
+            "http_status": exc.code,
         }
     except Exception as exc:
         return {
             "valid": False,
             "status": "connection_error",
-            "message": f"Hugging Face に接続できませんでした: {exc}",
+            "error": str(exc),
         }
 
 
@@ -433,8 +459,6 @@ def cmd_settings_validate_token(token: str | None, as_json: bool) -> int:
 def cmd_settings_save(
     token: str | None,
     compute_mode: str | None,
-    input_roots_json: str | None,
-    output_roots_json: str | None,
     as_json: bool,
 ) -> int:
     settings = load_settings()
@@ -442,13 +466,6 @@ def cmd_settings_save(
         settings["huggingfaceToken"] = token.strip() if token and token.strip() else ""
     if compute_mode is not None:
         settings["computeMode"] = compute_mode
-    if input_roots_json is not None:
-        settings["inputRoots"] = _root_rows_from_json(input_roots_json)
-    if output_roots_json is not None:
-        output_rows = _root_rows_from_json(output_roots_json, default_id="runs")
-        if not output_rows:
-            raise ValueError("Output folder is required.")
-        settings["outputRoots"] = [output_rows[0]]
     save_settings(settings)
     _print_payload(settings_snapshot(settings), as_json)
     return 0
@@ -459,41 +476,46 @@ def _root_list_payload(settings: dict[str, object], key: str) -> list[dict[str, 
     return value if isinstance(value, list) else []
 
 
-def cmd_settings_input_root_list(as_json: bool) -> int:
+def _master_payload(settings: dict[str, object]) -> dict[str, object] | None:
+    value = settings.get("outputRoot")
+    return value if isinstance(value, dict) and value.get("path") else None
+
+
+def cmd_settings_inputs_list(as_json: bool) -> int:
     settings = load_settings()
     _print_payload(_root_list_payload(settings, "inputRoots"), as_json)
     return 0
 
 
-def cmd_settings_input_root_add(
-    *, root_id: str, path: Path, display_name: str | None, enabled: bool, as_json: bool
-) -> int:
+def _new_input_root_id(rows: list[dict[str, object]]) -> str:
+    existing = {str(row.get("id") or "").lower() for row in rows}
+    while True:
+        candidate = f"input-{os.urandom(3).hex()}"
+        if candidate.lower() not in existing:
+            return candidate
+
+
+def cmd_settings_inputs_add(*, path: Path, as_json: bool) -> int:
     settings = load_settings()
     rows = _root_list_payload(settings, "inputRoots")
-    normalized_id = root_id.strip()
-    if not normalized_id:
-        raise ValueError("Input root id is required.")
+    normalized_path = str(path)
+    for row in rows:
+        if str(row.get("path") or "").strip().lower() == normalized_path.strip().lower():
+            _print_payload(_root_list_payload(settings, "inputRoots"), as_json)
+            return 0
+    normalized_id = _new_input_root_id(rows)
     root_row = {
         "id": normalized_id,
-        "displayName": display_name or normalized_id,
-        "path": str(path),
-        "enabled": enabled,
+        "path": normalized_path,
     }
-    replaced = False
-    for index, row in enumerate(rows):
-        if str(row.get("id") or "").lower() == normalized_id.lower():
-            rows[index] = root_row
-            replaced = True
-            break
-    if not replaced:
-        rows.append(root_row)
+    rows.append(root_row)
     settings["inputRoots"] = rows
     save_settings(settings)
     _print_payload(_root_list_payload(load_settings(), "inputRoots"), as_json)
     return 0
 
 
-def cmd_settings_input_root_remove(root_id: str, as_json: bool) -> int:
+def cmd_settings_inputs_remove(root_id: str, as_json: bool) -> int:
     settings = load_settings()
     rows = [
         row
@@ -506,27 +528,7 @@ def cmd_settings_input_root_remove(root_id: str, as_json: bool) -> int:
     return 0
 
 
-def cmd_settings_input_root_set_enabled(root_id: str, enabled: bool, as_json: bool) -> int:
-    settings = load_settings()
-    rows = _root_list_payload(settings, "inputRoots")
-    normalized_id = root_id.strip().lower()
-    if not normalized_id:
-        raise ValueError("Input root id is required.")
-    matched = False
-    for row in rows:
-        if str(row.get("id") or "").lower() == normalized_id:
-            row["enabled"] = enabled
-            matched = True
-            break
-    if not matched:
-        raise ValueError(f"Input root was not found: {root_id}")
-    settings["inputRoots"] = rows
-    save_settings(settings)
-    _print_payload(_root_list_payload(load_settings(), "inputRoots"), as_json)
-    return 0
-
-
-def cmd_settings_input_root_clear(as_json: bool) -> int:
+def cmd_settings_inputs_clear(as_json: bool) -> int:
     settings = load_settings()
     settings["inputRoots"] = []
     save_settings(settings)
@@ -534,27 +536,19 @@ def cmd_settings_input_root_clear(as_json: bool) -> int:
     return 0
 
 
-def cmd_settings_output_root_list(as_json: bool) -> int:
+def cmd_settings_master_show(as_json: bool) -> int:
     settings = load_settings()
-    _print_payload(_root_list_payload(settings, "outputRoots"), as_json)
+    _print_payload(_master_payload(settings) or {}, as_json)
     return 0
 
 
-def cmd_settings_output_root_set(
-    *, root_id: str, path: Path, display_name: str | None, as_json: bool
-) -> int:
+def cmd_settings_master_set(*, path: Path, as_json: bool) -> int:
     settings = load_settings()
-    normalized_id = root_id.strip() or "runs"
-    settings["outputRoots"] = [
-        {
-            "id": normalized_id,
-            "displayName": display_name or normalized_id,
-            "path": str(path),
-            "enabled": True,
-        }
-    ]
+    settings["outputRoot"] = {
+        "path": str(path),
+    }
     save_settings(settings)
-    _print_payload(_root_list_payload(load_settings(), "outputRoots"), as_json)
+    _print_payload(_master_payload(load_settings()) or {}, as_json)
     return 0
 
 
@@ -599,18 +593,7 @@ def cmd_runs_show(run_id: str, as_json: bool) -> int:
     return 0
 
 
-def cmd_runs_archive(run_id: str, output: Path | None, artifact_kind: str, as_json: bool) -> int:
-    archive_path = build_run_archive(run_id, output=output, artifact_kind=artifact_kind)
-    payload = {
-        "run_id": run_id,
-        "artifact_kind": artifact_kind,
-        "archive_path": str(archive_path),
-    }
-    _print_payload(payload, as_json)
-    return 0
-
-
-def cmd_refresh(
+def cmd_items_refresh(
     *,
     source_ids: list[str],
     output_root_id: str,
@@ -743,51 +726,56 @@ def main() -> int:
             return cmd_settings_save(
                 args.token,
                 args.compute_mode,
-                args.input_roots_json,
-                args.output_roots_json,
                 args.json,
             )
-        if args.settings_command == "input-root":
-            if args.input_root_command == "list":
-                return cmd_settings_input_root_list(args.json)
-            if args.input_root_command == "add":
-                return cmd_settings_input_root_add(
-                    root_id=args.id,
-                    path=args.path,
-                    display_name=args.display_name,
-                    enabled=not args.disabled,
-                    as_json=args.json,
-                )
-            if args.input_root_command == "remove":
-                return cmd_settings_input_root_remove(args.id, args.json)
-            if args.input_root_command == "enable":
-                return cmd_settings_input_root_set_enabled(args.id, True, args.json)
-            if args.input_root_command == "disable":
-                return cmd_settings_input_root_set_enabled(args.id, False, args.json)
-            if args.input_root_command == "clear":
-                return cmd_settings_input_root_clear(args.json)
-        if args.settings_command == "output-root":
-            if args.output_root_command == "list":
-                return cmd_settings_output_root_list(args.json)
-            if args.output_root_command == "set":
-                return cmd_settings_output_root_set(
-                    root_id=args.id,
-                    path=args.path,
-                    display_name=args.display_name,
-                    as_json=args.json,
-                )
+        if args.settings_command == "inputs":
+            if args.inputs_command == "list":
+                return cmd_settings_inputs_list(args.json)
+            if args.inputs_command == "add":
+                return cmd_settings_inputs_add(path=args.path, as_json=args.json)
+            if args.inputs_command == "remove":
+                return cmd_settings_inputs_remove(args.id, args.json)
+            if args.inputs_command == "clear":
+                return cmd_settings_inputs_clear(args.json)
+        if args.settings_command == "master":
+            if args.master_command == "show":
+                return cmd_settings_master_show(args.json)
+            if args.master_command == "set":
+                return cmd_settings_master_set(path=args.path, as_json=args.json)
     if args.command == "runs":
         if args.runs_command == "list":
             return cmd_runs_list(args.json)
         if args.runs_command == "show":
             return cmd_runs_show(args.run_id, args.json)
-        if args.runs_command == "archive":
-            return cmd_runs_archive(args.run_id, args.output, args.artifact_kind, args.json)
-    if args.command == "scan":
-        return cmd_scan(args.config, args.output, args.json)
     if args.command == "files":
         if args.files_command == "list":
             return cmd_files_list(include_probe=args.probe, as_json=args.json)
+        if args.files_command == "scan":
+            return cmd_scan(args.config, args.output, args.json)
+    if args.command == "items":
+        if args.items_command == "list":
+            return cmd_items_list(as_json=args.json)
+        if args.items_command == "refresh":
+            return cmd_items_refresh(
+                source_ids=args.source_ids,
+                output_root_id="master",
+                reprocess_duplicates=args.reprocess_duplicates,
+                max_items=args.max_items,
+                queue_only=args.queue_only,
+                as_json=args.json,
+            )
+        if args.items_command == "remove":
+            return cmd_items_remove(
+                item_id_value=args.item_id,
+                dry_run=args.dry_run,
+                as_json=args.json,
+            )
+        if args.items_command == "download":
+            return cmd_items_download(
+                item_id_value=args.item_id,
+                output=args.output,
+                as_json=args.json,
+            )
     if args.command == "models":
         if args.models_command == "list":
             return cmd_models_list(
@@ -795,15 +783,6 @@ def main() -> int:
                 output=args.output,
                 as_json=args.json,
             )
-    if args.command == "refresh":
-        return cmd_refresh(
-            source_ids=args.source_ids,
-            output_root_id=args.output_root_id,
-            reprocess_duplicates=args.reprocess_duplicates,
-            max_items=args.max_items,
-            queue_only=args.queue_only,
-            as_json=args.json,
-        )
     if args.command == "evaluate":
         return cmd_evaluate(
             prediction_path=args.prediction,

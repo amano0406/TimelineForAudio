@@ -63,7 +63,7 @@ echo
 echo "CLI examples:"
 echo "  ./cli.command settings init"
 echo "  ./cli.command settings status"
-echo "  ./cli.command refresh"
+echo "  ./cli.command items refresh"
 echo "  ./cli.command runs list"
 echo
 echo "Docker status:"

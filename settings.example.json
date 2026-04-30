@@ -3,19 +3,12 @@
   "inputRoots": [
     {
       "id": "timeline-audio",
-      "displayName": "Timeline Audio",
-      "path": "C:\\TimelineData\\Audio\\",
-      "enabled": true
+      "path": "C:\\TimelineData\\Audio\\"
     }
   ],
-  "outputRoots": [
-    {
-      "id": "master",
-      "displayName": "TimelineForAudio Master",
-      "path": "C:\\TimelineData\\AudioMaster\\",
-      "enabled": true
-    }
-  ],
+  "outputRoot": {
+    "path": "C:\\TimelineData\\AudioMaster\\"
+  },
   "audioExtensions": [
     ".mp3",
     ".wav",

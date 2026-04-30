@@ -604,8 +604,6 @@ def _write_timeline_readme(path: Path) -> None:
         "- `speaker-acoustic-units-timeline.json`: speaker labels, original-audio timestamps, and acoustic units.",
         "- `source/source-record.json`: source file metadata used to preserve the original timeline.",
         "- `segments/speech-candidates.json`: speech candidate ranges used for efficient processing.",
-        "- `ai-raw/speaker-turns.raw.json`: raw speaker diarization output normalized to JSON.",
-        "- `ai-raw/acoustic-units.raw.json`: raw acoustic-unit extraction output normalized to JSON.",
         "",
         "TimelineForAudio does not infer real speaker names and does not reconstruct readable text.",
         "",
@@ -671,7 +669,6 @@ def _process_one_item(
     media_dir = ensure_dir(run_dir / "media" / str(manifest_item.media_id))
     source_dir = ensure_dir(media_dir / "source")
     segments_dir = ensure_dir(media_dir / "segments")
-    raw_dir = ensure_dir(media_dir / "ai-raw")
     timeline_dir = ensure_dir(media_dir / "timeline")
 
     normalized_audio_path = source_dir / "audio-normalized.wav"
@@ -713,7 +710,6 @@ def _process_one_item(
         audio_path=normalized_audio_path,
         compute_mode=request.compute_mode,
     )
-    write_json_atomic(raw_dir / "speaker-turns.raw.json", speaker_payload)
     if ensure_not_delete_requested:
         ensure_not_delete_requested("diarize_audio")
 
@@ -758,7 +754,6 @@ def _process_one_item(
         "turn_count": len(acoustic_turn_rows),
         "turns": acoustic_turn_rows,
     }
-    write_json_atomic(raw_dir / "acoustic-units.raw.json", acoustic_payload)
     if acoustic_result.status == "unavailable":
         raise RuntimeError(
             "; ".join(acoustic_result.warnings) or "Acoustic unit extraction failed."
@@ -797,20 +792,6 @@ def _process_one_item(
                 title="Speaker Acoustic Units Timeline Preview",
                 role="support",
                 path=timeline_preview_path,
-            ),
-            _artifact_entry(
-                media_dir=media_dir,
-                kind="raw_speaker_turns",
-                title="Raw Speaker Turns",
-                role="support",
-                path=raw_dir / "speaker-turns.raw.json",
-            ),
-            _artifact_entry(
-                media_dir=media_dir,
-                kind="raw_acoustic_units",
-                title="Raw Acoustic Units",
-                role="support",
-                path=raw_dir / "acoustic-units.raw.json",
             ),
             _artifact_entry(
                 media_dir=media_dir,
@@ -1007,23 +988,24 @@ def _collect_runs_by_state(*states: str) -> list[Path]:
     target_states = {state.lower() for state in states}
     settings = load_settings()
     rows: list[Path] = []
-    for root in settings.get("outputRoots", []):
-        if not root.get("enabled", True):
+    root = settings.get("outputRoot")
+    root_text = str(root.get("path") or "").strip() if isinstance(root, dict) else ""
+    if not root_text:
+        return rows
+    root_path = configured_path(root_text)
+    if not root_path.exists():
+        return rows
+    run_dirs = list(root_path.glob("run-*"))
+    for candidate in sorted({item.resolve(): item for item in run_dirs}.values()):
+        if not candidate.is_dir():
             continue
-        root_path = Path(str(root.get("path") or ""))
-        if not root_path.exists():
+        if _delete_requested(candidate):
             continue
-        run_dirs = list(root_path.glob("run-*"))
-        for candidate in sorted({item.resolve(): item for item in run_dirs}.values()):
-            if not candidate.is_dir():
-                continue
-            if _delete_requested(candidate):
-                continue
-            if not _request_path(candidate).exists():
-                continue
-            status = _load_status(candidate)
-            if status.state.lower() in target_states:
-                rows.append(candidate)
+        if not _request_path(candidate).exists():
+            continue
+        status = _load_status(candidate)
+        if status.state.lower() in target_states:
+            rows.append(candidate)
     return rows
 
 def process_run(run_dir: Path | None = None) -> bool:

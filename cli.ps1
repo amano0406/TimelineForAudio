@@ -22,10 +22,10 @@ $composeArgs = Get-TfaComposeArgs -RepoRoot $repoRoot -IncludeGpu:$requiresConfi
 $docker = Get-TfaDockerCommand
 Invoke-TfaWithFileLock -RepoRoot $repoRoot -LockName "docker-compose.lock" -ScriptBlock {
     if ($requiresConfiguredWorker) {
-        & $docker compose @composeArgs up -d --remove-orphans worker
+        & $docker compose --progress quiet @composeArgs up -d --remove-orphans worker
     }
     else {
-        & $docker compose @composeArgs up -d --no-recreate worker
+        & $docker compose --progress quiet @composeArgs up -d --no-recreate worker
     }
     if (-not $?) {
         throw "Failed to start TimelineForAudio worker."

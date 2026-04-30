@@ -754,12 +754,33 @@ class ProcessorQueueTests(unittest.TestCase):
                 processor,
                 "load_settings",
                 return_value={
-                    "outputRoots": [
-                        {"id": "runs", "path": str(root), "enabled": True},
-                    ]
+                    "outputRoot": {"path": str(root)}
                 },
             ):
                 self.assertEqual([], processor._collect_pending_runs())
+
+    def test_collect_pending_runs_uses_configured_path_mapping(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            run_dir = root / "run-1"
+            run_dir.mkdir()
+            (run_dir / "request.json").write_text("{}", encoding="utf-8")
+            (run_dir / "status.json").write_text(
+                json.dumps({"state": "pending"}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+
+            with (
+                patch.object(
+                    processor,
+                    "load_settings",
+                    return_value={
+                        "outputRoot": {"path": r"C:\TimelineData\AudioMaster\\"}
+                    },
+                ),
+                patch.object(processor, "configured_path", return_value=root),
+            ):
+                self.assertEqual([run_dir.resolve()], processor._collect_pending_runs())
 
     def test_process_run_deletes_requested_running_run_and_upload_session(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -989,14 +1010,9 @@ class ProcessorQueueTests(unittest.TestCase):
             timeline_path = media_dir / "timeline" / "speaker-acoustic-units-timeline.json"
             self.assertEqual([], warnings)
             self.assertTrue(timeline_path.exists())
-            self.assertTrue((media_dir / "ai-raw" / "speaker-turns.raw.json").exists())
-            self.assertTrue((media_dir / "ai-raw" / "acoustic-units.raw.json").exists())
+            self.assertFalse((media_dir / "ai-raw").exists())
             self.assertTrue((media_dir / "segments" / "speech-candidates.json").exists())
             self.assertFalse((media_dir / "segments" / "speech-candidates.wav").exists())
-            raw_acoustic_units = json.loads(
-                (media_dir / "ai-raw" / "acoustic-units.raw.json").read_text(encoding="utf-8")
-            )
-            self.assertEqual("CUDAExecutionProvider", raw_acoustic_units["execution_provider"])
             timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
             self.assertEqual("speaker-acoustic-units-timeline", timeline["artifact_type"])
             self.assertEqual(

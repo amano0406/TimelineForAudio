@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from typing import Any
 
 from .vad_profile import resolve_vad_profile
@@ -136,8 +136,20 @@ class RunStatus:
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "RunStatus":
         payload = dict(payload)
+        legacy_key_map = {
+            "videos_total": "items_total",
+            "videos_done": "items_done",
+            "videos_skipped": "items_skipped",
+            "videos_failed": "items_failed",
+            "current_media": "current_item",
+            "current_media_elapsed_sec": "current_item_elapsed_sec",
+        }
+        for old_key, new_key in legacy_key_map.items():
+            if new_key not in payload and old_key in payload:
+                payload[new_key] = payload[old_key]
         payload["run_id"] = str(payload.get("run_id") or "")
-        return cls(**payload)
+        allowed_keys = {field_info.name for field_info in fields(cls)}
+        return cls(**{key: value for key, value in payload.items() if key in allowed_keys})
 
     @property
     def videos_total(self) -> int:
@@ -210,7 +222,8 @@ class RunResult:
     def from_dict(cls, payload: dict[str, Any]) -> "RunResult":
         payload = dict(payload)
         payload["run_id"] = str(payload.get("run_id") or "")
-        return cls(**payload)
+        allowed_keys = {field_info.name for field_info in fields(cls)}
+        return cls(**{key: value for key, value in payload.items() if key in allowed_keys})
 
 
 @dataclass

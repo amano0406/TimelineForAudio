@@ -1,6 +1,6 @@
 # Refresh + Master TODO
 
-このTODOは、固定入力ディレクトリを `refresh` し、音声ファイル単位のマスター成果物を更新する運用へ寄せるための管理表です。
+このTODOは、固定入力ディレクトリを `items refresh` し、音声ファイル単位のマスター成果物を更新する運用へ寄せるための管理表です。
 
 ## 要件
 
@@ -11,16 +11,16 @@
 - [x] `settings.json` から Docker Compose の入力/出力 mount を生成する
 - [x] 入力ディレクトリは Docker 内で read-only mount する
 - [x] 出力ディレクトリは Docker 内で writable mount する
-- [x] `refresh` は設定済み入力ディレクトリをスキャンする
-- [x] `refresh` は未処理または出力が変わる音声だけをキューに入れる
+- [x] `items refresh` は設定済み入力ディレクトリをスキャンする
+- [x] `items refresh` は未処理または出力が変わる音声だけをキューに入れる
 - [x] `source hash + generation signature + source file identity` が同じ場合はスキップする
 - [x] ファイル名または相対パスが変わった場合は、同じ音声hashでも別ファイルとして扱う
 - [x] 元ファイル名と相対パスを artifact / catalog に残す
 - [x] マスター成果物はWindows側の出力ディレクトリに保存する
 - [x] 重い音声ファイルのテストを避けるため、`C:\TimelineData\Audio` をサンプル入力にする
 - [x] `C:\TimelineData\Audio` に軽量なサンプル音声を3件配置する
-- [x] Docker CLIでサンプル3件の `refresh` を実行する
-- [x] 2回目の `refresh` で3件がスキップされることを確認する
+- [x] Docker CLIでサンプル3件の `items refresh` を実行する
+- [x] 2回目の `items refresh` で3件がスキップされることを確認する
 - [x] ファイル名だけ変えた同一音声が別ファイルとしてキューに入ることを実データで確認する
 
 ## 設計メモ

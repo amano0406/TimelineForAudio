@@ -38,4 +38,4 @@ This is a desktop-style local tool, not a hosted SaaS product.
 - `python -m unittest discover worker/tests` with `PYTHONPATH=worker/src` and `TIMELINE_FOR_AUDIO_ALLOW_HOST_CLI=1`
 - `scripts/lint.ps1` or `scripts/lint.sh`
 - one real local smoke run
-- `runs archive` ZIP output confirmed
+- `items download` ZIP output confirmed

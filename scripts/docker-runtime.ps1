@@ -228,7 +228,13 @@ function Test-TfaCliRequiresConfiguredWorker {
     }
 
     $command = [string]$CliArgs[0]
-    return $command -in @("refresh", "process-run", "daemon")
+    if ($command -in @("process-run", "daemon")) {
+        return $true
+    }
+    if ($command -eq "items" -and $CliArgs.Count -ge 2 -and ([string]$CliArgs[1]) -eq "refresh") {
+        return $true
+    }
+    return $false
 }
 
 function Get-TfaComposeArgs {
