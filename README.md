@@ -10,8 +10,10 @@ The product does not reconstruct readable text, infer real speaker names, or sum
 2. Normalize each audio file for processing without modifying the original file.
 3. Detect speech candidate ranges and keep original audio-relative timestamps.
 4. Run required speaker diarization with `pyannote/speaker-diarization-community-1`.
-5. Extract acoustic units with the current ZIPA 300M backend.
+5. Extract acoustic units with the current ZIPA large ONNX backend in small speech-candidate chunks.
 6. Write the primary JSON artifact.
+
+Long recordings are not sent to ZIPA as one large inference request. Speech candidates are chunked internally and merged back to the original timeline.
 
 Primary artifact:
 
@@ -27,6 +29,7 @@ media/<media-id>/segments/speech-candidates.json
 media/<media-id>/ai-raw/speaker-turns.raw.json
 media/<media-id>/ai-raw/acoustic-units.raw.json
 media/<media-id>/artifacts.json
+RUN_PERFORMANCE.json
 ```
 
 ## Settings
@@ -65,6 +68,8 @@ Default shape:
   "computeMode": "cpu"
 }
 ```
+
+`refresh` queues all changed files by default. Use `refresh --max-items <N>` when you want a smaller test or retry batch.
 
 ## Windows Entry Points
 

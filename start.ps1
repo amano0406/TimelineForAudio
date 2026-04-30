@@ -9,11 +9,14 @@ $repoRoot = $PSScriptRoot
 
 Initialize-TfaDocker -RepoRoot $repoRoot
 Initialize-TfaLocalFiles -RepoRoot $repoRoot
+Assert-TfaGpuAvailableIfRequested -RepoRoot $repoRoot
 
 $composeArgs = Get-TfaComposeArgs -RepoRoot $repoRoot -IncludeGpu
 $docker = Get-TfaDockerCommand
-if (Test-TfaNvidiaGpuAvailable) {
-    Write-Host "NVIDIA GPU detected. Starting GPU worker image."
+$computeMode = Get-TfaComputeMode -RepoRoot $repoRoot
+Write-Host "Compute mode: $computeMode"
+if ($computeMode -eq "gpu") {
+    Write-Host "Starting GPU worker image."
 }
 
 Write-Host "Starting the worker container..."

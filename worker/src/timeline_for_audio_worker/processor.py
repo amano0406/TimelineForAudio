@@ -225,6 +225,63 @@ def _write_manifest(run_dir: Path, run_id: str, items: list[ManifestItem]) -> No
     write_json_atomic(_manifest_path(run_dir), payload)
 
 
+def _write_run_performance_summary(
+    *,
+    run_dir: Path,
+    request: RunRequest,
+    status: RunStatus,
+    manifest_items: list[ManifestItem],
+    run_wall_seconds: float,
+) -> None:
+    stage_totals: dict[str, float] = {}
+    stage_max: dict[str, float] = {}
+    processed_items = [
+        item for item in manifest_items if str(item.status or "").lower() == "completed"
+    ]
+    for item in processed_items:
+        for name, value in dict(item.stage_elapsed_seconds or {}).items():
+            elapsed = max(0.0, float(value or 0.0))
+            stage_totals[name] = round(stage_totals.get(name, 0.0) + elapsed, 3)
+            stage_max[name] = max(stage_max.get(name, 0.0), elapsed)
+
+    completed_duration = sum(max(0.0, float(item.duration_seconds or 0.0)) for item in processed_items)
+    throughput = None
+    if run_wall_seconds > 0 and completed_duration > 0:
+        throughput = round(completed_duration / run_wall_seconds, 3)
+
+    stage_summary = {
+        name: {
+            "total_wall_seconds": round(total, 3),
+            "average_wall_seconds": round(total / max(1, len(processed_items)), 3),
+            "max_wall_seconds": round(stage_max.get(name, 0.0), 3),
+        }
+        for name, total in sorted(stage_totals.items())
+    }
+    payload = {
+        "schema_version": 1,
+        "run_id": request.run_id,
+        "generated_at": now_iso(),
+        "compute_mode": request.compute_mode,
+        "item_counts": {
+            "total": status.items_total,
+            "completed": status.items_done,
+            "skipped": status.items_skipped,
+            "failed": status.items_failed,
+        },
+        "duration_seconds": {
+            "total_audio": round(float(status.total_duration_sec or 0.0), 3),
+            "processed_audio": round(float(status.processed_duration_sec or 0.0), 3),
+            "completed_audio": round(completed_duration, 3),
+            "run_wall": round(max(0.0, run_wall_seconds), 3),
+        },
+        "throughput": {
+            "completed_audio_seconds_per_wall_second": throughput,
+        },
+        "stages": stage_summary,
+    }
+    write_json_atomic(run_dir / "RUN_PERFORMANCE.json", payload)
+
+
 def _preflight_skip_warning_text(status: str, count: int) -> str | None:
     if count <= 0:
         return None
@@ -642,6 +699,7 @@ def _process_one_item(
         speech_candidate_audio_path,
         manifest_item.duration_seconds,
         min_silence_duration_ms=int(vad_parameters.get("min_silence_duration_ms", 500)),
+        write_audio=False,
     )
     write_json_atomic(segments_dir / "speech-candidate-map.json", cut_map)
     write_json_atomic(segments_dir / "speech-candidates.json", _candidate_payload(cut_map))
@@ -671,9 +729,10 @@ def _process_one_item(
     if on_stage:
         on_stage("extract_acoustic_units", "Extracting acoustic units.")
     acoustic_result = generate_acoustic_unit_turns(
-        audio_path=speech_candidate_audio_path,
+        audio_path=normalized_audio_path,
         cut_map=cut_map,
         compute_mode=request.compute_mode,
+        span_time_basis="original",
     )
     acoustic_turn_rows = [
         {
@@ -1523,6 +1582,13 @@ def process_run(run_dir: Path | None = None) -> bool:
         result.batch_count = 0
         result.timeline_index_path = None
         result.warnings = warnings
+        _write_run_performance_summary(
+            run_dir=run_dir,
+            request=request,
+            status=status,
+            manifest_items=manifest_items,
+            run_wall_seconds=monotonic() - started,
+        )
         _write_result(run_dir, result)
 
         status.state = "failed" if has_failures else "completed"
@@ -1578,6 +1644,13 @@ def process_run(run_dir: Path | None = None) -> bool:
         result.skipped_count = status.videos_skipped
         result.error_count = status.videos_failed + 1
         result.warnings = warnings + [tail_text(log_path, max_lines=30)]
+        _write_run_performance_summary(
+            run_dir=run_dir,
+            request=request,
+            status=status,
+            manifest_items=manifest_items,
+            run_wall_seconds=monotonic() - started,
+        )
         _write_result(run_dir, result)
         return True
     finally:

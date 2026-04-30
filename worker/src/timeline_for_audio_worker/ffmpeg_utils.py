@@ -259,6 +259,7 @@ def trim_audio(
     duration_seconds: float,
     *,
     min_silence_duration_ms: int = 500,
+    write_audio: bool = True,
 ) -> list[dict[str, float]]:
     ensure_dir(output_path.parent)
     silence_duration = max(0.05, float(min_silence_duration_ms) / 1000.0)
@@ -277,35 +278,38 @@ def trim_audio(
     )
     silences = _parse_silencedetect((detected.stderr or "") + "\n" + (detected.stdout or ""))
     keep_intervals = _invert_intervals(duration_seconds, silences, padding=1.0)
-    if (
-        len(keep_intervals) == 1
-        and abs(keep_intervals[0][0]) < 0.001
-        and abs(keep_intervals[0][1] - duration_seconds) < 0.001
-    ):
-        shutil.copy2(input_path, output_path)
-    else:
-        filter_parts: list[str] = []
-        concat_labels: list[str] = []
-        for idx, (start, end) in enumerate(keep_intervals):
-            label = f"a{idx}"
-            filter_parts.append(
-                f"[0:a]atrim=start={start:.3f}:end={end:.3f},asetpts=PTS-STARTPTS[{label}]"
+    if write_audio:
+        if (
+            len(keep_intervals) == 1
+            and abs(keep_intervals[0][0]) < 0.001
+            and abs(keep_intervals[0][1] - duration_seconds) < 0.001
+        ):
+            shutil.copy2(input_path, output_path)
+        else:
+            filter_parts: list[str] = []
+            concat_labels: list[str] = []
+            for idx, (start, end) in enumerate(keep_intervals):
+                label = f"a{idx}"
+                filter_parts.append(
+                    f"[0:a]atrim=start={start:.3f}:end={end:.3f},asetpts=PTS-STARTPTS[{label}]"
+                )
+                concat_labels.append(f"[{label}]")
+            filter_parts.append(f"{''.join(concat_labels)}concat=n={len(keep_intervals)}:v=0:a=1[outa]")
+            run_command(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(input_path),
+                    "-filter_complex",
+                    ";".join(filter_parts),
+                    "-map",
+                    "[outa]",
+                    str(output_path),
+                ]
             )
-            concat_labels.append(f"[{label}]")
-        filter_parts.append(f"{''.join(concat_labels)}concat=n={len(keep_intervals)}:v=0:a=1[outa]")
-        run_command(
-            [
-                "ffmpeg",
-                "-y",
-                "-i",
-                str(input_path),
-                "-filter_complex",
-                ";".join(filter_parts),
-                "-map",
-                "[outa]",
-                str(output_path),
-            ]
-        )
+    else:
+        output_path.unlink(missing_ok=True)
 
     cut_map: list[dict[str, float]] = []
     trimmed_cursor = 0.0

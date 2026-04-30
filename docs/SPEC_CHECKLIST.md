@@ -12,7 +12,7 @@
 
 - [x] 元音声ファイルは変更しない
 - [x] 処理用の正規化音声を内部生成する
-- [x] 発話候補区間だけを処理用音声として切り出す
+- [x] 発話候補区間を記録し、重い推論は短い区間単位で実行する
 - [x] 切り出し結果を元音声上の時刻へ戻せるようにする
 - [x] 元ファイル名、source hash、相対パス、録音日時候補を保持する
 
@@ -23,7 +23,7 @@
 - [x] SHA-256でファイル識別情報を持つ
 - [x] 発話候補区間を作る
 - [x] `pyannote/speaker-diarization-community-1` で話者分離する
-- [x] ZIPA 300M系バックエンドで音響単位を抽出する
+- [x] ZIPA large ONNXバックエンドで音響単位を抽出する
 - [x] 話者、時刻、音響単位を1つのタイムラインJSONに統合する
 
 ## Artifacts
@@ -35,6 +35,7 @@
 - [x] `timeline/speaker-acoustic-units-timeline.json`
 - [x] `timeline/speaker-acoustic-units-timeline.md`
 - [x] `artifacts.json`
+- [x] `RUN_PERFORMANCE.json`
 
 ## Reuse And Settings
 
@@ -44,6 +45,7 @@
 - [x] `refresh` は設定済み入力ディレクトリを読む
 - [x] `source hash + generation signature + source file identity` が同じ場合は再処理を避ける
 - [x] ファイル名または相対パスが変わった場合は別ファイルとして扱う
+- [x] `refresh --max-items` で小さなバッチに分割できる
 
 ## Verification
 

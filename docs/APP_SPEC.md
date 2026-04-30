@@ -23,6 +23,7 @@ Out of scope:
 - speaker identity inference
 - IPA-specific product contract
 - web UI
+- hosted Web UI / SaaS operation
 
 ## Primary Artifact
 

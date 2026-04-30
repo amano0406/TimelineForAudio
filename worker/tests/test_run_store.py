@@ -280,6 +280,73 @@ class RunStoreTests(unittest.TestCase):
                 request["input_items"][0]["source_file_identity"],
             )
 
+    def test_create_refresh_run_queues_all_items_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_dir = root / "audio"
+            runs_root = root / "runs"
+            source_dir.mkdir()
+            for index in range(5):
+                (source_dir / f"sample-{index}.wav").write_bytes(f"audio-{index}".encode())
+            settings = {
+                "audioExtensions": [".wav"],
+                "inputRoots": [
+                    {
+                        "id": "meetings",
+                        "displayName": "Meetings",
+                        "path": str(source_dir),
+                        "enabled": True,
+                    }
+                ],
+                "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
+                "computeMode": "cpu",
+            }
+
+            run_id, run_dir, summary = create_refresh_run(settings=settings)
+
+            self.assertIsNotNone(run_id)
+            self.assertIsNotNone(run_dir)
+            self.assertEqual(5, summary["total_discovered"])
+            self.assertEqual(5, summary["queued_count"])
+            self.assertEqual(0, summary["deferred_count"])
+            self.assertIsNone(summary["queued_limit"])
+            request = json.loads((Path(str(run_dir)) / "request.json").read_text(encoding="utf-8"))
+            self.assertEqual(5, len(request["input_items"]))
+
+    def test_create_refresh_run_limits_queued_items_with_explicit_max_items(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_dir = root / "audio"
+            runs_root = root / "runs"
+            source_dir.mkdir()
+            for index in range(5):
+                (source_dir / f"sample-{index}.wav").write_bytes(f"audio-{index}".encode())
+            settings = {
+                "audioExtensions": [".wav"],
+                "inputRoots": [
+                    {
+                        "id": "meetings",
+                        "displayName": "Meetings",
+                        "path": str(source_dir),
+                        "enabled": True,
+                    }
+                ],
+                "outputRoots": [{"id": "runs", "path": str(runs_root), "enabled": True}],
+                "computeMode": "cpu",
+            }
+
+            run_id, run_dir, summary = create_refresh_run(settings=settings, max_items=2)
+
+            self.assertIsNotNone(run_id)
+            self.assertIsNotNone(run_dir)
+            self.assertEqual(5, summary["total_discovered"])
+            self.assertEqual(2, summary["queued_count"])
+            self.assertEqual(3, summary["deferred_count"])
+            self.assertEqual(2, summary["queued_limit"])
+            self.assertEqual("batch_limit", summary["deferred"][0]["reason"])
+            request = json.loads((Path(str(run_dir)) / "request.json").read_text(encoding="utf-8"))
+            self.assertEqual(2, len(request["input_items"]))
+
     def test_create_run_writes_pending_contract_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

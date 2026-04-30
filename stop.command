@@ -21,9 +21,6 @@ compose_args=(-f docker-compose.yml)
 if [[ -f ".docker/docker-compose.paths.yml" ]]; then
   compose_args+=(-f .docker/docker-compose.paths.yml)
 fi
-if command -v nvidia-smi >/dev/null 2>&1; then
-  compose_args+=(-f docker-compose.gpu.yml)
-fi
 
 if docker info >/dev/null 2>&1; then
   run_compose_locked "${compose_args[@]}" down --remove-orphans

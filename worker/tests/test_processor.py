@@ -926,10 +926,11 @@ class ProcessorQueueTests(unittest.TestCase):
                 duration_seconds: float,
                 *,
                 min_silence_duration_ms: int = 500,
+                write_audio: bool = True,
             ):
                 self.assertEqual(500, min_silence_duration_ms)
+                self.assertFalse(write_audio)
                 output_path.parent.mkdir(parents=True, exist_ok=True)
-                output_path.write_bytes(b"trimmed")
                 return [
                     {
                         "original_start": 2.0,
@@ -991,6 +992,7 @@ class ProcessorQueueTests(unittest.TestCase):
             self.assertTrue((media_dir / "ai-raw" / "speaker-turns.raw.json").exists())
             self.assertTrue((media_dir / "ai-raw" / "acoustic-units.raw.json").exists())
             self.assertTrue((media_dir / "segments" / "speech-candidates.json").exists())
+            self.assertFalse((media_dir / "segments" / "speech-candidates.wav").exists())
             raw_acoustic_units = json.loads(
                 (media_dir / "ai-raw" / "acoustic-units.raw.json").read_text(encoding="utf-8")
             )

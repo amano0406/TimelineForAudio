@@ -35,9 +35,6 @@ echo "  - delete saved app data volume (includes worker state)"
 if [[ -f "settings.json" ]]; then
   echo "  - delete local settings.json"
 fi
-if [[ -f ".env" ]]; then
-  echo "  - delete local .env"
-fi
 echo
 
 confirm_yes() {
@@ -99,16 +96,6 @@ if [[ -f "settings.json" ]]; then
     echo "Deleted settings.json"
   else
     echo "Kept settings.json"
-  fi
-fi
-
-if [[ -f ".env" ]]; then
-  echo
-  if confirm_yes "Delete local .env as well? (y/n): "; then
-    rm -f ".env"
-    echo "Deleted .env"
-  else
-    echo "Kept .env"
   fi
 fi
 

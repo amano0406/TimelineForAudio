@@ -38,7 +38,7 @@ Those are easier to manage than the risks of a hosted service.
 ## Recommended Ongoing Checks
 
 - keep sample configs generic
-- keep `settings.json`, `.env`, and run output ignored
+- keep `settings.json` and run output ignored
 - review delete paths whenever cleanup logic changes
 - keep CLI smoke coverage on settings, refresh, run status, and ZIP archive generation
 - avoid adding broad recursive delete behavior without explicit root checks

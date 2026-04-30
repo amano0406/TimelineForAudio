@@ -2,8 +2,7 @@
 param(
     [switch]$Yes,
     [switch]$KeepAppData,
-    [switch]$KeepSettings,
-    [switch]$KeepEnv
+    [switch]$KeepSettings
 )
 
 Set-StrictMode -Version Latest
@@ -57,15 +56,12 @@ Write-Host ""
 Write-Host "TimelineForAudio uninstall"
 Write-Host ""
 Write-Host "This will remove Docker containers, local images, project volumes, and the project network."
-Write-Host "Optional cleanup can also remove saved app data, local settings, and local .env."
+Write-Host "Optional cleanup can also remove saved app data and local settings."
 if (-not $KeepAppData) {
     Write-Host "Optional: saved app data volume: $appDataVolume"
 }
 if (-not $KeepSettings -and (Test-Path -LiteralPath (Join-Path $repoRoot "settings.json"))) {
     Write-Host "Optional: local settings.json."
-}
-if (-not $KeepEnv -and (Test-Path -LiteralPath (Join-Path $repoRoot ".env"))) {
-    Write-Host "Optional: local .env."
 }
 Write-Host ""
 
@@ -117,18 +113,6 @@ if (-not $KeepSettings -and (Test-Path -LiteralPath $settingsPath)) {
 }
 elseif ($KeepSettings -and (Test-Path -LiteralPath $settingsPath)) {
     Write-Host "Kept settings.json"
-}
-
-$envPath = Join-Path $repoRoot ".env"
-if (-not $KeepEnv -and (Test-Path -LiteralPath $envPath)) {
-    Write-Host ""
-    if (Confirm-TfaAction "Delete local .env too? (y/n)") {
-        Remove-Item -LiteralPath $envPath -Force
-        Write-Host "Deleted .env"
-    }
-    else {
-        Write-Host "Kept .env"
-    }
 }
 
 Write-Host ""

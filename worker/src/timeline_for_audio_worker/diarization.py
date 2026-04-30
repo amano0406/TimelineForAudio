@@ -3,9 +3,11 @@ from __future__ import annotations
 import os
 import warnings
 from contextlib import contextmanager
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from .runtime_profile import normalize_compute_mode
 from .settings import load_huggingface_token
 
 _DIARIZATION_MODEL_ID = "pyannote/speaker-diarization-community-1"
@@ -65,6 +67,26 @@ def _load_diarization_audio_input(audio_path: Path) -> dict[str, Any]:
     }
 
 
+@lru_cache(maxsize=2)
+def _load_diarizer(token: str, compute_mode: str) -> Any:
+    try:
+        from pyannote.audio import Pipeline
+    except Exception as exc:
+        raise RuntimeError(f"pyannote.audio is not available: {exc}") from exc
+
+    with _legacy_torch_checkpoint_load():
+        diarizer = Pipeline.from_pretrained(_DIARIZATION_MODEL_ID, token=token)
+    if normalize_compute_mode(compute_mode) == "gpu":
+        try:
+            import torch
+
+            if getattr(torch.cuda, "is_available", lambda: False)() and hasattr(diarizer, "to"):
+                diarizer.to(torch.device("cuda"))
+        except Exception:
+            pass
+    return diarizer
+
+
 def generate_speaker_turns(
     *,
     source_name: str,
@@ -79,25 +101,11 @@ def generate_speaker_turns(
         error = "Hugging Face token is not configured."
     else:
         try:
-            from pyannote.audio import Pipeline
+            diarizer = _load_diarizer(str(token), normalize_compute_mode(compute_mode))
+            audio_input = _load_diarization_audio_input(audio_path)
+            diarization_rows = _iterate_diarization_rows(diarizer(audio_input))
         except Exception as exc:
-            error = f"pyannote.audio is not available: {exc}"
-        else:
-            try:
-                with _legacy_torch_checkpoint_load():
-                    diarizer = Pipeline.from_pretrained(_DIARIZATION_MODEL_ID, token=token)
-                if str(compute_mode or "cpu").strip().lower() == "gpu":
-                    try:
-                        import torch
-
-                        if getattr(torch.cuda, "is_available", lambda: False)() and hasattr(diarizer, "to"):
-                            diarizer.to(torch.device("cuda"))
-                    except Exception:
-                        pass
-                audio_input = _load_diarization_audio_input(audio_path)
-                diarization_rows = _iterate_diarization_rows(diarizer(audio_input))
-            except Exception as exc:
-                error = str(exc)
+            error = str(exc)
 
     if not diarization_rows:
         raise RuntimeError(error or "Required speaker diarization produced no speaker turns.")

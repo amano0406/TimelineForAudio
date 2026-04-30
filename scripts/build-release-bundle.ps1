@@ -76,7 +76,6 @@ function Copy-ReleaseFiles {
 
     $exactFiles = @(
         ".dockerignore",
-        ".env.example",
         "LICENSE",
         "MODEL_AND_RUNTIME_NOTES.md",
         "README.md",

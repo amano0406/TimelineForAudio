@@ -6,10 +6,17 @@ from pathlib import Path
 from types import ModuleType
 from unittest.mock import patch
 
+import timeline_for_audio_worker.diarization as diarization
 from timeline_for_audio_worker.diarization import generate_speaker_turns
 
 
 class DiarizationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        diarization._load_diarizer.cache_clear()
+
+    def tearDown(self) -> None:
+        diarization._load_diarizer.cache_clear()
+
     def test_generate_speaker_turns_uses_preloaded_waveform_input(self) -> None:
         fake_calls: list[object] = []
 

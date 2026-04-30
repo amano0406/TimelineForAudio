@@ -66,6 +66,10 @@ def worker_capabilities_path() -> Path:
     return appdata_root() / "worker-capabilities.json"
 
 
+def worker_heartbeat_path() -> Path:
+    return appdata_root() / "worker-heartbeat.json"
+
+
 def configured_path(value: str | Path) -> Path:
     text = str(value or "").strip()
     mapped = _map_configured_path(text)
@@ -221,6 +225,7 @@ def load_settings() -> dict[str, Any]:
     payload.pop("contextBuilderVersion", None)
     payload.pop("ipaBackend", None)
     payload.pop("uiLanguage", None)
+    payload.pop("refreshBatchSize", None)
     payload["huggingfaceToken"] = str(payload.get("huggingfaceToken") or "").strip()
     return payload
 
@@ -264,5 +269,11 @@ def save_huggingface_token(token: str | None) -> None:
 
 def save_worker_capabilities(payload: dict[str, Any]) -> None:
     path = worker_capabilities_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def save_worker_heartbeat(payload: dict[str, Any]) -> None:
+    path = worker_heartbeat_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")

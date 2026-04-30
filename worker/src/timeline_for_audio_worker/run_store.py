@@ -6,7 +6,7 @@ import re
 import shutil
 import tempfile
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 from uuid import uuid4
 
@@ -96,6 +96,27 @@ def _source_file_identity(source_id: str, relative_path: str) -> str:
     source = str(source_id or "local").strip() or "local"
     relative = str(relative_path or "").strip().replace("\\", "/").lstrip("/")
     return f"{source}:{relative}"
+
+
+def _display_path_from_root(root_path: str, relative_path: str, fallback: Path) -> str:
+    root_text = str(root_path or "").strip()
+    relative_text = str(relative_path or "").strip().replace("\\", "/").lstrip("/")
+    if not root_text:
+        return str(fallback)
+    if not relative_text:
+        return root_text
+    parts = [part for part in relative_text.split("/") if part]
+    if _looks_like_windows_path(root_text):
+        return str(PureWindowsPath(root_text, *parts))
+    return str(Path(root_text, *parts))
+
+
+def _looks_like_windows_path(value: str) -> bool:
+    return bool(re.match(r"^[A-Za-z]:[\\/]", value)) or "\\" in value
+
+
+def _iso_from_timestamp(timestamp: float) -> str:
+    return datetime.fromtimestamp(timestamp).astimezone().isoformat()
 
 
 def app_config_from_settings(settings: dict[str, Any]) -> Any:
@@ -686,12 +707,21 @@ def generation_signature_for_settings(
     )
 
 
+def _refresh_queue_limit(settings: dict[str, Any], max_items: int | None) -> int | None:
+    if max_items is not None:
+        if max_items <= 0:
+            raise ValueError("max_items must be greater than 0.")
+        return int(max_items)
+    return None
+
+
 def create_refresh_run(
     *,
     settings: dict[str, Any] | None = None,
     source_ids: list[str] | None = None,
     output_root_id: str | None = None,
     reprocess_duplicates: bool = False,
+    max_items: int | None = None,
 ) -> tuple[str | None, Path | None, dict[str, Any]]:
     settings = settings or load_settings()
     config = app_config_from_settings(settings)
@@ -706,6 +736,8 @@ def create_refresh_run(
     catalog = load_catalog(output_root_path)
     input_items: list[InputItem] = []
     skipped_rows: list[dict[str, Any]] = []
+    deferred_rows: list[dict[str, Any]] = []
+    queued_limit = _refresh_queue_limit(settings, max_items)
 
     for row in discovered.get("audio_files", []):
         source_name = str(row.get("source_name") or "")
@@ -742,6 +774,18 @@ def create_refresh_run(
                 }
             )
             continue
+        if queued_limit is not None and len(input_items) >= queued_limit:
+            deferred_rows.append(
+                {
+                    "path": str(source_path),
+                    "source_id": source_name,
+                    "source_relative_path": relative_path,
+                    "source_file_identity": source_file_identity,
+                    "reason": "batch_limit",
+                    "source_hash": file_hash,
+                }
+            )
+            continue
         input_items.append(
             InputItem(
                 input_id=f"ref-{len(input_items) + 1:04d}",
@@ -758,10 +802,13 @@ def create_refresh_run(
     summary: dict[str, Any] = {
         "total_discovered": int(discovered.get("total_audio_files") or 0),
         "missing_sources": discovered.get("missing_sources", []),
-        "selected_count": len(input_items) + len(skipped_rows),
+        "selected_count": len(input_items) + len(skipped_rows) + len(deferred_rows),
         "queued_count": len(input_items),
         "skipped_count": len(skipped_rows),
+        "deferred_count": len(deferred_rows),
+        "queued_limit": queued_limit,
         "skipped": skipped_rows,
+        "deferred": deferred_rows,
         "generation_signature": generation_signature,
         "artifact": "speaker-acoustic-units-timeline",
     }
@@ -778,6 +825,249 @@ def create_refresh_run(
     return run_id, run_dir, summary
 
 
+def _timeline_summary_from_artifact(path: Path | None) -> dict[str, Any]:
+    if path is None or not path.exists():
+        return {
+            "has_timeline": False,
+            "turn_count": 0,
+            "speaker_count": 0,
+        }
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return {
+            "has_timeline": True,
+            "turn_count": 0,
+            "speaker_count": 0,
+        }
+    turns = payload.get("turns", [])
+    if not isinstance(turns, list):
+        turns = []
+    speakers = {
+        str(turn.get("speaker") or "").strip()
+        for turn in turns
+        if isinstance(turn, dict) and str(turn.get("speaker") or "").strip()
+    }
+    turn_count = payload.get("turn_count")
+    if not isinstance(turn_count, int):
+        turn_count = len(turns)
+    return {
+        "has_timeline": True,
+        "turn_count": turn_count,
+        "speaker_count": len(speakers),
+    }
+
+
+def _probe_duration_sec(path: Path) -> float | None:
+    try:
+        from .ffmpeg_utils import probe_audio
+
+        probed = probe_audio(path)
+        value = probed.get("duration_seconds")
+        return round(float(value), 3) if value else None
+    except Exception:
+        return None
+
+
+def _catalog_rows_by_identity(catalog: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    rows: dict[str, list[dict[str, Any]]] = {}
+    for row in catalog.values():
+        identity = str(row.get("source_file_identity") or "").strip()
+        if identity:
+            rows.setdefault(identity, []).append(row)
+    return rows
+
+
+def _manifest_rows_by_identity(settings: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    rows: dict[str, dict[str, Any]] = {}
+    for run in list_runs(settings):
+        run_state = str(run.get("state") or "").lower()
+        if run_state not in {"pending", "running", "failed"}:
+            continue
+        manifest_path = Path(str(run.get("run_dir") or "")) / "manifest.json"
+        if not manifest_path.exists():
+            continue
+        try:
+            manifest = json.loads(
+                manifest_path.read_text(encoding="utf-8-sig", errors="replace")
+            )
+        except (OSError, json.JSONDecodeError):
+            continue
+        for item in manifest.get("items", []):
+            if not isinstance(item, dict):
+                continue
+            identity = str(item.get("source_file_identity") or "").strip()
+            if not identity:
+                continue
+            rows[identity] = {
+                **item,
+                "run_id": run.get("run_id"),
+                "run_dir": run.get("run_dir"),
+                "run_state": run_state,
+            }
+    return rows
+
+
+def _select_catalog_status(
+    *,
+    catalog_rows: list[dict[str, Any]],
+    file_hash: str | None,
+    generation_signature: str,
+) -> tuple[str, dict[str, Any] | None]:
+    if not catalog_rows:
+        return "unprocessed", None
+
+    available_rows = [
+        row for row in catalog_rows if _artifact_path_from_catalog_row(row) is not None
+    ]
+    if not available_rows:
+        return "unprocessed", None
+
+    exact_rows = [
+        row
+        for row in available_rows
+        if str(row.get("conversion_signature") or "") == generation_signature
+        and (file_hash is None or str(row.get("source_hash") or "") == file_hash)
+    ]
+    if exact_rows:
+        return "completed", exact_rows[0]
+
+    if file_hash is not None:
+        same_file_rows = [
+            row
+            for row in available_rows
+            if str(row.get("source_hash") or "") == file_hash
+        ]
+        if same_file_rows:
+            return "settings_changed", same_file_rows[0]
+
+    return "changed", available_rows[0]
+
+
+def list_audio_file_rows(
+    *,
+    settings: dict[str, Any] | None = None,
+    include_probe: bool = False,
+) -> list[dict[str, Any]]:
+    settings = settings or load_settings()
+    config = app_config_from_settings(settings)
+    discovered = discover_audio(config)
+    output_root = _enabled_output_root(settings)
+    output_root_path = configured_path(str(output_root["path"]))
+    catalog_by_identity = _catalog_rows_by_identity(load_catalog(output_root_path))
+    manifest_by_identity = _manifest_rows_by_identity(settings)
+    generation_signature = generation_signature_for_settings(settings=settings)
+    roots_by_id = {
+        str(root.get("id") or "").lower(): root
+        for root in _enabled_input_roots(settings)
+    }
+    rows: list[dict[str, Any]] = []
+
+    for discovered_row in discovered.get("audio_files", []):
+        source_id = str(discovered_row.get("source_name") or "")
+        source_path = Path(str(discovered_row.get("path") or ""))
+        if not source_path.exists() or not source_path.is_file():
+            continue
+        source_root = roots_by_id.get(source_id.lower())
+        configured_root_path = (
+            configured_path(str(source_root.get("path") or "")).resolve()
+            if source_root is not None
+            else None
+        )
+        original_root_path = (
+            str(source_root.get("path") or "") if source_root is not None else ""
+        )
+        relative_path = _relative_path_label(source_path, configured_root_path)
+        directory = str(Path(relative_path).parent).replace("\\", "/")
+        if directory == ".":
+            directory = ""
+        source_file_identity = _source_file_identity(source_id, relative_path)
+        catalog_candidates = catalog_by_identity.get(source_file_identity, [])
+        file_hash = sha256_file(source_path) if catalog_candidates else None
+        status, catalog_row = _select_catalog_status(
+            catalog_rows=catalog_candidates,
+            file_hash=file_hash,
+            generation_signature=generation_signature,
+        )
+        manifest_row = manifest_by_identity.get(source_file_identity)
+        if manifest_row is not None:
+            manifest_status = str(manifest_row.get("status") or manifest_row.get("run_state") or "")
+            run_state = str(manifest_row.get("run_state") or "")
+            if run_state in {"pending", "running"}:
+                status = "processing" if run_state == "running" else "queued"
+                catalog_row = manifest_row
+            elif manifest_status == "failed":
+                status = "failed"
+                catalog_row = manifest_row
+
+        artifact_path = _artifact_path_from_catalog_row(catalog_row)
+        media_id = (
+            str(catalog_row.get("audio_id") or catalog_row.get("media_id") or "")
+            if catalog_row
+            else ""
+        )
+        run_id = str(catalog_row.get("run_id") or "") if catalog_row else ""
+        duration_sec = None
+        if catalog_row is not None:
+            raw_duration = catalog_row.get("duration_seconds") or catalog_row.get("duration_sec")
+            try:
+                duration_sec = round(float(raw_duration), 3) if raw_duration else None
+            except (TypeError, ValueError):
+                duration_sec = None
+        if duration_sec is None and include_probe:
+            duration_sec = _probe_duration_sec(source_path)
+
+        timeline_summary = _timeline_summary_from_artifact(artifact_path)
+        media_dir = (
+            Path(str(catalog_row.get("run_dir") or "")) / "media" / media_id
+            if catalog_row and media_id
+            else None
+        )
+
+        stat = source_path.stat()
+        rows.append(
+            {
+                "source_id": source_id,
+                "source_display_name": str(
+                    (source_root or {}).get("displayName") or source_id or "Audio"
+                ),
+                "root_path": original_root_path,
+                "relative_path": relative_path,
+                "directory": directory,
+                "file_name": source_path.name,
+                "display_path": _display_path_from_root(
+                    original_root_path,
+                    relative_path,
+                    source_path,
+                ),
+                "container_path": str(source_path),
+                "size_bytes": int(discovered_row.get("size_bytes") or stat.st_size),
+                "modified_at": _iso_from_timestamp(stat.st_mtime),
+                "duration_sec": duration_sec,
+                "status": status,
+                "run_id": run_id,
+                "media_id": media_id,
+                "has_timeline": bool(timeline_summary["has_timeline"]),
+                "has_audio": bool(
+                    media_dir is not None
+                    and (media_dir / "source" / "audio-normalized.wav").exists()
+                ),
+                "turn_count": int(timeline_summary["turn_count"]),
+                "speaker_count": int(timeline_summary["speaker_count"]),
+                "source_file_identity": source_file_identity,
+            }
+        )
+
+    rows.sort(
+        key=lambda row: (
+            str(row.get("source_display_name") or "").lower(),
+            str(row.get("directory") or "").lower(),
+            str(row.get("file_name") or "").lower(),
+        )
+    )
+    return rows
+
+
 def _iter_run_dirs(output_path: Path) -> list[Path]:
     rows = list(output_path.glob("run-*"))
     return sorted({item.resolve(): item for item in rows}.values(), key=lambda item: item.name, reverse=True)
@@ -788,9 +1078,20 @@ def settings_snapshot(settings: dict[str, Any] | None = None) -> dict[str, Any]:
     token = load_huggingface_token()
     return {
         "has_token": bool(token),
+        "token_preview": token_preview(token),
         "ready": bool(token),
         "diarization_required": True,
         "compute_mode": str(settings.get("computeMode") or "cpu"),
         "input_roots": _enabled_input_roots(settings),
         "output_roots": _enabled_output_root_list(settings),
     }
+
+
+def token_preview(token: str | None) -> str:
+    value = str(token or "").strip()
+    bullet = "\u2022"
+    if not value:
+        return ""
+    if len(value) <= 8:
+        return bullet * len(value)
+    return f"{value[:4]}{bullet * max(4, len(value) - 8)}{value[-4:]}"

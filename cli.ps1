@@ -13,10 +13,20 @@ $repoRoot = $PSScriptRoot
 Initialize-TfaDocker -RepoRoot $repoRoot
 Initialize-TfaLocalFiles -RepoRoot $repoRoot
 
-$composeArgs = Get-TfaComposeArgs -RepoRoot $repoRoot -IncludeGpu
+$requiresConfiguredWorker = Test-TfaCliRequiresConfiguredWorker -CliArgs $CliArgs
+if ($requiresConfiguredWorker) {
+    Assert-TfaGpuAvailableIfRequested -RepoRoot $repoRoot
+}
+
+$composeArgs = Get-TfaComposeArgs -RepoRoot $repoRoot -IncludeGpu:$requiresConfiguredWorker
 $docker = Get-TfaDockerCommand
 Invoke-TfaWithFileLock -RepoRoot $repoRoot -LockName "docker-compose.lock" -ScriptBlock {
-    & $docker compose @composeArgs up -d --remove-orphans worker
+    if ($requiresConfiguredWorker) {
+        & $docker compose @composeArgs up -d --remove-orphans worker
+    }
+    else {
+        & $docker compose @composeArgs up -d --no-recreate worker
+    }
     if (-not $?) {
         throw "Failed to start TimelineForAudio worker."
     }

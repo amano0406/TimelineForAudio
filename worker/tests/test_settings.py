@@ -70,6 +70,7 @@ class SettingsTests(unittest.TestCase):
         self.assertNotIn("uiLanguage", loaded)
         self.assertNotIn("ipaBackend", loaded)
         self.assertNotIn("contextBuilderVersion", loaded)
+        self.assertNotIn("refreshBatchSize", loaded)
         self.assertEqual("C:\\Users\\amano\\Videos\\", loaded["inputRoots"][0]["path"])
 
     def test_configured_path_maps_windows_drive_on_unix(self) -> None:

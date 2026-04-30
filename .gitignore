@@ -4,11 +4,11 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
+.playwright-cli/
 .docker/
 /runs/
 /outputs/
 /output/
-.env
 settings.json
 app-data/
 uploads/
@@ -16,3 +16,7 @@ worker/.venv/
 worker/.pytest_cache/
 worker/__pycache__/
 release/
+web/bin/
+web/obj/
+web/node_modules/
+web/wwwroot/vendor/

@@ -12,6 +12,8 @@ ACOUSTIC_UNIT_MODEL_ID = "anyspeech/zipa-large-crctc-300k"
 ACOUSTIC_UNIT_MODEL_FILE = "model.onnx"
 ACOUSTIC_UNIT_TOKENS_FILE = "tokens.txt"
 ACOUSTIC_UNIT_TYPE = "phone_like"
+DEFAULT_ACOUSTIC_UNIT_CHUNK_SECONDS = 30.0
+MIN_ACOUSTIC_UNIT_CHUNK_SECONDS = 2.0
 
 
 @dataclass(frozen=True)
@@ -99,6 +101,31 @@ def _candidate_spans(
             "original_end": duration_seconds,
         }
     ]
+
+
+def _span_slice_bounds(span: dict[str, float], time_basis: str) -> tuple[float, float]:
+    if time_basis == "original":
+        start = float(span.get("original_start", 0.0) or 0.0)
+        end = float(span.get("original_end", start) or start)
+        return start, end
+    start = float(span.get("trimmed_start", 0.0) or 0.0)
+    end = float(span.get("trimmed_end", start) or start)
+    return start, end
+
+
+def _iter_chunks(start: float, end: float, max_chunk_seconds: float) -> list[tuple[float, float]]:
+    if end <= start:
+        return []
+    safe_chunk_seconds = max(MIN_ACOUSTIC_UNIT_CHUNK_SECONDS, float(max_chunk_seconds or 0.0))
+    chunks: list[tuple[float, float]] = []
+    cursor = float(start)
+    while cursor < end:
+        chunk_end = min(float(end), cursor + safe_chunk_seconds)
+        if chunk_end <= cursor:
+            break
+        chunks.append((cursor, chunk_end))
+        cursor = chunk_end
+    return chunks
 
 
 def _load_tokens(path: Path) -> dict[int, str]:
@@ -213,11 +240,60 @@ def _decode_zipa_waveform(
     return _compact_text(" ".join(tokens)), confidence
 
 
+def _decode_zipa_range_with_retry(
+    *,
+    waveform: Any,
+    sample_rate: int,
+    loaded: LoadedZipaModel,
+    start: float,
+    end: float,
+    min_chunk_seconds: float = MIN_ACOUSTIC_UNIT_CHUNK_SECONDS,
+) -> tuple[list[str], list[float], list[str]]:
+    if end <= start:
+        return [], [], []
+    try:
+        chunk = _slice_waveform(waveform, sample_rate, start, end)
+        text, confidence = _decode_zipa_waveform(chunk, sample_rate, loaded)
+        texts = [text] if text else []
+        confidences = [float(confidence)] if confidence is not None else []
+        return texts, confidences, []
+    except Exception as exc:
+        duration = max(0.0, end - start)
+        if duration > max(0.1, min_chunk_seconds * 2.0):
+            midpoint = start + (duration / 2.0)
+            left_texts, left_confidences, left_warnings = _decode_zipa_range_with_retry(
+                waveform=waveform,
+                sample_rate=sample_rate,
+                loaded=loaded,
+                start=start,
+                end=midpoint,
+                min_chunk_seconds=min_chunk_seconds,
+            )
+            right_texts, right_confidences, right_warnings = _decode_zipa_range_with_retry(
+                waveform=waveform,
+                sample_rate=sample_rate,
+                loaded=loaded,
+                start=midpoint,
+                end=end,
+                min_chunk_seconds=min_chunk_seconds,
+            )
+            return (
+                [*left_texts, *right_texts],
+                [*left_confidences, *right_confidences],
+                [*left_warnings, *right_warnings],
+            )
+        return [], [], [
+            f"ZIPA chunk failed at {start:.3f}-{end:.3f}s after retry: {exc}",
+        ]
+
+
 def generate_acoustic_unit_turns(
     *,
     audio_path: Any,
     cut_map: list[dict[str, float]],
     compute_mode: str | None = None,
+    span_time_basis: str = "trimmed",
+    max_chunk_seconds: float = DEFAULT_ACOUSTIC_UNIT_CHUNK_SECONDS,
 ) -> AcousticUnitResult:
     warnings: list[str] = []
     loaded: LoadedZipaModel | None = None
@@ -232,19 +308,31 @@ def generate_acoustic_unit_turns(
         )
         turns: list[AcousticUnitTurn] = []
         for index, span in enumerate(spans, start=1):
-            trimmed_start = float(span.get("trimmed_start", 0.0) or 0.0)
-            trimmed_end = float(span.get("trimmed_end", trimmed_start) or trimmed_start)
-            if trimmed_end <= trimmed_start:
+            slice_start, slice_end = _span_slice_bounds(span, span_time_basis)
+            if slice_end <= slice_start:
                 continue
-            chunk = _slice_waveform(waveform, sample_rate, trimmed_start, trimmed_end)
-            text, confidence = _decode_zipa_waveform(chunk, sample_rate, loaded)
+            texts: list[str] = []
+            confidences: list[float] = []
+            for chunk_start, chunk_end in _iter_chunks(slice_start, slice_end, max_chunk_seconds):
+                chunk_texts, chunk_confidences, chunk_warnings = _decode_zipa_range_with_retry(
+                    waveform=waveform,
+                    sample_rate=sample_rate,
+                    loaded=loaded,
+                    start=chunk_start,
+                    end=chunk_end,
+                )
+                texts.extend(chunk_texts)
+                confidences.extend(chunk_confidences)
+                warnings.extend(chunk_warnings)
+            text = _compact_text(" ".join(texts))
             if not text:
                 continue
+            confidence = sum(confidences) / len(confidences) if confidences else None
             turns.append(
                 AcousticUnitTurn(
                     index=index,
-                    start=float(span.get("original_start", trimmed_start) or 0.0),
-                    end=float(span.get("original_end", trimmed_end) or trimmed_end),
+                    start=float(span.get("original_start", slice_start) or 0.0),
+                    end=float(span.get("original_end", slice_end) or slice_end),
                     acoustic_units=text,
                     confidence=confidence,
                 )

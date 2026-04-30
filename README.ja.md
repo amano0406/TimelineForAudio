@@ -6,7 +6,7 @@ TimelineForAudio は、固定された入力ディレクトリ内の音声を読
 
 ## 方針
 
-Web UI はありません。Windows では PowerShell の `cli.ps1` を正面玄関として使い、実処理は Docker container 内の worker が行います。
+Windows では PowerShell の `start.ps1` / `start.bat` を正面玄関として使い、Docker container 内の worker を起動します。CLI 操作は `cli.ps1` を使います。
 
 この製品は、意味解釈や読みやすい本文復元は行いません。責務は、後段の LLM や別製品が扱いやすいように、音声を時間情報付きの構造データへ変換するところまでです。
 
@@ -18,6 +18,7 @@ Web UI はありません。Windows では PowerShell の `cli.ps1` を正面玄
 - `ai-raw/acoustic-units.raw.json`
 - `segments/speech-candidates.json`
 - `source/source-record.json`
+- `RUN_PERFORMANCE.json`
 
 ## 処理の流れ
 
@@ -26,9 +27,11 @@ Web UI はありません。Windows では PowerShell の `cli.ps1` を正面玄
 3. 音声を 16kHz mono WAV に正規化する
 4. `ffmpeg silencedetect` で発話候補区間を作る
 5. `pyannote/speaker-diarization-community-1` で話者 turn を作る
-6. ZIPA 300M 系バックエンドで音響単位を抽出する
+6. 発話候補区間を短い単位に分け、ZIPA large ONNX バックエンドで音響単位を抽出する
 7. 話者 turn と音響単位 turn を時間で合わせる
 8. `speaker + time + acoustic_units` の timeline JSON を保存する
+
+長い音声を一つの大きな推論として処理しないため、大きなファイルでも途中失敗時の手戻りを小さくできます。
 
 話者は `SPEAKER_00`、`SPEAKER_01` のような機械ラベルで扱います。実名、本人性、性別、年齢、属性は推測しません。
 
@@ -90,12 +93,17 @@ Hugging Face token も `settings.json` に保存します。
 
 ## 主なコマンド
 
+- `start.ps1` / `start.bat`: Docker worker を起動する
+- `cli.ps1` / `cli.bat`: Docker worker 内で CLI を実行する
+- `stop.ps1` / `stop.bat`: Docker worker を停止する
+- `uninstall.ps1` / `uninstall.bat`: Docker container / image / volume を削除する
 - `settings status`
 - `settings init`
 - `settings input-root list/add/remove/enable/disable/clear`
 - `settings output-root list/set`
 - `scan`
 - `refresh`
+- `refresh --max-items <N>`
 - `runs list`
 - `runs show`
 - `runs archive`
@@ -109,3 +117,5 @@ Hugging Face token も `settings.json` に保存します。
 .\cli.ps1 runs archive --run-id <RUN_ID>
 .\cli.ps1 evaluate --run-id <RUN_ID> --artifact-kind timeline --reference ".\references\case-001.json" --json
 ```
+
+`refresh` はデフォルトで対象を全件キューに入れます。実データ確認や失敗範囲を小さくしたい場合だけ、`refresh --max-items 1` のように件数を指定します。

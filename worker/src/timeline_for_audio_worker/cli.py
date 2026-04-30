@@ -3,7 +3,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import threading
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from .config import AppConfig, load_config
@@ -15,15 +18,17 @@ from .run_store import (
     app_config_from_settings,
     create_refresh_run,
     find_run_dir,
+    list_audio_file_rows,
     list_runs,
     settings_snapshot,
 )
 from .settings import (
     init_settings,
+    load_huggingface_token,
     load_settings,
-    save_huggingface_token,
     save_settings,
     save_worker_capabilities,
+    save_worker_heartbeat,
 )
 
 
@@ -41,9 +46,16 @@ def parse_args() -> argparse.Namespace:
         "status", help="Show current settings readiness."
     )
     settings_status.add_argument("--json", action="store_true")
+    settings_validate_token = settings_subparsers.add_parser(
+        "validate-token", help="Validate the Hugging Face token used for local audio analysis."
+    )
+    settings_validate_token.add_argument("--token", type=str, required=False)
+    settings_validate_token.add_argument("--json", action="store_true")
     settings_save = settings_subparsers.add_parser("save", help="Save local settings.")
     settings_save.add_argument("--token", type=str, required=False)
     settings_save.add_argument("--compute-mode", choices=["cpu", "gpu"], required=False)
+    settings_save.add_argument("--input-roots-json", type=str, required=False)
+    settings_save.add_argument("--output-roots-json", type=str, required=False)
     settings_save.add_argument("--json", action="store_true")
     input_root = settings_subparsers.add_parser(
         "input-root", help="Manage configured input directories."
@@ -102,6 +114,15 @@ def parse_args() -> argparse.Namespace:
     )
     scan_parser.add_argument("--config", type=Path, required=False)
     scan_parser.add_argument("--output", type=Path, required=False)
+    scan_parser.add_argument("--json", action="store_true")
+
+    files_parser = subparsers.add_parser(
+        "files", help="Show configured audio files as user-facing file rows."
+    )
+    files_subparsers = files_parser.add_subparsers(dest="files_command", required=True)
+    files_list = files_subparsers.add_parser("list", help="List configured audio files.")
+    files_list.add_argument("--probe", action="store_true")
+    files_list.add_argument("--json", action="store_true")
 
     refresh_parser = subparsers.add_parser(
         "refresh", help="Read configured input directories and process changed audio only."
@@ -109,6 +130,7 @@ def parse_args() -> argparse.Namespace:
     refresh_parser.add_argument("--source-id", dest="source_ids", action="append", default=[])
     refresh_parser.add_argument("--output-root-id", type=str, default=None)
     refresh_parser.add_argument("--reprocess-duplicates", action="store_true")
+    refresh_parser.add_argument("--max-items", "--limit", dest="max_items", type=int, required=False)
     refresh_parser.add_argument("--queue-only", action="store_true")
     refresh_parser.add_argument("--json", action="store_true")
 
@@ -156,11 +178,17 @@ def _load_app_config(config_path: Path | None) -> AppConfig:
     return _runtime_config()
 
 
-def cmd_scan(config_path: Path | None, output: Path | None) -> int:
+def cmd_scan(config_path: Path | None, output: Path | None, as_json: bool) -> int:
     payload = discover_audio(_load_app_config(config_path))
     if output:
         write_json(output, payload)
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    _print_payload(payload, as_json)
+    return 0
+
+
+def cmd_files_list(*, include_probe: bool, as_json: bool) -> int:
+    rows = list_audio_file_rows(include_probe=include_probe)
+    _print_payload(rows, as_json)
     return 0
 
 
@@ -175,11 +203,30 @@ def cmd_daemon(poll_interval: int) -> int:
     from .processor import process_run
 
     _write_worker_capabilities()
+    _start_worker_heartbeat()
     while True:
         found = process_run()
         if not found:
             time.sleep(max(1, poll_interval))
     return 0
+
+
+def _start_worker_heartbeat(interval_seconds: int = 5) -> None:
+    def heartbeat_loop() -> None:
+        while True:
+            save_worker_heartbeat(
+                {
+                    "schema_version": 1,
+                    "state": "running",
+                    "updated_at": now_iso(),
+                    "pid": os.getpid(),
+                    "worker_flavor": os.getenv("TIMELINE_FOR_AUDIO_WORKER_FLAVOR", "cpu"),
+                }
+            )
+            time.sleep(max(1, interval_seconds))
+
+    thread = threading.Thread(target=heartbeat_loop, name="worker-heartbeat", daemon=True)
+    thread.start()
 
 
 def _write_worker_capabilities() -> None:
@@ -254,16 +301,111 @@ def cmd_settings_status(as_json: bool) -> int:
     return 0
 
 
+def _root_rows_from_json(value: str, *, default_id: str | None = None) -> list[dict[str, object]]:
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Folder settings were not valid JSON.") from exc
+    if not isinstance(payload, list):
+        raise ValueError("Folder settings must be a JSON array.")
+
+    rows: list[dict[str, object]] = []
+    for index, row in enumerate(payload, start=1):
+        if not isinstance(row, dict):
+            continue
+        root_path = str(row.get("path") or "").strip()
+        if not root_path:
+            continue
+        root_id = str(row.get("id") or default_id or f"root-{index}").strip()
+        display_name = str(row.get("displayName") or row.get("display_name") or root_id).strip()
+        rows.append(
+            {
+                "id": root_id,
+                "displayName": display_name or root_id,
+                "path": root_path,
+                "enabled": bool(row.get("enabled", True)),
+            }
+        )
+    return rows
+
+
+def _validate_token_value(token: str | None) -> dict[str, object]:
+    value = str(token or "").strip()
+    if not value:
+        return {
+            "valid": False,
+            "status": "missing",
+            "message": "Hugging Face token が設定されていません。",
+        }
+    if not value.startswith("hf_") or len(value) < 20:
+        return {
+            "valid": False,
+            "status": "invalid_format",
+            "message": "token の形式が正しくなさそうです。hf_ で始まる Hugging Face token を入力してください。",
+        }
+
+    request = urllib.request.Request(
+        "https://huggingface.co/api/whoami-v2",
+        headers={
+            "Authorization": f"Bearer {value}",
+            "User-Agent": "TimelineForAudio/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+            name = payload.get("name") or payload.get("fullname") or "Hugging Face account"
+            return {
+                "valid": True,
+                "status": "ok",
+                "message": f"token を確認できました: {name}",
+            }
+    except urllib.error.HTTPError as exc:
+        if exc.code in {401, 403}:
+            return {
+                "valid": False,
+                "status": "rejected",
+                "message": "Hugging Face が token を拒否しました。token の値と権限を確認してください。",
+            }
+        return {
+            "valid": False,
+            "status": "remote_error",
+            "message": f"Hugging Face から HTTP {exc.code} が返りました。",
+        }
+    except Exception as exc:
+        return {
+            "valid": False,
+            "status": "connection_error",
+            "message": f"Hugging Face に接続できませんでした: {exc}",
+        }
+
+
+def cmd_settings_validate_token(token: str | None, as_json: bool) -> int:
+    value = token if token is not None else load_huggingface_token()
+    payload = _validate_token_value(value)
+    _print_payload(payload, as_json)
+    return 0
+
+
 def cmd_settings_save(
     token: str | None,
     compute_mode: str | None,
+    input_roots_json: str | None,
+    output_roots_json: str | None,
     as_json: bool,
 ) -> int:
     settings = load_settings()
     if token is not None:
-        save_huggingface_token(token)
+        settings["huggingfaceToken"] = token.strip() if token and token.strip() else ""
     if compute_mode is not None:
         settings["computeMode"] = compute_mode
+    if input_roots_json is not None:
+        settings["inputRoots"] = _root_rows_from_json(input_roots_json)
+    if output_roots_json is not None:
+        output_rows = _root_rows_from_json(output_roots_json, default_id="runs")
+        if not output_rows:
+            raise ValueError("Output folder is required.")
+        settings["outputRoots"] = [output_rows[0]]
     save_settings(settings)
     _print_payload(settings_snapshot(settings), as_json)
     return 0
@@ -405,6 +547,11 @@ def cmd_runs_show(run_id: str, as_json: bool) -> int:
             (run_dir / "result.json").read_text(encoding="utf-8-sig", errors="replace")
         ),
     }
+    performance_path = run_dir / "RUN_PERFORMANCE.json"
+    if performance_path.exists():
+        payload["performance"] = json.loads(
+            performance_path.read_text(encoding="utf-8-sig", errors="replace")
+        )
     _print_payload(_rename_internal_id_to_run_id(payload), as_json)
     return 0
 
@@ -425,6 +572,7 @@ def cmd_refresh(
     source_ids: list[str],
     output_root_id: str,
     reprocess_duplicates: bool,
+    max_items: int | None,
     queue_only: bool,
     as_json: bool,
 ) -> int:
@@ -434,6 +582,7 @@ def cmd_refresh(
         source_ids=source_ids,
         output_root_id=output_root_id,
         reprocess_duplicates=reprocess_duplicates,
+        max_items=max_items,
     )
     summary = _rename_internal_id_to_run_id(summary)
     payload: dict[str, object] = {
@@ -545,10 +694,14 @@ def main() -> int:
             return 0
         if args.settings_command == "status":
             return cmd_settings_status(args.json)
+        if args.settings_command == "validate-token":
+            return cmd_settings_validate_token(args.token, args.json)
         if args.settings_command == "save":
             return cmd_settings_save(
                 args.token,
                 args.compute_mode,
+                args.input_roots_json,
+                args.output_roots_json,
                 args.json,
             )
         if args.settings_command == "input-root":
@@ -588,12 +741,16 @@ def main() -> int:
         if args.runs_command == "archive":
             return cmd_runs_archive(args.run_id, args.output, args.artifact_kind, args.json)
     if args.command == "scan":
-        return cmd_scan(args.config, args.output)
+        return cmd_scan(args.config, args.output, args.json)
+    if args.command == "files":
+        if args.files_command == "list":
+            return cmd_files_list(include_probe=args.probe, as_json=args.json)
     if args.command == "refresh":
         return cmd_refresh(
             source_ids=args.source_ids,
             output_root_id=args.output_root_id,
             reprocess_duplicates=args.reprocess_duplicates,
+            max_items=args.max_items,
             queue_only=args.queue_only,
             as_json=args.json,
         )

@@ -126,20 +126,109 @@ function Initialize-TfaLocalFiles {
         [string]$RepoRoot
     )
 
-    $envPath = Join-Path $RepoRoot ".env"
-    $envExamplePath = Join-Path $RepoRoot ".env.example"
-    if (-not (Test-Path -LiteralPath $envPath) -and (Test-Path -LiteralPath $envExamplePath)) {
-        Copy-Item -LiteralPath $envExamplePath -Destination $envPath
-        Write-Host "Created .env from .env.example."
-    }
-
     $pathScript = Join-Path $RepoRoot "scripts\prepare-docker-paths.ps1"
     & $pathScript -RepoRoot $RepoRoot | Out-Null
 }
 
-function Test-TfaNvidiaGpuAvailable {
+function Get-TfaNvidiaSmiPath {
     $nvidia = Get-Command nvidia-smi -ErrorAction SilentlyContinue
-    return [bool]$nvidia
+    if ($nvidia) {
+        return $nvidia.Source
+    }
+
+    $candidates = @()
+    if ($env:ProgramFiles) {
+        $candidates += Join-Path $env:ProgramFiles "NVIDIA Corporation\NVSMI\nvidia-smi.exe"
+    }
+
+    $programFilesX86 = [Environment]::GetFolderPath("ProgramFilesX86")
+    if ($programFilesX86) {
+        $candidates += Join-Path $programFilesX86 "NVIDIA Corporation\NVSMI\nvidia-smi.exe"
+    }
+
+    if ($env:SystemRoot) {
+        $candidates += Join-Path $env:SystemRoot "System32\nvidia-smi.exe"
+    }
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
+function Test-TfaNvidiaGpuAvailable {
+    $nvidia = Get-TfaNvidiaSmiPath
+    if (-not $nvidia) {
+        return $false
+    }
+
+    & $nvidia --query-gpu=name --format=csv,noheader *> $null
+    return [bool]$?
+}
+
+function Get-TfaComputeMode {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot
+    )
+
+    $settingsPath = Join-Path $RepoRoot "settings.json"
+    if (-not (Test-Path -LiteralPath $settingsPath)) {
+        $settingsPath = Join-Path $RepoRoot "settings.example.json"
+    }
+
+    $mode = "cpu"
+    if (Test-Path -LiteralPath $settingsPath) {
+        try {
+            $payload = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+            if ($payload.PSObject.Properties.Name -contains "computeMode") {
+                $mode = [string]$payload.computeMode
+            }
+        }
+        catch {
+            $mode = "cpu"
+        }
+    }
+
+    $mode = $mode.Trim().ToLowerInvariant()
+    if ($mode -notin @("cpu", "gpu")) {
+        return "cpu"
+    }
+    return $mode
+}
+
+function Assert-TfaGpuAvailableIfRequested {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot
+    )
+
+    $mode = Get-TfaComputeMode -RepoRoot $RepoRoot
+    if ($mode -ne "gpu") {
+        return
+    }
+
+    if (Test-TfaNvidiaGpuAvailable) {
+        return
+    }
+
+    throw "settings.json computeMode is gpu, but NVIDIA GPU is not available from this shell. Set computeMode to cpu or fix NVIDIA/Docker GPU support."
+}
+
+function Test-TfaCliRequiresConfiguredWorker {
+    param(
+        [string[]]$CliArgs
+    )
+
+    if (-not $CliArgs -or $CliArgs.Count -eq 0) {
+        return $false
+    }
+
+    $command = [string]$CliArgs[0]
+    return $command -in @("refresh", "process-run", "daemon")
 }
 
 function Get-TfaComposeArgs {
@@ -159,7 +248,7 @@ function Get-TfaComposeArgs {
         $args.Add($pathsOverride)
     }
 
-    if ($IncludeGpu -and (Test-TfaNvidiaGpuAvailable)) {
+    if ($IncludeGpu -and ((Get-TfaComputeMode -RepoRoot $RepoRoot) -eq "gpu") -and (Test-TfaNvidiaGpuAvailable)) {
         $args.Add("-f")
         $args.Add((Join-Path $RepoRoot "docker-compose.gpu.yml"))
     }
