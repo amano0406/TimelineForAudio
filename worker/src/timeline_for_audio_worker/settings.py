@@ -26,7 +26,7 @@ def appdata_root() -> Path:
 
 
 def uploads_root() -> Path:
-    return Path(os.getenv("TIMELINE_FOR_AUDIO_UPLOADS_ROOT", "/shared/uploads"))
+    return Path(os.getenv("TIMELINE_FOR_AUDIO_UPLOADS_ROOT", str(appdata_root() / "uploads")))
 
 
 def outputs_root() -> Path:

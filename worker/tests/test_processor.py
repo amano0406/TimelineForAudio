@@ -828,9 +828,8 @@ class ProcessorQueueTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (run_dir / "status.json").write_text("{}", encoding="utf-8")
-            catalog_dir = root / ".timeline-for-audio"
-            catalog_dir.mkdir()
-            catalog_path = catalog_dir / "catalog.jsonl"
+            catalog_path = processor.catalog_path(root)
+            catalog_path.parent.mkdir(parents=True)
             catalog_path.write_text(
                 json.dumps(
                     {
@@ -1007,7 +1006,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 )
 
             media_dir = root / str(manifest_item.media_id)
-            timeline_path = media_dir / "speaker-phone-timeline.json"
+            timeline_path = media_dir / "timeline.json"
             conversion_info_path = media_dir / "conversion-info.json"
             self.assertEqual([], warnings)
             self.assertTrue(timeline_path.exists())
@@ -1022,7 +1021,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 (media_dir / "timeline").exists()
             )
             timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
-            self.assertEqual("speaker-phone-timeline", timeline["artifact_type"])
+            self.assertEqual("timeline", timeline["artifact_type"])
             self.assertEqual(
                 "CUDAExecutionProvider",
                 timeline["pipeline"]["phone_execution_provider"],

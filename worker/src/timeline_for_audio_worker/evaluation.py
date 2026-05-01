@@ -10,9 +10,9 @@ _SPACE_RE = re.compile(r"\s+")
 EVALUATION_SCHEMA_VERSION = 1
 
 _ARTIFACT_JSON_PATHS = {
-    "timeline": Path("speaker-phone-timeline.json"),
-    "speaker-phone-timeline": Path("speaker-phone-timeline.json"),
-    "speaker-acoustic-units-timeline": Path("timeline") / "speaker-acoustic-units-timeline.json",
+    "timeline": (Path("timeline.json"), Path("speaker-phone-timeline.json")),
+    "speaker-phone-timeline": (Path("timeline.json"), Path("speaker-phone-timeline.json")),
+    "speaker-acoustic-units-timeline": (Path("timeline") / "speaker-acoustic-units-timeline.json",),
 }
 
 
@@ -54,10 +54,12 @@ def resolve_run_prediction_path(
         media_dir = candidates[0]
 
     normalized_kind = normalize_evaluation_artifact_kind(artifact_kind)
-    prediction_path = media_dir / _ARTIFACT_JSON_PATHS[normalized_kind]
-    if not prediction_path.exists():
-        raise ValueError(f"Prediction artifact JSON was not found: {prediction_path}")
-    return prediction_path
+    for relative_path in _ARTIFACT_JSON_PATHS[normalized_kind]:
+        prediction_path = media_dir / relative_path
+        if prediction_path.exists():
+            return prediction_path
+    prediction_path = media_dir / _ARTIFACT_JSON_PATHS[normalized_kind][0]
+    raise ValueError(f"Prediction artifact JSON was not found: {prediction_path}")
 
 
 def _turn_rows(payload: Any) -> list[dict[str, Any]]:

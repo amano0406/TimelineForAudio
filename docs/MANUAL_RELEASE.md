@@ -34,8 +34,8 @@ Do not attach:
 
 - Docker images
 - model caches
-- generated runs or uploads
-- `app-data`
+- generated master data
+- temporary run state
 - tests
 - private screenshots or reports
 

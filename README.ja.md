@@ -13,10 +13,10 @@ Windows では PowerShell の `start.ps1` / `start.bat` を正面玄関として
 主成果物は次です。
 
 - `conversion-info.json`
-- `speaker-phone-timeline.json`
+- `timeline.json`
 
 処理用の正規化音声、発話候補マップ、モデル実行用の一時ファイルは、マスター出力には残しません。
-`.timeline-for-audio/runs/<run-id>/RUN_PERFORMANCE.json` などの run 単位のファイルは、CLI の状態確認とトラブル調査用です。
+`<temporary app data>/runs/<run-id>/RUN_PERFORMANCE.json` などの run 単位のファイルは、CLI の状態確認とトラブル調査用です。
 
 ## 処理の流れ
 

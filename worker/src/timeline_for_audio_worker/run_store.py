@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import tempfile
@@ -10,7 +11,7 @@ from pathlib import Path, PureWindowsPath
 from typing import Any
 from uuid import uuid4
 
-from .catalog import catalog_key, catalog_path, load_catalog, normalize_file_identity
+from .catalog import catalog_key, load_catalog, load_catalog_rows, normalize_file_identity
 from .contracts import InputItem, RunRequest, RunResult, RunStatus
 from .discovery import discover_audio
 from .fs_utils import ensure_dir, now_iso, write_text
@@ -26,15 +27,21 @@ from .signature import (
     normalize_compute_mode,
     resolve_acoustic_unit_model_id,
 )
-from .settings import configured_path, load_huggingface_token, load_settings
+from .settings import appdata_root, configured_path, load_huggingface_token, load_settings
 
 _FIXED_VAD_PROFILE = resolve_vad_profile(None)
-_FINAL_TIMELINE_FILE = "speaker-phone-timeline.json"
+_FINAL_TIMELINE_FILE = "timeline.json"
+_LEGACY_SPEAKER_PHONE_TIMELINE_FILE = "speaker-phone-timeline.json"
 _LEGACY_TIMELINE_FILE = "speaker-acoustic-units-timeline.json"
 
 
 def _metadata_root(output_root_path: Path) -> Path:
-    return output_root_path / ".timeline-for-audio"
+    try:
+        normalized = str(output_root_path.resolve(strict=False))
+    except Exception:
+        normalized = str(output_root_path)
+    key = hashlib.sha256(normalized.lower().encode("utf-8")).hexdigest()[:16]
+    return appdata_root() / key
 
 
 def _runs_root(output_root_path: Path) -> Path:
@@ -406,6 +413,7 @@ def _artifact_path_from_catalog_row(row: dict[str, Any] | None) -> Path | None:
         return None
     for candidate in (
         media_dir / _FINAL_TIMELINE_FILE,
+        media_dir / _LEGACY_SPEAKER_PHONE_TIMELINE_FILE,
         media_dir / _LEGACY_TIMELINE_FILE,
         media_dir / "timeline" / _LEGACY_TIMELINE_FILE,
     ):
@@ -481,19 +489,8 @@ def _safe_media_dir_from_catalog_row(
 
 
 def _catalog_rows_for_output_root(output_root_path: Path) -> list[tuple[str, dict[str, Any]]]:
-    path = catalog_path(output_root_path)
-    if not path.exists():
-        return []
-    rows: list[tuple[str, dict[str, Any]]] = []
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if not line.strip():
-            continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        rows.append((line, row))
-    return rows
+    rows = load_catalog_rows(output_root_path)
+    return [(json.dumps(row, ensure_ascii=False, sort_keys=True), row) for row in rows]
 
 
 def _source_info_from_media_dir(media_dir: Path | None) -> dict[str, Any]:
@@ -595,45 +592,33 @@ def remove_items(
 
     output_root = _enabled_output_root(settings, output_root_id)
     output_root_path = configured_path(str(output_root["path"])).resolve()
-    path = catalog_path(output_root_path)
     media_dirs: dict[str, Path] = {}
     unsafe_media_dirs: list[str] = []
     removed_rows: list[dict[str, Any]] = []
-    kept_lines: list[str] = []
     matched_item_ids: set[str] = set()
 
-    if path.exists():
-        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-            if not line.strip():
-                continue
-            try:
-                row = json.loads(line)
-            except json.JSONDecodeError:
-                kept_lines.append(line)
-                continue
+    for _, row in _catalog_rows_for_output_root(output_root_path):
+        item_id = item_id_from_catalog_row(row).lower()
+        if item_id not in requested:
+            continue
 
-            item_id = item_id_from_catalog_row(row).lower()
-            if item_id not in requested:
-                kept_lines.append(line)
-                continue
-
-            matched_item_ids.add(item_id)
-            media_dir = _safe_media_dir_from_catalog_row(row, output_root_path=output_root_path)
-            if media_dir is not None:
-                media_dirs[str(media_dir)] = media_dir
-            else:
-                raw_media_dir = _media_dir_from_catalog_row(row)
-                if raw_media_dir is not None:
-                    unsafe_media_dirs.append(str(raw_media_dir))
-            removed_rows.append(
-                {
-                    "item_id": item_id_from_catalog_row(row),
-                    "source_file_identity": row.get("source_file_identity"),
-                    "run_id": row.get("run_id") or row.get("job_id"),
-                    "media_id": row.get("audio_id") or row.get("media_id"),
-                    "run_dir": row.get("run_dir"),
-                }
-            )
+        matched_item_ids.add(item_id)
+        media_dir = _safe_media_dir_from_catalog_row(row, output_root_path=output_root_path)
+        if media_dir is not None:
+            media_dirs[str(media_dir)] = media_dir
+        else:
+            raw_media_dir = _media_dir_from_catalog_row(row)
+            if raw_media_dir is not None:
+                unsafe_media_dirs.append(str(raw_media_dir))
+        removed_rows.append(
+            {
+                "item_id": item_id_from_catalog_row(row),
+                "source_file_identity": row.get("source_file_identity"),
+                "run_id": row.get("run_id") or row.get("job_id"),
+                "media_id": row.get("audio_id") or row.get("media_id"),
+                "run_dir": row.get("run_dir"),
+            }
+        )
 
     missing = [
         original
@@ -643,14 +628,6 @@ def remove_items(
     media_dir_rows = sorted(media_dirs.values(), key=lambda item: str(item).lower())
 
     if removed_rows and not dry_run:
-        if kept_lines:
-            path.write_text("\n".join(kept_lines) + "\n", encoding="utf-8")
-        else:
-            path.unlink(missing_ok=True)
-            try:
-                path.parent.rmdir()
-            except OSError:
-                pass
         for media_dir in media_dir_rows:
             shutil.rmtree(media_dir, ignore_errors=True)
 
@@ -697,7 +674,10 @@ def build_items_archive(
         output.with_suffix("") if output is not None and output.suffix.lower() == ".zip" else output
     )
     if archive_base is None:
-        archive_base = output_root_path / f"timelineforaudio-items-{timestamp}"
+        downloads_root = Path(
+            os.getenv("TIMELINE_FOR_AUDIO_DOWNLOADS_ROOT", str(output_root_path))
+        )
+        archive_base = downloads_root / f"timelineforaudio-items-{timestamp}"
     archive_base = archive_base.resolve()
     archive_base.parent.mkdir(parents=True, exist_ok=True)
     archive_path = archive_base.with_suffix(".zip")
@@ -888,7 +868,7 @@ def create_refresh_run(
         "skipped": skipped_rows,
         "deferred": deferred_rows,
         "generation_signature": generation_signature,
-        "artifact": "speaker-phone-timeline",
+        "artifact": "timeline",
     }
     if not input_items:
         return None, None, summary

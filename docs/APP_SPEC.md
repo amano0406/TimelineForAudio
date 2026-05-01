@@ -28,7 +28,7 @@ Out of scope:
 ## Primary Artifact
 
 ```text
-<item-id>/speaker-phone-timeline.json
+<item-id>/timeline.json
 ```
 
 This artifact is the product contract.

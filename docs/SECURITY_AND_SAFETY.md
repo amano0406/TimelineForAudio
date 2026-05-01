@@ -10,10 +10,10 @@ The primary concern is not remote attack surface. The primary concern is whether
 
 Current guardrails:
 
-- run source records and copied inputs are stored under the configured uploads root when the Docker worker path is used
-- input cleanup deletes only directories under that uploads root
-- completed run deletion removes only the selected run directory
-- output ZIPs are generated under the app-data downloads directory
+- source audio files are read from configured input directories and are not deleted by item cleanup
+- generated item cleanup removes only selected master item directories
+- run logs, locks, and work files are temporary Docker/container state
+- output ZIPs are generated under the project `output` directory unless `--output` is specified
 - Hugging Face tokens are stored in local-only `settings.json`, which is not tracked by Git
 
 ## What This App Does Not Claim

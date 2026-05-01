@@ -611,7 +611,7 @@ def cmd_items_refresh(
         "state": "skipped" if run_id is None else "pending",
         "run_id": run_id,
         "run_dir": str(run_dir) if run_dir is not None else None,
-        "artifact": "speaker-phone-timeline",
+        "artifact": "timeline",
         "queue_only": queue_only,
         **summary,
     }

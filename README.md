@@ -19,15 +19,15 @@ Persistent per-item artifacts:
 
 ```text
 <item-id>/conversion-info.json
-<item-id>/speaker-phone-timeline.json
+<item-id>/timeline.json
 ```
 
 Processing-only files such as normalized WAV, speech candidate maps, and model scratch files are temporary. They are not kept in the master output.
 
-Run-level operational files are also written under `.timeline-for-audio/runs/<run-id>/` for CLI status and troubleshooting:
+Run-level operational files are temporary Docker/container state for CLI status and troubleshooting. They are not part of the master output. If the container is recreated, unfinished run state can disappear; completed item artifacts remain in the master directory.
 
 ```text
-.timeline-for-audio/runs/<run-id>/RUN_PERFORMANCE.json
+<temporary app data>/runs/<run-id>/RUN_PERFORMANCE.json
 ```
 
 ## Settings
@@ -85,6 +85,8 @@ Use `.\cli.ps1 items refresh --reprocess-duplicates` only when you intentionally
 
 `items remove` does not delete the source audio file. It removes the managed item rows and generated `<item-id>` directories for the selected `item_id` values, so the next `items refresh` treats those source files as unprocessed. Use `--dry-run` before deleting when a management UI needs a confirmation step.
 
+`items list`, `items remove`, and `items download` treat the master item directories as the source of truth. No persistent catalog directory is required inside the master output.
+
 For JSON output details used by management UIs or other products, see [docs/CLI_OUTPUTS.ja.md](docs/CLI_OUTPUTS.ja.md).
 
 List model inventory for license and usage-condition review:
@@ -106,7 +108,7 @@ The CLI separates source files, managed items, execution runs, and fixed setting
 |---|---|
 | `files` | Inspect source files that currently exist in configured input directories |
 | `items` | Manage TimelineForAudio analysis targets and their generated data |
-| `runs` | Inspect execution runs. Mainly diagnostic and developer-facing |
+| `runs` | Inspect temporary execution runs. Mainly diagnostic and developer-facing |
 | `settings` | Manage fixed configuration. Inputs are multiple; the master location is single |
 
 Main commands:
@@ -141,6 +143,8 @@ Main commands:
 `items remove` does not delete the original source audio. It removes only the managed item data and generated artifacts for the selected `item_id` values. Multiple `item_id` values can be passed as a comma-separated list. If the source file still exists in an input directory, the next `items refresh` can recreate the item.
 
 `items download` retrieves generated data for the selected `item_id` values. When multiple IDs are provided, they are downloaded together. Use `items download --all` to export every currently available managed item. There is no separate `outputs` command group; generated data is treated as part of the item.
+
+When `--output` is omitted in Docker usage, the ZIP is written under the project `output` directory, not inside the master directory. The master directory should contain only item artifact directories.
 
 ### Removed Old Commands
 

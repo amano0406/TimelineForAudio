@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
 from .contracts import ManifestItem
+from .settings import appdata_root
 
 _TERMINAL_ITEM_STATES = {
     "completed",
@@ -172,7 +174,7 @@ def build_eta_predictor(
         return EtaPredictor(samples, normalized_compute_mode)
 
     run_dirs = sorted(
-        list((output_root / ".timeline-for-audio" / "runs").glob("run-*"))
+        list((appdata_root() / _output_root_key(output_root) / "runs").glob("run-*"))
         + list(output_root.glob("run-*"))
     )
     seen_dirs: set[Path] = set()
@@ -358,3 +360,11 @@ def _remaining_for_current_stage(
         return round(remaining, 3)
     total = sum(max(0.0, value) for value in stage_seconds.values())
     return round(max(0.0, total - max(0.0, current_stage_elapsed_sec)), 3)
+
+
+def _output_root_key(output_root: Path) -> str:
+    try:
+        normalized = str(output_root.resolve(strict=False))
+    except Exception:
+        normalized = str(output_root)
+    return hashlib.sha256(normalized.lower().encode("utf-8")).hexdigest()[:16]

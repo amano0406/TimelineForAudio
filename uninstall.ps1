@@ -1,7 +1,6 @@
 [CmdletBinding()]
 param(
     [switch]$Yes,
-    [switch]$KeepAppData,
     [switch]$KeepSettings
 )
 
@@ -44,10 +43,7 @@ if (Test-Path -LiteralPath $gpuCompose) {
 }
 
 $composeProject = "timeline-for-audio"
-$appDataVolume = "${composeProject}_app-data"
 $volumes = @(
-    "${composeProject}_uploads",
-    "${composeProject}_outputs",
     "${composeProject}_hf-cache",
     "${composeProject}_torch-cache"
 )
@@ -56,10 +52,7 @@ Write-Host ""
 Write-Host "TimelineForAudio uninstall"
 Write-Host ""
 Write-Host "This will remove Docker containers, local images, project volumes, and the project network."
-Write-Host "Optional cleanup can also remove saved app data and local settings."
-if (-not $KeepAppData) {
-    Write-Host "Optional: saved app data volume: $appDataVolume"
-}
+Write-Host "Optional cleanup can also remove local settings."
 if (-not $KeepSettings -and (Test-Path -LiteralPath (Join-Path $repoRoot "settings.json"))) {
     Write-Host "Optional: local settings.json."
 }
@@ -79,22 +72,6 @@ if (-not $?) {
 
 foreach ($volume in $volumes) {
     Remove-TfaVolumeIfExists -VolumeName $volume
-}
-
-if (-not $KeepAppData) {
-    Write-Host ""
-    Write-Host "Saved app data volume:"
-    Write-Host "  $appDataVolume"
-    Write-Host "This includes worker state. Hugging Face token is stored in settings.json."
-    if (Confirm-TfaAction "Delete saved app data too? (y/n)") {
-        Remove-TfaVolumeIfExists -VolumeName $appDataVolume
-    }
-    else {
-        Write-Host "Kept saved app data volume: $appDataVolume"
-    }
-}
-else {
-    Write-Host "Kept saved app data volume: $appDataVolume"
 }
 
 $settingsPath = Join-Path $repoRoot "settings.json"

@@ -11,7 +11,7 @@ timeline
 Default resolved path:
 
 ```text
-<item-id>/speaker-phone-timeline.json
+<item-id>/timeline.json
 ```
 
 Metrics:

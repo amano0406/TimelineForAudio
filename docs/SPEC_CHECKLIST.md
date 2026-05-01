@@ -6,7 +6,7 @@
 - [x] 話者は `SPEAKER_00` のような機械ラベルで扱う
 - [x] 実名、本人性、性別、年齢、属性は推測しない
 - [x] 意味解釈、要約、可読テキスト復元はこの製品の責務から外す
-- [x] 主成果物を `speaker-phone-timeline.json` にする
+- [x] 主成果物を `timeline.json` にする
 
 ## Source Audio Handling
 
@@ -29,7 +29,7 @@
 ## Artifacts
 
 - [x] `conversion-info.json`
-- [x] `speaker-phone-timeline.json`
+- [x] `timeline.json`
 - [x] 正規化音声、発話候補、モデル作業用ファイルをマスター出力に残さない
 - [x] `RUN_PERFORMANCE.json`
 

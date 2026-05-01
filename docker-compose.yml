@@ -9,9 +9,8 @@ services:
     environment:
       TIMELINE_FOR_AUDIO_WORKER_FLAVOR: cpu
       TIMELINE_FOR_AUDIO_RUNTIME_DEFAULTS: /app/config/runtime.defaults.json
-      TIMELINE_FOR_AUDIO_APPDATA_ROOT: /shared/app-data
-      TIMELINE_FOR_AUDIO_UPLOADS_ROOT: /shared/uploads
-      TIMELINE_FOR_AUDIO_OUTPUTS_ROOT: /shared/outputs
+      TIMELINE_FOR_AUDIO_APPDATA_ROOT: /tmp/timeline-for-audio
+      TIMELINE_FOR_AUDIO_DOWNLOADS_ROOT: /workspace/output
       TIMELINE_FOR_AUDIO_SETTINGS_PATH: /workspace/settings.json
       TIMELINE_FOR_AUDIO_SETTINGS_EXAMPLE_PATH: /workspace/settings.example.json
       PYTHONPATH: /workspace/worker/src
@@ -20,15 +19,9 @@ services:
       TORCH_HOME: /cache/torch
     volumes:
       - ./:/workspace
-      - app-data:/shared/app-data
-      - outputs:/shared/outputs
-      - uploads:/shared/uploads
       - hf-cache:/cache/huggingface
       - torch-cache:/cache/torch
 
 volumes:
-  app-data:
-  outputs:
-  uploads:
   hf-cache:
   torch-cache:

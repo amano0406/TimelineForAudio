@@ -349,7 +349,7 @@ token と CPU/GPU を保存します。
 ## `items list`
 
 用途:
-TimelineForAudio が管理している生成済み item を一覧します。入力ディレクトリから元ファイルが消えていても、catalog に残っていれば返ります。
+TimelineForAudio が管理している生成済み item を一覧します。マスター内の `<item-id>` ディレクトリを正として読み取ります。
 
 ```powershell
 .\cli.ps1 items list --json
@@ -362,8 +362,8 @@ TimelineForAudio が管理している生成済み item を一覧します。入
   {
     "item_id": "sample-12345678",
     "media_id": "sample-12345678",
-    "run_id": "run-20260430-100000-abcdef12",
-    "run_dir": "/host/output/master/.timeline-for-audio/runs/run-20260430-100000-abcdef12",
+    "run_id": null,
+    "run_dir": null,
     "source_id": "timeline-audio",
     "source_relative_path": "meeting/sample.wav",
     "source_file_identity": "timeline-audio:meeting/sample.wav",
@@ -372,7 +372,7 @@ TimelineForAudio が管理している生成済み item を一覧します。入
     "conversion_signature": "signature...",
     "duration_sec": 12.34,
     "status": "available",
-    "artifact_path": "/host/output/master/sample-12345678/speaker-phone-timeline.json",
+    "artifact_path": "/host/output/master/sample-12345678/timeline.json",
     "media_dir": "/host/output/master/sample-12345678",
     "turn_count": 8,
     "speaker_count": 2
@@ -414,7 +414,7 @@ TimelineForAudio が管理している生成済み item を一覧します。入
   "state": "skipped",
   "run_id": null,
   "run_dir": null,
-  "artifact": "speaker-phone-timeline",
+  "artifact": "timeline",
   "queue_only": false,
   "total_discovered": 3,
   "missing_sources": [],
@@ -446,8 +446,8 @@ TimelineForAudio が管理している生成済み item を一覧します。入
 {
   "state": "pending",
   "run_id": "run-20260430-100000-abcdef12",
-  "run_dir": "/host/output/master/.timeline-for-audio/runs/run-20260430-100000-abcdef12",
-  "artifact": "speaker-phone-timeline",
+  "run_dir": "/tmp/timeline-for-audio/<master-key>/runs/run-20260430-100000-abcdef12",
+  "artifact": "timeline",
   "queue_only": true,
   "queued_count": 3,
   "skipped_count": 0,
@@ -461,8 +461,8 @@ TimelineForAudio が管理している生成済み item を一覧します。入
 {
   "state": "completed",
   "run_id": "run-20260430-100000-abcdef12",
-  "run_dir": "/host/output/master/.timeline-for-audio/runs/run-20260430-100000-abcdef12",
-  "artifact": "speaker-phone-timeline",
+  "run_dir": "/tmp/timeline-for-audio/<master-key>/runs/run-20260430-100000-abcdef12",
+  "artifact": "timeline",
   "queue_only": false,
   "queued_count": 3,
   "status": {
@@ -540,9 +540,9 @@ TimelineForAudio が管理している生成済み item を一覧します。入
     {
       "item_id": "item-a",
       "source_file_identity": "timeline-audio:sample.wav",
-      "run_id": "run-...",
+      "run_id": null,
       "media_id": "sample-12345678",
-      "run_dir": "/host/output/master/.timeline-for-audio/runs/run-..."
+      "run_dir": null
     }
   ]
 }
@@ -554,7 +554,7 @@ TimelineForAudio が管理している生成済み item を一覧します。入
 |---|---|
 | 全件一致 | `matched_count` が指定数と同じ、`missing_item_ids` は空 |
 | 一部不一致 | 見つかった分だけ削除し、見つからない ID は `missing_item_ids` に入る |
-| `--dry-run` | `catalog_rows_removed` は削除予定数、`media_dirs_removed` は `0`、物理削除しない |
+| `--dry-run` | `catalog_rows_removed` は削除予定 item 数、`media_dirs_removed` は `0`、物理削除しない |
 | `unsafe_media_dirs` あり | 安全確認に失敗したため、その media dir は削除しない |
 | `--item-id` が空 | 非 0。`At least one item id is required.` |
 
@@ -574,7 +574,7 @@ TimelineForAudio が管理している生成済み item を一覧します。入
 
 ```json
 {
-  "archive_path": "/host/output/master/timelineforaudio-items-20260430-100000.zip",
+  "archive_path": "/workspace/output/timelineforaudio-items-20260430-100000.zip",
   "item_ids": ["item-a", "item-b"],
   "all": false
 }
@@ -585,7 +585,7 @@ ZIP 内容:
 ```text
 README.md
 <item-id>/conversion-info.json
-<item-id>/speaker-phone-timeline.json
+<item-id>/timeline.json
 ```
 
 エラーパターン:
@@ -600,12 +600,12 @@ README.md
 | `--all` で利用可能 item がない | 非 0。`At least one available item id is required.` |
 | `--output` に `.zip` を指定 | 指定 path に ZIP を作る |
 | `--output` に拡張子なしを指定 | その path に `.zip` を付けて作る |
-| `--output` なし | マスター保存先直下に `timelineforaudio-items-<timestamp>.zip` を作る |
+| `--output` なし | Docker 通常利用ではプロジェクトの `output` ディレクトリに `timelineforaudio-items-<timestamp>.zip` を作る |
 
 ## `runs list`
 
 用途:
-実行単位を一覧します。これは診断・開発者向けです。
+実行単位を一覧します。これは診断・開発者向けです。run 情報は一時的な実行状態で、マスター成果物ではありません。
 
 ```powershell
 .\cli.ps1 runs list --json
@@ -617,7 +617,7 @@ README.md
 [
   {
     "run_id": "run-20260430-100000-abcdef12",
-    "run_dir": "/host/output/master/run-20260430-100000-abcdef12",
+    "run_dir": "/tmp/timeline-for-audio/<master-key>/runs/run-20260430-100000-abcdef12",
     "state": "completed",
     "current_stage": "completed",
     "items_total": 3,
@@ -656,7 +656,7 @@ README.md
 ```json
 {
   "run_id": "run-20260430-100000-abcdef12",
-  "run_dir": "/host/output/master/run-20260430-100000-abcdef12",
+  "run_dir": "/tmp/timeline-for-audio/<master-key>/runs/run-20260430-100000-abcdef12",
   "request": {},
   "status": {},
   "result": {},

@@ -2,12 +2,12 @@
 
 ## 1. Request Creation
 
-The CLI creates an internal run directory under the configured output root.
+The CLI creates an internal temporary run directory under the worker runtime area.
 
 The request contains:
 
 - run id
-- output root
+- master output root
 - input items
 - compute mode
 - duplicate policy
@@ -32,7 +32,7 @@ For every input item the worker:
 - resolves the source path
 - probes media metadata with `ffprobe`
 - computes SHA-256
-- checks duplicate state in `.timeline-for-audio/catalog.jsonl`
+- checks duplicate state from existing master item artifacts
 - writes `manifest.json`
 
 The duplicate key is:
@@ -44,6 +44,8 @@ source hash + generation signature + source file identity
 `source file identity` includes the configured input root id and relative path. A renamed file is therefore treated as a different source.
 
 `items refresh` queues all changed files by default. `items refresh --max-items <N>` limits one invocation when a smaller test or retry batch is safer.
+
+The master directory is not used as a run-log store. It contains only completed item artifact directories. Runtime catalogs, logs, and locks are temporary and can be rebuilt or discarded.
 
 ## 3. Audio Preparation
 
@@ -91,7 +93,7 @@ Primary output:
 
 ```text
 conversion-info.json
-speaker-phone-timeline.json
+timeline.json
 ```
 
 Each turn contains:
@@ -113,10 +115,10 @@ The audio file itself is not embedded in the archive.
 
 ## 8. Performance Summary
 
-Each finished run writes:
+Each finished run writes this file in the temporary run directory:
 
 ```text
 RUN_PERFORMANCE.json
 ```
 
-This file summarizes item counts, audio duration, wall time, stage totals, and completed-audio throughput. It is meant for operational tuning, not as a user-facing artifact.
+This file summarizes item counts, audio duration, wall time, stage totals, and completed-audio throughput. It is meant for operational tuning, not as a user-facing or master artifact.

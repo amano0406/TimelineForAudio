@@ -37,7 +37,7 @@ from .fs_utils import (
     write_text,
 )
 from .hashing import sha256_file
-from .settings import configured_path, load_settings, uploads_root
+from .settings import appdata_root, configured_path, load_settings, uploads_root
 from .runtime_profile import assert_runtime_supports_compute_mode
 from .vad_profile import vad_config_for_profile
 
@@ -61,6 +61,15 @@ class RunDeletionRequested(RuntimeError):
 
 def _run_log_path(run_dir: Path) -> Path:
     return run_dir / "logs" / "worker.log"
+
+
+def _runtime_runs_root(output_root_path: Path) -> Path:
+    try:
+        normalized = str(output_root_path.resolve(strict=False))
+    except Exception:
+        normalized = str(output_root_path)
+    key = hashlib.sha256(normalized.lower().encode("utf-8")).hexdigest()[:16]
+    return appdata_root() / key / "runs"
 
 
 def _status_path(run_dir: Path) -> Path:
@@ -178,6 +187,7 @@ def _remove_obsolete_media_artifacts(media_dir: Path) -> None:
         "source.json",
         "artifacts.json",
         "README.md",
+        "speaker-phone-timeline.json",
         "speaker-acoustic-units-timeline.json",
     ):
         (media_dir / relative_path).unlink(missing_ok=True)
@@ -200,6 +210,7 @@ def _resolve_duplicate_artifact_path(duplicate: dict[str, Any] | None) -> Path |
     item_dir = duplicate.get("item_dir") or duplicate.get("media_dir")
     if item_dir:
         for relative_path in (
+            ("timeline.json",),
             ("speaker-phone-timeline.json",),
             ("speaker-acoustic-units-timeline.json",),
             ("timeline", "speaker-acoustic-units-timeline.json"),
@@ -213,6 +224,7 @@ def _resolve_duplicate_artifact_path(duplicate: dict[str, Any] | None) -> Path |
     if run_dir and media_id:
         media_dir = Path(str(run_dir)) / "media" / str(media_id)
         for relative_path in (
+            ("timeline.json",),
             ("speaker-phone-timeline.json",),
             ("speaker-acoustic-units-timeline.json",),
             ("timeline", "speaker-acoustic-units-timeline.json"),
@@ -564,7 +576,7 @@ def _write_support_docs(run_dir: Path, request: RunRequest) -> None:
             f"- Generation signature: `{request.generation_signature}`",
             "- Notes:",
             "  - TimelineForAudio does not interpret meaning or restore readable text.",
-            "  - Per-item master artifacts are `conversion-info.json` and `speaker-phone-timeline.json`.",
+            "  - Per-item master artifacts are `conversion-info.json` and `timeline.json`.",
             "  - Timestamps are mapped back to the original audio timeline.",
             "  - Speaker labels are mechanical labels such as `SPEAKER_00`; identities are not inferred.",
             "",
@@ -735,7 +747,7 @@ def _process_one_item(
             speaker_payload=speaker_payload,
             acoustic_payload=acoustic_payload,
         )
-        timeline_json_path = media_dir / "speaker-phone-timeline.json"
+        timeline_json_path = media_dir / "timeline.json"
         conversion_info_path = media_dir / "conversion-info.json"
         write_json_atomic(timeline_json_path, timeline_payload)
         write_json_atomic(conversion_info_path, conversion_info_payload)
@@ -925,7 +937,7 @@ def _build_speaker_acoustic_units_timeline(
         )
     return {
         "schema_version": 1,
-        "artifact_type": "speaker-phone-timeline",
+        "artifact_type": "timeline",
         "source": source_record,
         "pipeline": {
             "pipeline_version": pipeline_version,
@@ -989,7 +1001,7 @@ def _collect_runs_by_state(*states: str) -> list[Path]:
     root_path = configured_path(root_text)
     if not root_path.exists():
         return rows
-    run_dirs = list((root_path / ".timeline-for-audio" / "runs").glob("run-*"))
+    run_dirs = list(_runtime_runs_root(root_path).glob("run-*"))
     run_dirs.extend(root_path.glob("run-*"))
     for candidate in sorted({item.resolve(): item for item in run_dirs}.values()):
         if not candidate.is_dir():
@@ -1494,7 +1506,7 @@ def process_run(run_dir: Path | None = None) -> bool:
                         "artifact_path": str(
                             Path(request.output_root_path)
                             / str(manifest_item.media_id)
-                            / "speaker-phone-timeline.json"
+                            / "timeline.json"
                         ),
                         "conversion_info_path": str(
                             Path(request.output_root_path)

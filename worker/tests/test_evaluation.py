@@ -99,7 +99,7 @@ class EvaluationTests(unittest.TestCase):
                 root
                 / "media"
                 / "media-0001"
-                / "speaker-phone-timeline.json"
+                / "timeline.json"
             )
             artifact.parent.mkdir(parents=True)
             artifact.write_text('{"turns":[]}', encoding="utf-8")
@@ -120,7 +120,7 @@ class EvaluationTests(unittest.TestCase):
                     root
                     / "media"
                     / media_id
-                    / "speaker-phone-timeline.json"
+                    / "timeline.json"
                 )
                 artifact.parent.mkdir(parents=True)
                 artifact.write_text('{"turns":[]}', encoding="utf-8")
