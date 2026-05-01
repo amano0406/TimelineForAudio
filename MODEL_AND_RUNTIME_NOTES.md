@@ -58,7 +58,7 @@ The original source file is not modified.
 The primary file is:
 
 ```text
-media/<media-id>/timeline/speaker-acoustic-units-timeline.json
+<item-id>/timeline.json
 ```
 
 It contains:

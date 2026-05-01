@@ -9,7 +9,6 @@ from .fs_utils import ensure_dir
 from .settings import appdata_root
 
 _FINAL_TIMELINE_FILE = "timeline.json"
-_LEGACY_SPEAKER_PHONE_TIMELINE_FILE = "speaker-phone-timeline.json"
 _CONVERSION_INFO_FILE = "conversion-info.json"
 
 
@@ -90,8 +89,6 @@ def _master_artifact_rows(output_root: Path) -> list[dict[str, Any]]:
         if not item_dir.is_dir() or item_dir.name.startswith("."):
             continue
         timeline_path = item_dir / _FINAL_TIMELINE_FILE
-        if not timeline_path.exists():
-            timeline_path = item_dir / _LEGACY_SPEAKER_PHONE_TIMELINE_FILE
         conversion_path = item_dir / _CONVERSION_INFO_FILE
         if not timeline_path.exists() or not conversion_path.exists():
             continue

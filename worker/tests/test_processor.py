@@ -28,7 +28,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
+                pipeline_version="2026-05-01-v1-phone-timeline",
                 conversion_signature="sig-123",
                 acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
                 acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
@@ -89,7 +89,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
+                pipeline_version="2026-05-01-v1-phone-timeline",
                 conversion_signature="sig-123",
                 acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
                 acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
@@ -179,8 +179,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 / "run-1"
                 / "media"
                 / "sample-media"
-                / "timeline"
-                / "speaker-acoustic-units-timeline.json"
+                / "timeline.json"
             )
             timeline_path.parent.mkdir(parents=True, exist_ok=True)
             timeline_path.write_text('{"turns":[]}', encoding="utf-8")
@@ -211,7 +210,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
+                pipeline_version="2026-05-01-v1-phone-timeline",
                 conversion_signature="sig-123",
                 acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
                 acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
@@ -318,7 +317,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
+                pipeline_version="2026-05-01-v1-phone-timeline",
                 conversion_signature="sig-123",
                 acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
                 acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
@@ -431,7 +430,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
+                pipeline_version="2026-05-01-v1-phone-timeline",
                 conversion_signature="sig-123",
                 acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
                 acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
@@ -554,7 +553,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
+                pipeline_version="2026-05-01-v1-phone-timeline",
                 conversion_signature="sig-123",
                 acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
                 acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
@@ -664,7 +663,7 @@ class ProcessorQueueTests(unittest.TestCase):
                     output_root_path=str(root),
                     profile="quality-first",
                     compute_mode="cpu",
-                    pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
+                    pipeline_version="2026-05-01-v1-phone-timeline",
                     conversion_signature=f"sig-{run_id}",
                     acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
                     acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
@@ -801,7 +800,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
+                pipeline_version="2026-05-01-v1-phone-timeline",
                 conversion_signature="sig-123",
                 acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
                 acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
@@ -900,7 +899,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
+                pipeline_version="2026-05-01-v1-phone-timeline",
                 conversion_signature="sig-123",
                 acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
                 acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
@@ -932,7 +931,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 conversion_signature="sig-123",
                 duplicate_status="new",
                 audio_id="sample-abc12345",
-                pipeline_version="2026-04-29-v3-speaker-acoustic-units1",
+                pipeline_version="2026-05-01-v1-phone-timeline",
                 model_id="anyspeech/zipa-large-crctc-300k",
             )
 

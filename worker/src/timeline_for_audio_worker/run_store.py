@@ -31,8 +31,6 @@ from .settings import appdata_root, configured_path, load_huggingface_token, loa
 
 _FIXED_VAD_PROFILE = resolve_vad_profile(None)
 _FINAL_TIMELINE_FILE = "timeline.json"
-_LEGACY_SPEAKER_PHONE_TIMELINE_FILE = "speaker-phone-timeline.json"
-_LEGACY_TIMELINE_FILE = "speaker-acoustic-units-timeline.json"
 
 
 def _metadata_root(output_root_path: Path) -> Path:
@@ -413,9 +411,6 @@ def _artifact_path_from_catalog_row(row: dict[str, Any] | None) -> Path | None:
         return None
     for candidate in (
         media_dir / _FINAL_TIMELINE_FILE,
-        media_dir / _LEGACY_SPEAKER_PHONE_TIMELINE_FILE,
-        media_dir / _LEGACY_TIMELINE_FILE,
-        media_dir / "timeline" / _LEGACY_TIMELINE_FILE,
     ):
         if candidate.exists():
             return candidate
@@ -508,8 +503,6 @@ def _source_info_from_media_dir(media_dir: Path | None) -> dict[str, Any]:
             return {}
     for timeline_path in (
         media_dir / _FINAL_TIMELINE_FILE,
-        media_dir / _LEGACY_TIMELINE_FILE,
-        media_dir / "timeline" / _LEGACY_TIMELINE_FILE,
     ):
         if not timeline_path.exists():
             continue

@@ -13,7 +13,7 @@ from .runtime_profile import (
 )
 from .vad_profile import vad_config_for_profile
 
-PIPELINE_VERSION = "2026-04-29-v3-speaker-acoustic-units1"
+PIPELINE_VERSION = "2026-05-01-v1-phone-timeline"
 ACOUSTIC_UNIT_BACKEND_NAME = ACOUSTIC_UNIT_BACKEND
 DIARIZATION_MODEL_ID = "pyannote/speaker-diarization-community-1"
 VAD_BACKEND = "ffmpeg-silencedetect"

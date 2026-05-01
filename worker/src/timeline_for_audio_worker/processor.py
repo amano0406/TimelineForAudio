@@ -187,8 +187,6 @@ def _remove_obsolete_media_artifacts(media_dir: Path) -> None:
         "source.json",
         "artifacts.json",
         "README.md",
-        "speaker-phone-timeline.json",
-        "speaker-acoustic-units-timeline.json",
     ):
         (media_dir / relative_path).unlink(missing_ok=True)
 
@@ -211,9 +209,6 @@ def _resolve_duplicate_artifact_path(duplicate: dict[str, Any] | None) -> Path |
     if item_dir:
         for relative_path in (
             ("timeline.json",),
-            ("speaker-phone-timeline.json",),
-            ("speaker-acoustic-units-timeline.json",),
-            ("timeline", "speaker-acoustic-units-timeline.json"),
         ):
             candidate = Path(str(item_dir)).joinpath(*relative_path)
             if candidate.exists():
@@ -225,9 +220,6 @@ def _resolve_duplicate_artifact_path(duplicate: dict[str, Any] | None) -> Path |
         media_dir = Path(str(run_dir)) / "media" / str(media_id)
         for relative_path in (
             ("timeline.json",),
-            ("speaker-phone-timeline.json",),
-            ("speaker-acoustic-units-timeline.json",),
-            ("timeline", "speaker-acoustic-units-timeline.json"),
         ):
             candidate = media_dir.joinpath(*relative_path)
             if candidate.exists():
