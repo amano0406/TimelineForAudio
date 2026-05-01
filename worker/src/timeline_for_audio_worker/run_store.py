@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import html
 import hashlib
 import json
 import re
@@ -14,7 +13,7 @@ from uuid import uuid4
 from .catalog import catalog_key, catalog_path, load_catalog, normalize_file_identity
 from .contracts import InputItem, RunRequest, RunResult, RunStatus
 from .discovery import discover_audio
-from .fs_utils import ensure_dir, now_iso, slugify, write_text
+from .fs_utils import ensure_dir, now_iso, write_text
 from .hashing import sha256_file
 from .vad_profile import resolve_vad_profile
 from .signature import (
@@ -29,15 +28,17 @@ from .signature import (
 )
 from .settings import configured_path, load_huggingface_token, load_settings
 
-_DATETIME_PATTERNS = [
-    re.compile(
-        r"(?P<year>20\d{2})[-_ ]?(?P<month>\d{2})[-_ ]?(?P<day>\d{2})[T _-]?(?P<hour>\d{2})[-_ ]?(?P<minute>\d{2})[-_ ]?(?P<second>\d{2})"
-    ),
-    re.compile(
-        r"(?P<year>20\d{2})(?P<month>\d{2})(?P<day>\d{2})[-_ ]?(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})"
-    ),
-]
 _FIXED_VAD_PROFILE = resolve_vad_profile(None)
+_FINAL_TIMELINE_FILE = "speaker-phone-timeline.json"
+_LEGACY_TIMELINE_FILE = "speaker-acoustic-units-timeline.json"
+
+
+def _metadata_root(output_root_path: Path) -> Path:
+    return output_root_path / ".timeline-for-audio"
+
+
+def _runs_root(output_root_path: Path) -> Path:
+    return _metadata_root(output_root_path) / "runs"
 
 
 def _allowed_extensions(settings: dict[str, Any]) -> set[str]:
@@ -292,180 +293,14 @@ def get_active_run(settings: dict[str, Any] | None = None) -> dict[str, Any] | N
 def find_run_dir(run_id: str, settings: dict[str, Any] | None = None) -> Path:
     settings = settings or load_settings()
     for root in _enabled_output_root_list(settings):
-        candidate = configured_path(str(root["path"])) / run_id
-        if candidate.exists():
-            return candidate
+        output_path = configured_path(str(root["path"]))
+        for candidate in (
+            _runs_root(output_path) / run_id,
+            output_path / run_id,
+        ):
+            if candidate.exists():
+                return candidate
     raise ValueError(f"Run not found: {run_id}")
-
-
-def _normalize_export_artifact_kind(value: str | None) -> str:
-    normalized = str(value or "timeline").strip().lower()
-    if normalized in {
-        "timeline",
-        "speaker-acoustic-units",
-        "speaker_acoustic_units",
-        "speaker-acoustic-units-timeline",
-    }:
-        return "timeline"
-    raise ValueError(f"Unsupported artifact kind: {value}")
-
-
-def _artifact_export_title(artifact_kind: str) -> str:
-    return "Speaker Acoustic Units Timeline"
-
-
-def _write_export_index_html(
-    *,
-    export_root: Path,
-    run_id: str,
-    artifact_kind: str,
-    exported_rows: list[dict[str, str]],
-    has_conversion_info: bool,
-    has_failure_report: bool,
-    has_worker_log: bool,
-) -> None:
-    def anchor(path: str, label: str) -> str:
-        if not path:
-            return '<span class="muted">N/A</span>'
-        return f'<a href="{html.escape(path, quote=True)}">{html.escape(label)}</a>'
-
-    top_links: list[str] = []
-    if has_conversion_info:
-        top_links.append('<li><a href="CONVERSION_INFO.md">CONVERSION_INFO.md</a></li>')
-    if has_failure_report:
-        top_links.append('<li><a href="FAILURE_REPORT.md">FAILURE_REPORT.md</a></li>')
-    if has_worker_log:
-        top_links.append('<li><a href="logs/worker.log">logs/worker.log</a></li>')
-
-    item_rows = []
-    for row in exported_rows:
-        item_rows.append(
-            "\n".join(
-                [
-                    "<tr>",
-                    f"<td>{html.escape(row['label'])}</td>",
-                    f"<td><code>{html.escape(row['source_path'] or '')}</code></td>",
-                    f"<td>{anchor(row['artifact_path'], _artifact_export_title(artifact_kind).lower())}</td>",
-                    "</tr>",
-                ]
-            )
-        )
-
-    document = "\n".join(
-        [
-            "<!doctype html>",
-            '<html lang="en">',
-            "<head>",
-            '  <meta charset="utf-8">',
-            f"  <title>TimelineForAudio export {html.escape(run_id)}</title>",
-            '  <meta name="viewport" content="width=device-width, initial-scale=1">',
-            "  <style>",
-            "    :root { color-scheme: light; }",
-            "    body { font-family: 'Segoe UI', sans-serif; margin: 24px; color: #1e293b; background: #f8fafc; }",
-            "    h1, h2 { margin: 0 0 12px; }",
-            "    p, li { line-height: 1.6; }",
-            "    code { font-family: Consolas, monospace; font-size: 12px; }",
-            "    .panel { background: white; border: 1px solid #dbe4ee; border-radius: 16px; padding: 20px; margin-bottom: 20px; }",
-            "    table { width: 100%; border-collapse: collapse; background: white; }",
-            "    th, td { border-bottom: 1px solid #e2e8f0; padding: 10px 12px; text-align: left; vertical-align: top; }",
-            "    th { background: #eff6ff; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }",
-            "    a { color: #0f766e; text-decoration: none; }",
-            "    a:hover { text-decoration: underline; }",
-            "    .muted { color: #94a3b8; }",
-            "  </style>",
-            "</head>",
-            "<body>",
-            '  <section class="panel">',
-            "    <h1>TimelineForAudio export</h1>",
-            f"    <p>Run ID: <code>{html.escape(run_id)}</code></p>",
-            f"    <p>This package contains the {_artifact_export_title(artifact_kind)} export for the selected run.</p>",
-            "  </section>",
-            '  <section class="panel">',
-            "    <h2>Top-level files</h2>",
-            f"    <ul>{''.join(top_links)}</ul>",
-            "  </section>",
-            '  <section class="panel">',
-            "    <h2>Per-item artifacts</h2>",
-            "    <table>",
-            "      <thead>",
-            f"        <tr><th>Item</th><th>Source</th><th>{html.escape(_artifact_export_title(artifact_kind))}</th></tr>",
-            "      </thead>",
-            "      <tbody>",
-            *item_rows,
-            "      </tbody>",
-            "    </table>",
-            "  </section>",
-            "</body>",
-            "</html>",
-            "",
-        ]
-    )
-    (export_root / "README.html").write_text(document, encoding="utf-8")
-
-
-def _best_export_label(media_id: str, source_info: dict[str, Any]) -> str:
-    candidates = [
-        str(source_info.get("recorded_at") or "").strip(),
-        str(source_info.get("captured_at") or "").strip(),
-        str(source_info.get("display_name") or "").strip(),
-        str(source_info.get("original_path") or "").strip(),
-        media_id,
-    ]
-    for candidate in candidates:
-        parsed = _parse_best_effort_datetime(candidate)
-        if parsed is not None:
-            return parsed.strftime("%Y-%m-%d %H-%M-%S")
-
-    fallback = Path(
-        str(source_info.get("resolved_path") or source_info.get("original_path") or media_id)
-    )
-    if fallback.exists():
-        last_write = fallback.stat().st_mtime
-        if last_write > 0:
-            return datetime.fromtimestamp(last_write).strftime("%Y-%m-%d %H-%M-%S")
-        creation_time = fallback.stat().st_ctime
-        if creation_time > 0:
-            return datetime.fromtimestamp(creation_time).strftime("%Y-%m-%d %H-%M-%S")
-
-    return slugify(media_id)
-
-
-def _ensure_unique_export_file_name(file_name: str, used_names: set[str]) -> str:
-    path = Path(file_name)
-    candidate = path.name
-    suffix = 2
-    while candidate.lower() in used_names:
-        candidate = f"{path.stem}-{suffix}{path.suffix}"
-        suffix += 1
-    used_names.add(candidate.lower())
-    return candidate
-
-
-def _parse_best_effort_datetime(value: str) -> datetime | None:
-    if not value:
-        return None
-    normalized = value.replace("Z", "+00:00")
-    try:
-        return datetime.fromisoformat(normalized)
-    except ValueError:
-        pass
-    for pattern in _DATETIME_PATTERNS:
-        match = pattern.search(value)
-        if not match:
-            continue
-        parts = {key: int(text) for key, text in match.groupdict().items()}
-        try:
-            return datetime(
-                parts["year"],
-                parts["month"],
-                parts["day"],
-                parts["hour"],
-                parts["minute"],
-                parts["second"],
-            )
-        except ValueError:
-            return None
-    return None
 
 
 def create_run(
@@ -482,11 +317,11 @@ def create_run(
     output_root = _enabled_output_root(settings, output_root_id)
     output_root_path = configured_path(str(output_root["path"]))
     ensure_dir(output_root_path)
+    ensure_dir(_runs_root(output_root_path))
 
     run_id = f"run-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:8]}"
-    run_dir = output_root_path / run_id
-    ensure_dir(run_dir / "media")
-    ensure_dir(run_dir / "llm")
+    run_dir = _runs_root(output_root_path) / run_id
+    ensure_dir(run_dir / "work")
     ensure_dir(run_dir / "logs")
 
     diarization_enabled = True
@@ -561,11 +396,18 @@ def create_run(
 def _artifact_path_from_catalog_row(row: dict[str, Any] | None) -> Path | None:
     if not row:
         return None
+    direct_path = row.get("artifact_path")
+    if direct_path:
+        candidate = Path(str(direct_path))
+        if candidate.exists():
+            return candidate
     media_dir = _media_dir_from_catalog_row(row)
     if media_dir is None:
         return None
     for candidate in (
-        media_dir / "timeline" / "speaker-acoustic-units-timeline.json",
+        media_dir / _FINAL_TIMELINE_FILE,
+        media_dir / _LEGACY_TIMELINE_FILE,
+        media_dir / "timeline" / _LEGACY_TIMELINE_FILE,
     ):
         if candidate.exists():
             return candidate
@@ -573,10 +415,12 @@ def _artifact_path_from_catalog_row(row: dict[str, Any] | None) -> Path | None:
 
 
 def item_id_from_catalog_row(row: dict[str, Any]) -> str:
+    media_id = str(row.get("audio_id") or row.get("media_id") or "").strip()
+    if media_id:
+        return media_id
     source_hash = str(row.get("source_hash") or row.get("sha256") or "").strip()
     conversion_signature = str(row.get("conversion_signature") or "").strip()
     source_file_identity = str(row.get("source_file_identity") or "").strip()
-    media_id = str(row.get("audio_id") or row.get("media_id") or "").strip()
     run_id = str(row.get("run_id") or row.get("job_id") or "").strip()
     seed = "::".join(
         part
@@ -597,6 +441,9 @@ def item_id_from_catalog_row(row: dict[str, Any]) -> str:
 def _media_dir_from_catalog_row(row: dict[str, Any] | None) -> Path | None:
     if not row:
         return None
+    item_dir = row.get("item_dir") or row.get("media_dir")
+    if item_dir:
+        return Path(str(item_dir))
     run_dir = row.get("run_dir")
     media_id = row.get("audio_id") or row.get("media_id")
     if not run_dir or not media_id:
@@ -611,19 +458,25 @@ def _safe_media_dir_from_catalog_row(
 ) -> Path | None:
     media_dir = _media_dir_from_catalog_row(row)
     run_dir = row.get("run_dir")
-    if media_dir is None or not run_dir:
+    if media_dir is None:
         return None
     try:
         resolved_output = output_root_path.resolve(strict=False)
-        resolved_run = Path(str(run_dir)).resolve(strict=False)
-        resolved_media_root = (resolved_run / "media").resolve(strict=False)
         resolved_media = media_dir.resolve(strict=False)
-        resolved_run.relative_to(resolved_output)
-        resolved_media.relative_to(resolved_media_root)
+        resolved_media.relative_to(resolved_output)
     except Exception:
         return None
-    if resolved_media == resolved_media_root:
+    if resolved_media == resolved_output or ".timeline-for-audio" in resolved_media.parts:
         return None
+    if run_dir:
+        try:
+            resolved_run = Path(str(run_dir)).resolve(strict=False)
+            resolved_media_root = (resolved_run / "media").resolve(strict=False)
+            if resolved_media == resolved_media_root:
+                return None
+            resolved_media.relative_to(resolved_media_root)
+        except Exception:
+            pass
     return resolved_media
 
 
@@ -656,6 +509,20 @@ def _source_info_from_media_dir(media_dir: Path | None) -> dict[str, Any]:
             return json.loads(candidate.read_text(encoding="utf-8-sig", errors="replace"))
         except (OSError, json.JSONDecodeError):
             return {}
+    for timeline_path in (
+        media_dir / _FINAL_TIMELINE_FILE,
+        media_dir / _LEGACY_TIMELINE_FILE,
+        media_dir / "timeline" / _LEGACY_TIMELINE_FILE,
+    ):
+        if not timeline_path.exists():
+            continue
+        try:
+            payload = json.loads(timeline_path.read_text(encoding="utf-8-sig", errors="replace"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        source = payload.get("source")
+        if isinstance(source, dict):
+            return source
     return {}
 
 
@@ -841,10 +708,6 @@ def build_items_archive(
         tempfile.mkdtemp(prefix=f"{archive_base.name}-export-", dir=str(archive_base.parent))
     )
     try:
-        artifact_root = staging_root / "items"
-        artifact_root.mkdir(parents=True, exist_ok=True)
-        used_names: set[str] = set()
-        exported_rows: list[dict[str, str]] = []
         items_manifest: list[dict[str, Any]] = []
         for row in matched_rows:
             artifact_path = _artifact_path_from_catalog_row(row)
@@ -854,20 +717,24 @@ def build_items_archive(
             source_info = _source_info_from_media_dir(media_dir)
             media_id = str(row.get("audio_id") or row.get("media_id") or "")
             item_id = item_id_from_catalog_row(row)
-            label = _best_export_label(media_id, source_info)
-            destination_name = _ensure_unique_export_file_name(f"{label}.json", used_names)
-            destination = artifact_root / destination_name
+            export_item_dir = staging_root / item_id
+            export_item_dir.mkdir(parents=True, exist_ok=True)
+            destination = export_item_dir / _FINAL_TIMELINE_FILE
             destination.write_text(
                 artifact_path.read_text(encoding="utf-8", errors="replace"),
                 encoding="utf-8",
             )
-            exported_rows.append(
-                {
-                    "label": label,
-                    "source_path": str(source_info.get("original_path") or row.get("source_file_identity") or ""),
-                    "artifact_path": f"{artifact_root.name}/{destination_name}",
-                }
+            conversion_info_path = (
+                media_dir / "conversion-info.json" if media_dir is not None else None
             )
+            exported_conversion_path = ""
+            if conversion_info_path is not None and conversion_info_path.exists():
+                conversion_destination = export_item_dir / "conversion-info.json"
+                conversion_destination.write_text(
+                    conversion_info_path.read_text(encoding="utf-8", errors="replace"),
+                    encoding="utf-8",
+                )
+                exported_conversion_path = f"{item_id}/conversion-info.json"
             items_manifest.append(
                 {
                     "item_id": item_id,
@@ -875,34 +742,31 @@ def build_items_archive(
                     "run_id": row.get("run_id") or row.get("job_id"),
                     "source_file_identity": row.get("source_file_identity"),
                     "source_hash": row.get("source_hash") or row.get("sha256"),
-                    "artifact_path": f"{artifact_root.name}/{destination_name}",
+                    "artifact_path": f"{item_id}/{_FINAL_TIMELINE_FILE}",
+                    "conversion_info_path": exported_conversion_path,
                 }
             )
 
-        if not exported_rows:
+        if not items_manifest:
             raise ValueError("No completed item artifacts are available to download.")
 
-        (staging_root / "items.json").write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "generated_at": now_iso(),
-                    "items": items_manifest,
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
-        _write_export_index_html(
-            export_root=staging_root,
-            run_id="selected-items",
-            artifact_kind="timeline",
-            exported_rows=exported_rows,
-            has_conversion_info=False,
-            has_failure_report=False,
-            has_worker_log=False,
-        )
+        readme_lines = [
+            "# TimelineForAudio Export",
+            "",
+            "This package was created by TimelineForAudio.",
+            "",
+            "TimelineForAudio converts source audio into timestamped speaker and phone-token JSON for downstream tools.",
+            "It does not infer real speaker names and does not reconstruct readable text.",
+            "",
+            "Each item directory contains:",
+            "",
+            "- `conversion-info.json`: source, model, runtime, and processing-flow information.",
+            f"- `{_FINAL_TIMELINE_FILE}`: speaker labels, timestamps, and phone tokens.",
+            "",
+            "Generated at: `" + now_iso() + "`",
+            "",
+        ]
+        write_text(staging_root / "README.md", "\n".join(readme_lines))
         created = shutil.make_archive(str(archive_base), "zip", root_dir=str(staging_root))
         return Path(created)
     finally:
@@ -1024,7 +888,7 @@ def create_refresh_run(
         "skipped": skipped_rows,
         "deferred": deferred_rows,
         "generation_signature": generation_signature,
-        "artifact": "speaker-acoustic-units-timeline",
+        "artifact": "speaker-phone-timeline",
     }
     if not input_items:
         return None, None, summary
@@ -1232,11 +1096,7 @@ def list_audio_file_rows(
             duration_sec = _probe_duration_sec(source_path)
 
         timeline_summary = _timeline_summary_from_artifact(artifact_path)
-        media_dir = (
-            Path(str(catalog_row.get("run_dir") or "")) / "media" / media_id
-            if catalog_row and media_id
-            else None
-        )
+        media_dir = _media_dir_from_catalog_row(catalog_row) if catalog_row else None
 
         stat = source_path.stat()
         rows.append(
@@ -1262,10 +1122,7 @@ def list_audio_file_rows(
                 "run_id": run_id,
                 "media_id": media_id,
                 "has_timeline": bool(timeline_summary["has_timeline"]),
-                "has_audio": bool(
-                    media_dir is not None
-                    and (media_dir / "source" / "audio-normalized.wav").exists()
-                ),
+                "has_audio": False,
                 "turn_count": int(timeline_summary["turn_count"]),
                 "speaker_count": int(timeline_summary["speaker_count"]),
                 "source_file_identity": source_file_identity,
@@ -1283,7 +1140,8 @@ def list_audio_file_rows(
 
 
 def _iter_run_dirs(output_path: Path) -> list[Path]:
-    rows = list(output_path.glob("run-*"))
+    rows = list(_runs_root(output_path).glob("run-*"))
+    rows.extend(output_path.glob("run-*"))
     return sorted({item.resolve(): item for item in rows}.values(), key=lambda item: item.name, reverse=True)
 
 

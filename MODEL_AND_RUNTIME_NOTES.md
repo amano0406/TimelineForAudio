@@ -20,7 +20,7 @@ The current provisional model set is:
 
 The output contract intentionally uses `acoustic_units` instead of IPA, phoneme, or phone. The backend may change later without changing the primary artifact shape.
 
-When `computeMode` is `gpu`, the GPU worker uses `onnxruntime-gpu` and asks ZIPA ONNX Runtime to prefer `CUDAExecutionProvider`. The raw acoustic-unit artifact records the actual provider used so GPU fallback is visible.
+When `computeMode` is `gpu`, the worker must run as the GPU Docker flavor, PyTorch must see CUDA, and ZIPA ONNX Runtime must expose `CUDAExecutionProvider`. If any of these checks fail, the run fails early instead of silently falling back to CPU. The primary timeline artifact records the actual acoustic-unit execution provider.
 
 ## First-Run Downloads
 

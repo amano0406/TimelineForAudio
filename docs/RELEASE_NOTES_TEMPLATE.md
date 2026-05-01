@@ -1,6 +1,6 @@
 # TimelineForAudio v0.x.y Tech Preview
 
-Local-first speaker acoustic-units timeline tool for downstream LLM workflows.
+Local-first speaker phone-token timeline tool for downstream LLM workflows.
 This is a desktop-style local tool, not a hosted SaaS product.
 
 ## Baseline Support

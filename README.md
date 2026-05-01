@@ -1,6 +1,6 @@
 # TimelineForAudio
 
-TimelineForAudio is a local Docker-first CLI tool for turning configured audio directories into speaker-attributed acoustic-unit timelines.
+TimelineForAudio is a local Docker-first CLI tool for turning configured audio directories into speaker-attributed phone-token timelines.
 
 The product does not reconstruct readable text, infer real speaker names, or summarize meaning. It prepares audio in a structured form that downstream tools can use.
 
@@ -10,24 +10,24 @@ The product does not reconstruct readable text, infer real speaker names, or sum
 2. Normalize each audio file for processing without modifying the original file.
 3. Detect speech candidate ranges and keep original audio-relative timestamps.
 4. Run required speaker diarization with `pyannote/speaker-diarization-community-1`.
-5. Extract acoustic units with the current ZIPA large ONNX backend in small speech-candidate chunks.
-6. Write the primary JSON artifact.
+5. Extract phone tokens with the current ZIPA large ONNX backend in small speech-candidate chunks.
+6. Write the persistent JSON artifacts.
 
 Long recordings are not sent to ZIPA as one large inference request. Speech candidates are chunked internally and merged back to the original timeline.
 
-Primary artifact:
+Persistent per-item artifacts:
 
 ```text
-media/<media-id>/timeline/speaker-acoustic-units-timeline.json
+<item-id>/conversion-info.json
+<item-id>/speaker-phone-timeline.json
 ```
 
-Support artifacts:
+Processing-only files such as normalized WAV, speech candidate maps, and model scratch files are temporary. They are not kept in the master output.
+
+Run-level operational files are also written under `.timeline-for-audio/runs/<run-id>/` for CLI status and troubleshooting:
 
 ```text
-media/<media-id>/source/source-record.json
-media/<media-id>/segments/speech-candidates.json
-media/<media-id>/artifacts.json
-RUN_PERFORMANCE.json
+.timeline-for-audio/runs/<run-id>/RUN_PERFORMANCE.json
 ```
 
 ## Settings
@@ -75,6 +75,7 @@ Use PowerShell from the project directory.
 .\cli.ps1 items list --json
 .\cli.ps1 items remove --item-id item-a1b2c3d4e5f6,item-f6e5d4c3b2a1 --dry-run --json
 .\cli.ps1 items download --item-id item-a1b2c3d4e5f6,item-f6e5d4c3b2a1 --json
+.\cli.ps1 items download --all --json
 .\cli.ps1 runs list
 .\cli.ps1 runs show --run-id <RUN_ID>
 .\stop.ps1
@@ -82,7 +83,7 @@ Use PowerShell from the project directory.
 
 Use `.\cli.ps1 items refresh --reprocess-duplicates` only when you intentionally want to recompute unchanged files.
 
-`items remove` does not delete the source audio file. It removes the managed item rows and generated `run-*/media/<media-id>` directories for the selected `item_id` values, so the next `items refresh` treats those source files as unprocessed. Use `--dry-run` before deleting when a management UI needs a confirmation step.
+`items remove` does not delete the source audio file. It removes the managed item rows and generated `<item-id>` directories for the selected `item_id` values, so the next `items refresh` treats those source files as unprocessed. Use `--dry-run` before deleting when a management UI needs a confirmation step.
 
 For JSON output details used by management UIs or other products, see [docs/CLI_OUTPUTS.ja.md](docs/CLI_OUTPUTS.ja.md).
 
@@ -116,6 +117,7 @@ Main commands:
 .\cli.ps1 items refresh
 .\cli.ps1 items remove --item-id <ITEM_ID_1>,<ITEM_ID_2>
 .\cli.ps1 items download --item-id <ITEM_ID_1>,<ITEM_ID_2>
+.\cli.ps1 items download --all
 .\cli.ps1 runs list
 .\cli.ps1 runs show --run-id <RUN_ID>
 ```
@@ -138,7 +140,7 @@ Main commands:
 
 `items remove` does not delete the original source audio. It removes only the managed item data and generated artifacts for the selected `item_id` values. Multiple `item_id` values can be passed as a comma-separated list. If the source file still exists in an input directory, the next `items refresh` can recreate the item.
 
-`items download` retrieves generated data for the selected `item_id` values. When multiple IDs are provided, they are downloaded together. There is no separate `outputs` command group; generated data is treated as part of the item.
+`items download` retrieves generated data for the selected `item_id` values. When multiple IDs are provided, they are downloaded together. Use `items download --all` to export every currently available managed item. There is no separate `outputs` command group; generated data is treated as part of the item.
 
 ### Removed Old Commands
 
@@ -201,6 +203,6 @@ The timeline preserves:
 - best-effort recorded datetime when available
 - timezone metadata when known
 - speaker label
-- acoustic units
+- phone tokens
 
 TimelineForAudio intentionally does not use language hints, supplemental text, or downstream LLM text restoration.

@@ -262,6 +262,61 @@ function Get-TfaComposeArgs {
     return $args.ToArray()
 }
 
+function Get-TfaDesiredWorkerFlavor {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot
+    )
+
+    return Get-TfaComputeMode -RepoRoot $RepoRoot
+}
+
+function Get-TfaCurrentWorkerFlavor {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot,
+        [Parameter(Mandatory = $true)]
+        [string[]]$ComposeArgs
+    )
+
+    $docker = Get-TfaDockerCommand
+    $containerIds = & $docker compose @ComposeArgs ps -q worker 2>$null
+    $containerId = @($containerIds | Select-Object -First 1)
+    if (-not $containerId) {
+        return $null
+    }
+
+    $envRows = & $docker inspect $containerId --format '{{range .Config.Env}}{{println .}}{{end}}' 2>$null
+    if (-not $?) {
+        return $null
+    }
+
+    foreach ($row in $envRows) {
+        if ([string]$row -like "TIMELINE_FOR_AUDIO_WORKER_FLAVOR=*") {
+            $value = ([string]$row).Substring("TIMELINE_FOR_AUDIO_WORKER_FLAVOR=".Length)
+            $value = $value.Trim().ToLowerInvariant()
+            if ($value -in @("cpu", "gpu")) {
+                return $value
+            }
+        }
+    }
+
+    return $null
+}
+
+function Test-TfaWorkerFlavorMismatch {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot,
+        [Parameter(Mandatory = $true)]
+        [string[]]$ComposeArgs
+    )
+
+    $desired = Get-TfaDesiredWorkerFlavor -RepoRoot $RepoRoot
+    $current = Get-TfaCurrentWorkerFlavor -RepoRoot $RepoRoot -ComposeArgs $ComposeArgs
+    return ($current -and ($current -ne $desired))
+}
+
 function Invoke-TfaWithFileLock {
     param(
         [Parameter(Mandatory = $true)]

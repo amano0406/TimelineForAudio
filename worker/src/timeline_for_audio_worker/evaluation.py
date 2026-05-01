@@ -10,7 +10,8 @@ _SPACE_RE = re.compile(r"\s+")
 EVALUATION_SCHEMA_VERSION = 1
 
 _ARTIFACT_JSON_PATHS = {
-    "timeline": Path("timeline") / "speaker-acoustic-units-timeline.json",
+    "timeline": Path("speaker-phone-timeline.json"),
+    "speaker-phone-timeline": Path("speaker-phone-timeline.json"),
     "speaker-acoustic-units-timeline": Path("timeline") / "speaker-acoustic-units-timeline.json",
 }
 
@@ -21,6 +22,8 @@ def _read_json(path: Path) -> Any:
 
 def normalize_evaluation_artifact_kind(value: str | None) -> str:
     normalized = str(value or "timeline").strip().lower().replace("_", "-")
+    if normalized in {"speaker-phone", "speaker-phone-timeline"}:
+        return "speaker-phone-timeline"
     if normalized in {"speaker-acoustic-units", "speaker-acoustic-units-timeline"}:
         return "speaker-acoustic-units-timeline"
     if normalized in _ARTIFACT_JSON_PATHS:
@@ -91,6 +94,7 @@ def _row_text(row: dict[str, Any]) -> str:
 def _row_acoustic_units(row: dict[str, Any]) -> str:
     return str(
         row.get("acoustic_units")
+        or row.get("phone_tokens")
         or row.get("units")
         or ""
     )

@@ -150,7 +150,7 @@ class RunStoreTests(unittest.TestCase):
             self.assertEqual(1, summary["queued_count"])
             self.assertEqual(0, summary["skipped_count"])
             request = json.loads((Path(str(run_dir)) / "request.json").read_text(encoding="utf-8"))
-            self.assertEqual("speaker-acoustic-units-timeline", summary["artifact"])
+            self.assertEqual("speaker-phone-timeline", summary["artifact"])
             self.assertEqual("zipa-large-crctc-300k-onnx-v1", request["acoustic_unit_backend"])
 
     def test_create_refresh_run_skips_unchanged_catalog_items(self) -> None:
@@ -603,21 +603,24 @@ class RunStoreTests(unittest.TestCase):
                 "computeMode": "cpu",
             }
             signature = generation_signature_for_settings(settings=settings)
-            media_dir = runs_root / "run-prior" / "media" / "media-0001"
-            (media_dir / "timeline").mkdir(parents=True)
-            (media_dir / "timeline" / "speaker-acoustic-units-timeline.json").write_text(
-                '{"turns":[]}', encoding="utf-8"
-            )
-            (media_dir / "source").mkdir()
-            (media_dir / "source" / "source-record.json").write_text(
+            media_dir = runs_root / "media-0001"
+            media_dir.mkdir(parents=True)
+            (media_dir / "speaker-phone-timeline.json").write_text(
                 json.dumps(
                     {
-                        "display_name": "20260324_125832.wav",
-                        "original_path": str(audio_file),
-                        "captured_at": "2026-03-24T12:58:32+09:00",
+                        "source": {
+                            "display_name": "20260324_125832.wav",
+                            "original_path": str(audio_file),
+                            "captured_at": "2026-03-24T12:58:32+09:00",
+                        },
+                        "turns": [],
                     },
                     ensure_ascii=False,
                 ),
+                encoding="utf-8",
+            )
+            (media_dir / "conversion-info.json").write_text(
+                '{"artifact_type":"conversion-info"}',
                 encoding="utf-8",
             )
             catalog_dir = runs_root / ".timeline-for-audio"
@@ -626,8 +629,11 @@ class RunStoreTests(unittest.TestCase):
                 json.dumps(
                     {
                         "run_id": "run-prior",
-                        "run_dir": str(runs_root / "run-prior"),
+                        "run_dir": str(runs_root / ".timeline-for-audio" / "runs" / "run-prior"),
                         "media_id": "media-0001",
+                        "item_dir": str(media_dir),
+                        "artifact_path": str(media_dir / "speaker-phone-timeline.json"),
+                        "conversion_info_path": str(media_dir / "conversion-info.json"),
                         "source_hash": sha256_file(audio_file),
                         "conversion_signature": signature,
                         "source_id": "meetings",
@@ -645,11 +651,9 @@ class RunStoreTests(unittest.TestCase):
             self.assertTrue(archive_path.exists())
             with zipfile.ZipFile(archive_path) as archive:
                 names = set(archive.namelist())
-                self.assertIn("README.html", names)
-                self.assertIn("items.json", names)
-                self.assertIn("items/2026-03-24 12-58-32.json", names)
-                manifest = json.loads(archive.read("items.json").decode("utf-8"))
-                self.assertEqual(item_id, manifest["items"][0]["item_id"])
+                self.assertIn("README.md", names)
+                self.assertIn("media-0001/speaker-phone-timeline.json", names)
+                self.assertIn("media-0001/conversion-info.json", names)
 
 
 if __name__ == "__main__":

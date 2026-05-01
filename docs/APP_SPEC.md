@@ -1,6 +1,6 @@
 # App Spec
 
-TimelineForAudio is a local CLI product for building speaker-attributed acoustic-unit timelines from configured audio directories.
+TimelineForAudio is a local CLI product for building speaker-attributed phone-token timelines from configured audio directories.
 
 ## Scope
 
@@ -12,7 +12,7 @@ In scope:
 - duplicate skipping
 - speech candidate detection
 - required speaker diarization
-- acoustic-unit extraction
+- phone-token extraction
 - JSON timeline artifact generation
 
 Out of scope:
@@ -28,7 +28,7 @@ Out of scope:
 ## Primary Artifact
 
 ```text
-media/<media-id>/timeline/speaker-acoustic-units-timeline.json
+<item-id>/speaker-phone-timeline.json
 ```
 
 This artifact is the product contract.

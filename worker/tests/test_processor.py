@@ -1006,27 +1006,38 @@ class ProcessorQueueTests(unittest.TestCase):
                     manifest_item=manifest_item,
                 )
 
-            media_dir = run_dir / "media" / str(manifest_item.media_id)
-            timeline_path = media_dir / "timeline" / "speaker-acoustic-units-timeline.json"
+            media_dir = root / str(manifest_item.media_id)
+            timeline_path = media_dir / "speaker-phone-timeline.json"
+            conversion_info_path = media_dir / "conversion-info.json"
             self.assertEqual([], warnings)
             self.assertTrue(timeline_path.exists())
+            self.assertTrue(conversion_info_path.exists())
+            self.assertFalse((media_dir / ".work").exists())
             self.assertFalse((media_dir / "ai-raw").exists())
-            self.assertTrue((media_dir / "segments" / "speech-candidates.json").exists())
-            self.assertFalse((media_dir / "segments" / "speech-candidates.wav").exists())
+            self.assertFalse((media_dir / "segments").exists())
+            self.assertFalse((media_dir / "source").exists())
+            self.assertFalse((media_dir / "source.json").exists())
+            self.assertFalse((media_dir / "artifacts.json").exists())
+            self.assertFalse(
+                (media_dir / "timeline").exists()
+            )
             timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
-            self.assertEqual("speaker-acoustic-units-timeline", timeline["artifact_type"])
+            self.assertEqual("speaker-phone-timeline", timeline["artifact_type"])
             self.assertEqual(
                 "CUDAExecutionProvider",
-                timeline["pipeline"]["acoustic_unit_execution_provider"],
+                timeline["pipeline"]["phone_execution_provider"],
             )
             self.assertEqual("SPEAKER_01", timeline["turns"][0]["speaker"])
-            self.assertEqual("ko n ni chi wa", timeline["turns"][0]["acoustic_units"])
-            artifacts_payload = json.loads(
-                (media_dir / "artifacts.json").read_text(encoding="utf-8")
+            self.assertEqual("ko n ni chi wa", timeline["turns"][0]["phone_tokens"])
+            conversion_info = json.loads(conversion_info_path.read_text(encoding="utf-8"))
+            self.assertEqual("conversion-info", conversion_info["artifact_type"])
+            self.assertEqual(
+                "timeline_merge",
+                conversion_info["processing_flow"][-1]["name"],
             )
             self.assertEqual(
-                "speaker_acoustic_units_timeline",
-                artifacts_payload["primary_artifact_kind"],
+                "sample.wav",
+                conversion_info["source"]["file_name"],
             )
 
 

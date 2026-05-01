@@ -360,10 +360,10 @@ TimelineForAudio が管理している生成済み item を一覧します。入
 ```json
 [
   {
-    "item_id": "item-e3267fe99cb0",
+    "item_id": "sample-12345678",
     "media_id": "sample-12345678",
     "run_id": "run-20260430-100000-abcdef12",
-    "run_dir": "/host/output/master/run-20260430-100000-abcdef12",
+    "run_dir": "/host/output/master/.timeline-for-audio/runs/run-20260430-100000-abcdef12",
     "source_id": "timeline-audio",
     "source_relative_path": "meeting/sample.wav",
     "source_file_identity": "timeline-audio:meeting/sample.wav",
@@ -372,8 +372,8 @@ TimelineForAudio が管理している生成済み item を一覧します。入
     "conversion_signature": "signature...",
     "duration_sec": 12.34,
     "status": "available",
-    "artifact_path": "/host/output/master/run.../media/sample-12345678/timeline/speaker-acoustic-units-timeline.json",
-    "media_dir": "/host/output/master/run.../media/sample-12345678",
+    "artifact_path": "/host/output/master/sample-12345678/speaker-phone-timeline.json",
+    "media_dir": "/host/output/master/sample-12345678",
     "turn_count": 8,
     "speaker_count": 2
   }
@@ -414,7 +414,7 @@ TimelineForAudio が管理している生成済み item を一覧します。入
   "state": "skipped",
   "run_id": null,
   "run_dir": null,
-  "artifact": "speaker-acoustic-units-timeline",
+  "artifact": "speaker-phone-timeline",
   "queue_only": false,
   "total_discovered": 3,
   "missing_sources": [],
@@ -446,8 +446,8 @@ TimelineForAudio が管理している生成済み item を一覧します。入
 {
   "state": "pending",
   "run_id": "run-20260430-100000-abcdef12",
-  "run_dir": "/host/output/master/run-20260430-100000-abcdef12",
-  "artifact": "speaker-acoustic-units-timeline",
+  "run_dir": "/host/output/master/.timeline-for-audio/runs/run-20260430-100000-abcdef12",
+  "artifact": "speaker-phone-timeline",
   "queue_only": true,
   "queued_count": 3,
   "skipped_count": 0,
@@ -461,8 +461,8 @@ TimelineForAudio が管理している生成済み item を一覧します。入
 {
   "state": "completed",
   "run_id": "run-20260430-100000-abcdef12",
-  "run_dir": "/host/output/master/run-20260430-100000-abcdef12",
-  "artifact": "speaker-acoustic-units-timeline",
+  "run_dir": "/host/output/master/.timeline-for-audio/runs/run-20260430-100000-abcdef12",
+  "artifact": "speaker-phone-timeline",
   "queue_only": false,
   "queued_count": 3,
   "status": {
@@ -533,7 +533,7 @@ TimelineForAudio が管理している生成済み item を一覧します。入
   "catalog_rows_removed": 1,
   "media_dirs_removed": 0,
   "media_dirs": [
-    "/host/output/master/run-.../media/sample-12345678"
+    "/host/output/master/sample-12345678"
   ],
   "unsafe_media_dirs": [],
   "removed_rows": [
@@ -542,7 +542,7 @@ TimelineForAudio が管理している生成済み item を一覧します。入
       "source_file_identity": "timeline-audio:sample.wav",
       "run_id": "run-...",
       "media_id": "sample-12345678",
-      "run_dir": "/host/output/master/run-..."
+      "run_dir": "/host/output/master/.timeline-for-audio/runs/run-..."
     }
   ]
 }
@@ -566,6 +566,8 @@ TimelineForAudio が管理している生成済み item を一覧します。入
 ```powershell
 .\cli.ps1 items download --item-id item-a,item-b --json
 .\cli.ps1 items download --item-id item-a,item-b --output "C:\Temp\items.zip" --json
+.\cli.ps1 items download --all --json
+.\cli.ps1 items download --all --output "C:\Temp\all-items.zip" --json
 ```
 
 成功時:
@@ -573,16 +575,17 @@ TimelineForAudio が管理している生成済み item を一覧します。入
 ```json
 {
   "archive_path": "/host/output/master/timelineforaudio-items-20260430-100000.zip",
-  "item_ids": ["item-a", "item-b"]
+  "item_ids": ["item-a", "item-b"],
+  "all": false
 }
 ```
 
 ZIP 内容:
 
 ```text
-README.html
-items.json
-items/<代表日時またはラベル>.json
+README.md
+<item-id>/conversion-info.json
+<item-id>/speaker-phone-timeline.json
 ```
 
 エラーパターン:
@@ -592,6 +595,9 @@ items/<代表日時またはラベル>.json
 | item が存在しない | 非 0。`Item not found: ...` |
 | item はあるが artifact がない | 非 0。`No completed item artifacts are available to download.` |
 | `--item-id` が空 | 非 0。`At least one item id is required.` |
+| `--all` | `status=available` の全 item を ZIP に含める |
+| `--all` と `--item-id` を同時指定 | 非 0。`Use either --all or --item-id, not both.` |
+| `--all` で利用可能 item がない | 非 0。`At least one available item id is required.` |
 | `--output` に `.zip` を指定 | 指定 path に ZIP を作る |
 | `--output` に拡張子なしを指定 | その path に `.zip` を付けて作る |
 | `--output` なし | マスター保存先直下に `timelineforaudio-items-<timestamp>.zip` を作る |
@@ -760,63 +766,6 @@ Remote 取得失敗時:
 | `--include-remote` あり、取得失敗 | Hugging Face model 行に `huggingface.remote_status=error` |
 | `--output` 指定 | 同じ payload をファイルにも保存する |
 
-## `evaluate`
-
-用途:
-生成済み timeline JSON と reference JSON を比較します。
-
-```powershell
-.\cli.ps1 evaluate --run-id <RUN_ID> --media-id <MEDIA_ID> --reference ".\reference.json" --json
-.\cli.ps1 evaluate --prediction ".\prediction.json" --reference ".\reference.json" --json
-```
-
-成功時:
-
-```json
-{
-  "schema_version": 1,
-  "prediction_path": "/path/to/prediction.json",
-  "reference_path": "/path/to/reference.json",
-  "prediction_turns": 8,
-  "reference_turns": 8,
-  "text": {
-    "cer": null,
-    "edit_distance": null,
-    "reference_length": 0
-  },
-  "acoustic_units": {
-    "error_rate": 0.12,
-    "edit_distance": 10,
-    "reference_length": 83
-  },
-  "speaker": {
-    "label_accuracy": 0.875,
-    "time_mismatch_rate": 0.05,
-    "note": "time_mismatch_rate is a lightweight turn-level proxy, not full DER."
-  },
-  "artifact_kind": "timeline",
-  "run_id": "run-...",
-  "media_id": "media-...",
-  "report": {
-    "evaluation_json_path": "/path/to/evaluation.json",
-    "evaluation_markdown_path": "/path/to/EVALUATION.md"
-  }
-}
-```
-
-`report` は `--output-dir` を指定した場合、または `--run-id` から自動出力先を決められる場合に含まれます。
-
-パターン:
-
-| パターン | 返却 |
-|---|---|
-| `--prediction` 指定 | 指定 JSON を評価する。`run_id` / `media_id` は基本的に含まれない |
-| `--run-id` 指定 | run 配下の artifact を解決し、`run_id` を含める |
-| `--run-id` + `--media-id` | 指定 media の artifact を評価し、`media_id` を含める |
-| `--artifact-kind timeline` | `speaker-acoustic-units-timeline` と同等に扱う |
-| `--output-dir` 指定 | `report.evaluation_json_path` と `report.evaluation_markdown_path` を含める |
-| `--prediction` と `--run-id` を同時指定 | 非 0。`Use either --prediction or --run-id, not both.` |
-| `--prediction` も `--run-id` もない | 非 0。`Either --prediction or --run-id is required.` |
 
 ## 管理 UI 側の推奨判定
 

@@ -22,7 +22,12 @@ $composeArgs = Get-TfaComposeArgs -RepoRoot $repoRoot -IncludeGpu:$requiresConfi
 $docker = Get-TfaDockerCommand
 Invoke-TfaWithFileLock -RepoRoot $repoRoot -LockName "docker-compose.lock" -ScriptBlock {
     if ($requiresConfiguredWorker) {
-        & $docker compose --progress quiet @composeArgs up -d --remove-orphans worker
+        $upArgs = @("compose", "--progress", "quiet") + $composeArgs + @("up", "-d", "--remove-orphans")
+        if (Test-TfaWorkerFlavorMismatch -RepoRoot $repoRoot -ComposeArgs $composeArgs) {
+            $upArgs += "--force-recreate"
+        }
+        $upArgs += "worker"
+        & $docker @upArgs
     }
     else {
         & $docker compose --progress quiet @composeArgs up -d --no-recreate worker

@@ -152,9 +152,9 @@ def _providers_for_compute_mode(ort_module: Any, compute_mode: str | None) -> tu
             if "CPUExecutionProvider" in available:
                 providers.append("CPUExecutionProvider")
             return providers, warnings
-        warnings.append(
+        raise RuntimeError(
             "GPU compute mode was requested, but ONNX Runtime CUDAExecutionProvider "
-            "is not available. ZIPA is using CPUExecutionProvider."
+            "is not available. ZIPA cannot run in GPU mode."
         )
     if "CPUExecutionProvider" in available:
         return ["CPUExecutionProvider"], warnings

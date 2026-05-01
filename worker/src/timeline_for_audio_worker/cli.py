@@ -17,7 +17,6 @@ from .run_store import (
     app_config_from_settings,
     build_items_archive,
     create_refresh_run,
-    find_run_dir,
     list_items,
     list_audio_file_rows,
     list_runs,
@@ -127,7 +126,8 @@ def parse_args() -> argparse.Namespace:
     items_download = items_subparsers.add_parser(
         "download", help="Create a ZIP package for one or more managed items."
     )
-    items_download.add_argument("--item-id", required=True)
+    items_download.add_argument("--item-id", required=False)
+    items_download.add_argument("--all", action="store_true")
     items_download.add_argument("--output", type=Path, required=False)
     items_download.add_argument("--json", action="store_true")
 
@@ -144,24 +144,6 @@ def parse_args() -> argparse.Namespace:
     )
     models_list.add_argument("--output", type=Path, required=False)
     models_list.add_argument("--json", action="store_true")
-
-    evaluate_parser = subparsers.add_parser(
-        "evaluate", help="Compare produced turn artifact JSON with a reference JSON."
-    )
-    evaluate_parser.add_argument("--prediction", type=Path, required=False)
-    evaluate_parser.add_argument("--run-id", type=str, required=False)
-    evaluate_parser.add_argument("--media-id", type=str, required=False)
-    evaluate_parser.add_argument(
-        "--artifact-kind",
-        choices=[
-            "timeline",
-            "speaker-acoustic-units-timeline",
-        ],
-        default="timeline",
-    )
-    evaluate_parser.add_argument("--reference", type=Path, required=True)
-    evaluate_parser.add_argument("--output-dir", type=Path, required=False)
-    evaluate_parser.add_argument("--json", action="store_true")
 
     run_parser = subparsers.add_parser("process-run", help="Process one specific internal run directory.")
     run_parser.add_argument("--run-dir", type=Path, required=True)
@@ -234,17 +216,31 @@ def cmd_items_remove(
 
 def cmd_items_download(
     *,
-    item_id_value: str,
+    item_id_value: str | None,
+    include_all: bool,
     output: Path | None,
     as_json: bool,
 ) -> int:
+    if include_all and item_id_value:
+        raise ValueError("Use either --all or --item-id, not both.")
+    if include_all:
+        item_ids = [
+            str(row.get("item_id") or "")
+            for row in list_items()
+            if str(row.get("status") or "") == "available" and str(row.get("item_id") or "")
+        ]
+    else:
+        item_ids = _split_cli_ids(item_id_value or "")
+    if not item_ids:
+        raise ValueError("At least one available item id is required.")
     archive_path = build_items_archive(
-        item_ids=_split_cli_ids(item_id_value),
+        item_ids=item_ids,
         output=output,
     )
     payload = {
         "archive_path": str(archive_path),
-        "item_ids": _split_cli_ids(item_id_value),
+        "item_ids": item_ids,
+        "all": include_all,
     }
     _print_payload(payload, as_json)
     return 0
@@ -615,7 +611,7 @@ def cmd_items_refresh(
         "state": "skipped" if run_id is None else "pending",
         "run_id": run_id,
         "run_dir": str(run_dir) if run_dir is not None else None,
-        "artifact": "speaker-acoustic-units-timeline",
+        "artifact": "speaker-phone-timeline",
         "queue_only": queue_only,
         **summary,
     }
@@ -633,81 +629,6 @@ def cmd_items_refresh(
         payload["status"] = _rename_internal_id_to_run_id(status)
         payload["result"] = _rename_internal_id_to_run_id(result)
     _print_payload(_rename_internal_id_to_run_id(payload), as_json)
-    return 0
-
-
-def _format_metric(value: object) -> str:
-    if value is None:
-        return "-"
-    if isinstance(value, float):
-        return f"{value:.4f}"
-    return str(value)
-
-
-def cmd_evaluate(
-    *,
-    prediction_path: Path | None,
-    run_id: str | None,
-    media_id: str | None,
-    artifact_kind: str,
-    reference_path: Path,
-    output_dir: Path | None,
-    as_json: bool,
-) -> int:
-    from .evaluation import (
-        evaluate_turn_artifacts,
-        normalize_evaluation_artifact_kind,
-        resolve_run_prediction_path,
-        write_evaluation_report,
-    )
-
-    if prediction_path is not None and run_id is not None:
-        raise ValueError("Use either --prediction or --run-id, not both.")
-    if prediction_path is None:
-        if not run_id:
-            raise ValueError("Either --prediction or --run-id is required.")
-        run_dir = find_run_dir(run_id)
-        normalized_artifact_kind = normalize_evaluation_artifact_kind(artifact_kind)
-        prediction_path = resolve_run_prediction_path(
-            run_dir=run_dir,
-            media_id=media_id,
-            artifact_kind=normalized_artifact_kind,
-        )
-        if output_dir is None:
-            resolved_media_id = prediction_path.parents[1].name
-            output_dir = run_dir / "evaluation" / f"{resolved_media_id}-{normalized_artifact_kind}"
-    else:
-        normalized_artifact_kind = normalize_evaluation_artifact_kind(artifact_kind)
-
-    payload = evaluate_turn_artifacts(
-        prediction_path=prediction_path,
-        reference_path=reference_path,
-    )
-    payload["artifact_kind"] = normalized_artifact_kind
-    if run_id:
-        payload["run_id"] = run_id
-    if media_id:
-        payload["media_id"] = media_id
-    if output_dir is not None:
-        payload["report"] = write_evaluation_report(payload, output_dir)
-
-    if as_json:
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
-        return 0
-
-    print(f"prediction_turns: {payload['prediction_turns']}")
-    print(f"reference_turns: {payload['reference_turns']}")
-    text_metrics = payload["text"]
-    acoustic_unit_metrics = payload["acoustic_units"]
-    speaker_metrics = payload["speaker"]
-    print(f"text_cer: {_format_metric(text_metrics['cer'])}")
-    print(f"acoustic_unit_error_rate: {_format_metric(acoustic_unit_metrics['error_rate'])}")
-    print(f"speaker_label_accuracy: {_format_metric(speaker_metrics['label_accuracy'])}")
-    print(f"speaker_time_mismatch_rate: {_format_metric(speaker_metrics['time_mismatch_rate'])}")
-    if payload.get("report"):
-        report = payload["report"]
-        print(f"evaluation_json_path: {report['evaluation_json_path']}")
-        print(f"evaluation_markdown_path: {report['evaluation_markdown_path']}")
     return 0
 
 
@@ -773,6 +694,7 @@ def main() -> int:
         if args.items_command == "download":
             return cmd_items_download(
                 item_id_value=args.item_id,
+                include_all=args.all,
                 output=args.output,
                 as_json=args.json,
             )
@@ -783,16 +705,6 @@ def main() -> int:
                 output=args.output,
                 as_json=args.json,
             )
-    if args.command == "evaluate":
-        return cmd_evaluate(
-            prediction_path=args.prediction,
-            run_id=args.run_id,
-            media_id=args.media_id,
-            artifact_kind=args.artifact_kind,
-            reference_path=args.reference,
-            output_dir=args.output_dir,
-            as_json=args.json,
-        )
     if args.command == "process-run":
         return cmd_process_run(args.run_dir)
     if args.command == "daemon":

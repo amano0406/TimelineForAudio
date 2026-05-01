@@ -171,7 +171,10 @@ def build_eta_predictor(
     if not output_root.exists():
         return EtaPredictor(samples, normalized_compute_mode)
 
-    run_dirs = sorted(output_root.glob("run-*"))
+    run_dirs = sorted(
+        list((output_root / ".timeline-for-audio" / "runs").glob("run-*"))
+        + list(output_root.glob("run-*"))
+    )
     seen_dirs: set[Path] = set()
     for run_dir in run_dirs:
         resolved = run_dir.resolve()

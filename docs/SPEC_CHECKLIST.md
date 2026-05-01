@@ -6,7 +6,7 @@
 - [x] 話者は `SPEAKER_00` のような機械ラベルで扱う
 - [x] 実名、本人性、性別、年齢、属性は推測しない
 - [x] 意味解釈、要約、可読テキスト復元はこの製品の責務から外す
-- [x] 主成果物を `speaker-acoustic-units-timeline.json` にする
+- [x] 主成果物を `speaker-phone-timeline.json` にする
 
 ## Source Audio Handling
 
@@ -23,16 +23,14 @@
 - [x] SHA-256でファイル識別情報を持つ
 - [x] 発話候補区間を作る
 - [x] `pyannote/speaker-diarization-community-1` で話者分離する
-- [x] ZIPA large ONNXバックエンドで音響単位を抽出する
-- [x] 話者、時刻、音響単位を1つのタイムラインJSONに統合する
+- [x] ZIPA large ONNXバックエンドで phone token を抽出する
+- [x] 話者、時刻、phone token を1つのタイムラインJSONに統合する
 
 ## Artifacts
 
-- [x] `source/source-record.json`
-- [x] `segments/speech-candidates.json`
-- [x] `timeline/speaker-acoustic-units-timeline.json`
-- [x] `timeline/speaker-acoustic-units-timeline.md`
-- [x] `artifacts.json`
+- [x] `conversion-info.json`
+- [x] `speaker-phone-timeline.json`
+- [x] 正規化音声、発話候補、モデル作業用ファイルをマスター出力に残さない
 - [x] `RUN_PERFORMANCE.json`
 
 ## Reuse And Settings

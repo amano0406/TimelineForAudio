@@ -18,7 +18,7 @@ ACOUSTIC_UNIT_BACKEND_NAME = ACOUSTIC_UNIT_BACKEND
 DIARIZATION_MODEL_ID = "pyannote/speaker-diarization-community-1"
 VAD_BACKEND = "ffmpeg-silencedetect"
 VAD_MODEL_ID = "ffmpeg-silencedetect-noise-35db"
-TIMELINE_SCHEMA = "speaker-acoustic-units-timeline-v1"
+TIMELINE_SCHEMA = "speaker-phone-timeline-v1"
 
 
 def resolve_acoustic_unit_model_id() -> str:
@@ -49,7 +49,7 @@ def build_generation_signature(
         "pipeline": "TimelineForAudio",
         "pipeline_version": PIPELINE_VERSION,
         "compute_mode": normalize_compute_mode(compute_mode),
-        "acoustic_units": {
+        "phone_recognition": {
             "backend": ACOUSTIC_UNIT_BACKEND,
             "model_id": ACOUSTIC_UNIT_MODEL_ID,
             "unit_type": ACOUSTIC_UNIT_TYPE,
@@ -68,7 +68,7 @@ def build_generation_signature(
         },
         "artifact": {
             "schema": TIMELINE_SCHEMA,
-            "path": "timeline/speaker-acoustic-units-timeline.json",
+            "path": "speaker-phone-timeline.json",
         },
     }
     canonical = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))

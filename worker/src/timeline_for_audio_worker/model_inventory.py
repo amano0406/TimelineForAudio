@@ -110,8 +110,8 @@ def _configured_model_rows(*, settings: dict[str, Any]) -> list[ModelInventoryRo
             unit_type="phone_like",
             url=HUGGING_FACE_MODEL_URL.format(model_id=resolve_acoustic_unit_model_id()),
             notes=[
-                "Used to extract phone-like acoustic units.",
-                "TimelineForAudio stores this as acoustic_units, not readable text.",
+                "Used to extract phone-like tokens.",
+                "TimelineForAudio stores this as phone_tokens, not readable text.",
             ],
         ),
         ModelInventoryRow(

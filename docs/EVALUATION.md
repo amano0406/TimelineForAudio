@@ -11,13 +11,13 @@ timeline
 Default resolved path:
 
 ```text
-media/<media-id>/timeline/speaker-acoustic-units-timeline.json
+<item-id>/speaker-phone-timeline.json
 ```
 
 Metrics:
 
 - text CER when reference text exists
-- acoustic unit error rate when reference acoustic units exist
+- phone-token error rate when reference phone tokens exist
 - speaker label accuracy when reference speakers exist
 - lightweight speaker time mismatch proxy
 

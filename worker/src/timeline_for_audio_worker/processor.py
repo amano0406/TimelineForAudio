@@ -20,7 +20,6 @@ from .acoustic_units import (
     best_speaker_for_interval,
     generate_acoustic_unit_turns,
 )
-from .artifacts import write_media_artifacts_index
 from .catalog import append_catalog_rows, catalog_key, catalog_path, load_catalog
 from .contracts import RunRequest, RunResult, RunStatus, ManifestItem
 from .diarization import generate_speaker_turns
@@ -39,6 +38,7 @@ from .fs_utils import (
 )
 from .hashing import sha256_file
 from .settings import configured_path, load_settings, uploads_root
+from .runtime_profile import assert_runtime_supports_compute_mode
 from .vad_profile import vad_config_for_profile
 
 _ITEM_STAGE_BOUNDS: dict[str, tuple[float, float]] = {
@@ -171,6 +171,18 @@ def _delete_run_dir(run_dir: Path, request: RunRequest | None = None) -> None:
     shutil.rmtree(run_dir, ignore_errors=True)
 
 
+def _remove_obsolete_media_artifacts(media_dir: Path) -> None:
+    for relative_path in ("source", "segments", "ai-raw", ".work", "timeline"):
+        shutil.rmtree(media_dir / relative_path, ignore_errors=True)
+    for relative_path in (
+        "source.json",
+        "artifacts.json",
+        "README.md",
+        "speaker-acoustic-units-timeline.json",
+    ):
+        (media_dir / relative_path).unlink(missing_ok=True)
+
+
 def _resolve_duplicate_artifact_path(duplicate: dict[str, Any] | None) -> Path | None:
     if not duplicate:
         return None
@@ -180,12 +192,29 @@ def _resolve_duplicate_artifact_path(duplicate: dict[str, Any] | None) -> Path |
         candidate = Path(str(timeline_path))
         if candidate.exists():
             return candidate
+    artifact_path = duplicate.get("artifact_path")
+    if artifact_path:
+        candidate = Path(str(artifact_path))
+        if candidate.exists():
+            return candidate
+    item_dir = duplicate.get("item_dir") or duplicate.get("media_dir")
+    if item_dir:
+        for relative_path in (
+            ("speaker-phone-timeline.json",),
+            ("speaker-acoustic-units-timeline.json",),
+            ("timeline", "speaker-acoustic-units-timeline.json"),
+        ):
+            candidate = Path(str(item_dir)).joinpath(*relative_path)
+            if candidate.exists():
+                return candidate
 
     run_dir = duplicate.get("run_dir")
     media_id = duplicate.get("audio_id") or duplicate.get("media_id")
     if run_dir and media_id:
         media_dir = Path(str(run_dir)) / "media" / str(media_id)
         for relative_path in (
+            ("speaker-phone-timeline.json",),
+            ("speaker-acoustic-units-timeline.json",),
             ("timeline", "speaker-acoustic-units-timeline.json"),
         ):
             candidate = media_dir.joinpath(*relative_path)
@@ -535,7 +564,7 @@ def _write_support_docs(run_dir: Path, request: RunRequest) -> None:
             f"- Generation signature: `{request.generation_signature}`",
             "- Notes:",
             "  - TimelineForAudio does not interpret meaning or restore readable text.",
-            "  - The primary artifact is `timeline/speaker-acoustic-units-timeline.json`.",
+            "  - Per-item master artifacts are `conversion-info.json` and `speaker-phone-timeline.json`.",
             "  - Timestamps are mapped back to the original audio timeline.",
             "  - Speaker labels are mechanical labels such as `SPEAKER_00`; identities are not inferred.",
             "",
@@ -587,75 +616,6 @@ def _parse_filename_recorded_at(path: Path) -> datetime | None:
     return None
 
 
-def _timestamp_label(seconds: float) -> str:
-    total_ms = max(0, int(round(float(seconds or 0.0) * 1000)))
-    hours, rem = divmod(total_ms, 3_600_000)
-    minutes, rem = divmod(rem, 60_000)
-    secs, millis = divmod(rem, 1000)
-    return f"{hours:02}:{minutes:02}:{secs:02}.{millis:03}"
-
-
-def _write_timeline_readme(path: Path) -> None:
-    lines = [
-        "# Speaker Acoustic Units Timeline",
-        "",
-        "This directory contains the main TimelineForAudio artifact.",
-        "",
-        "- `speaker-acoustic-units-timeline.json`: speaker labels, original-audio timestamps, and acoustic units.",
-        "- `source/source-record.json`: source file metadata used to preserve the original timeline.",
-        "- `segments/speech-candidates.json`: speech candidate ranges used for efficient processing.",
-        "",
-        "TimelineForAudio does not infer real speaker names and does not reconstruct readable text.",
-        "",
-    ]
-    write_text(path, "\n".join(lines))
-
-
-def _write_timeline_preview(path: Path, payload: dict[str, Any]) -> None:
-    source = payload.get("source") or {}
-    lines = [
-        "# Speaker Acoustic Units Timeline",
-        "",
-        f"- Source File: `{source.get('file_name') or source.get('display_name') or 'unknown'}`",
-        f"- Recorded At: `{source.get('recorded_at') or 'unknown'}`",
-        f"- Turn Count: `{payload.get('turn_count', 0)}`",
-        "",
-    ]
-    for turn in payload.get("turns") or []:
-        start = float(turn.get("start_sec", 0.0) or 0.0)
-        end = float(turn.get("end_sec", start) or start)
-        lines.extend(
-            [
-                f"## Turn {int(turn.get('index') or 0):03d}",
-                f"Time: `{_timestamp_label(start)} - {_timestamp_label(end)}`",
-                f"Speaker: `{turn.get('speaker') or 'SPEAKER_00'}`",
-                f"Acoustic Units: `{turn.get('acoustic_units') or ''}`",
-                "",
-            ]
-        )
-    write_text(path, "\n".join(lines).rstrip() + "\n")
-
-
-def _artifact_entry(
-    *,
-    media_dir: Path,
-    kind: str,
-    title: str,
-    role: str,
-    path: Path,
-) -> dict[str, Any] | None:
-    if not path.exists():
-        return None
-    return {
-        "kind": kind,
-        "title": title,
-        "display_name": title,
-        "role": role,
-        "format": path.suffix.lstrip(".").lower() or "text",
-        "relative_path": path.relative_to(media_dir).as_posix(),
-    }
-
-
 def _process_one_item(
     *,
     run_dir: Path,
@@ -666,159 +626,124 @@ def _process_one_item(
     ensure_not_delete_requested: Callable[[str | None], None] | None = None,
 ) -> list[str]:
     source_path = _resolve_input_path(item)
-    media_dir = ensure_dir(run_dir / "media" / str(manifest_item.media_id))
-    source_dir = ensure_dir(media_dir / "source")
-    segments_dir = ensure_dir(media_dir / "segments")
-    timeline_dir = ensure_dir(media_dir / "timeline")
+    media_dir = ensure_dir(Path(request.output_root_path) / str(manifest_item.media_id))
+    _remove_obsolete_media_artifacts(media_dir)
+    work_dir = ensure_dir(run_dir / "work" / str(manifest_item.media_id))
 
-    normalized_audio_path = source_dir / "audio-normalized.wav"
-    speech_candidate_audio_path = segments_dir / "speech-candidates.wav"
+    normalized_audio_path = work_dir / "audio-normalized.wav"
+    speech_candidate_audio_path = work_dir / "speech-candidates.wav"
 
-    if on_stage:
-        on_stage("extract_audio", "Normalizing source audio.")
-    extract_audio(source_path, normalized_audio_path)
-    if ensure_not_delete_requested:
-        ensure_not_delete_requested("extract_audio")
+    try:
+        if on_stage:
+            on_stage("extract_audio", "Normalizing source audio.")
+        extract_audio(source_path, normalized_audio_path)
+        if ensure_not_delete_requested:
+            ensure_not_delete_requested("extract_audio")
 
-    source_record = _source_record_payload(
-        source_path=source_path,
-        item=item,
-        manifest_item=manifest_item,
-    )
-    write_json_atomic(source_dir / "source-record.json", source_record)
-    write_json_atomic(media_dir / "source.json", source_record)
-
-    if on_stage:
-        on_stage("detect_speech_candidates", "Detecting speech candidates.")
-    vad_parameters = vad_config_for_profile(request.vad_profile)["vad_parameters"]
-    cut_map = trim_audio(
-        normalized_audio_path,
-        speech_candidate_audio_path,
-        manifest_item.duration_seconds,
-        min_silence_duration_ms=int(vad_parameters.get("min_silence_duration_ms", 500)),
-        write_audio=False,
-    )
-    write_json_atomic(segments_dir / "speech-candidate-map.json", cut_map)
-    write_json_atomic(segments_dir / "speech-candidates.json", _candidate_payload(cut_map))
-    if ensure_not_delete_requested:
-        ensure_not_delete_requested("detect_speech_candidates")
-
-    if on_stage:
-        on_stage("diarize_audio", "Running required speaker diarization.")
-    speaker_payload = generate_speaker_turns(
-        source_name=item.display_name,
-        audio_path=normalized_audio_path,
-        compute_mode=request.compute_mode,
-    )
-    if ensure_not_delete_requested:
-        ensure_not_delete_requested("diarize_audio")
-
-    speaker_labels = {
-        str(turn.get("speaker") or "").strip()
-        for turn in speaker_payload.get("turns", [])
-        if str(turn.get("speaker") or "").strip()
-    }
-    manifest_item.speaker_count = len(speaker_labels) or None
-    manifest_item.speaker_count_status = "confirmed" if speaker_labels else "unavailable"
-    manifest_item.speaker_count_note = None if speaker_labels else "No speaker turns were available."
-
-    if on_stage:
-        on_stage("extract_acoustic_units", "Extracting acoustic units.")
-    acoustic_result = generate_acoustic_unit_turns(
-        audio_path=normalized_audio_path,
-        cut_map=cut_map,
-        compute_mode=request.compute_mode,
-        span_time_basis="original",
-    )
-    acoustic_turn_rows = [
-        {
-            "index": turn.index,
-            "start_sec": turn.start,
-            "end_sec": turn.end,
-            "acoustic_units": turn.acoustic_units,
-            "unit_type": acoustic_result.unit_type,
-            "confidence": turn.confidence,
-        }
-        for turn in acoustic_result.turns
-    ]
-    acoustic_payload = {
-        "schema_version": 1,
-        "backend": acoustic_result.backend_name,
-        "model_id": acoustic_result.model_id,
-        "status": acoustic_result.status,
-        "unit_type": acoustic_result.unit_type,
-        "execution_provider": acoustic_result.execution_provider,
-        "available_execution_providers": list(acoustic_result.available_execution_providers),
-        "warning_count": len(acoustic_result.warnings),
-        "warnings": acoustic_result.warnings,
-        "turn_count": len(acoustic_turn_rows),
-        "turns": acoustic_turn_rows,
-    }
-    if acoustic_result.status == "unavailable":
-        raise RuntimeError(
-            "; ".join(acoustic_result.warnings) or "Acoustic unit extraction failed."
+        source_record = _source_record_payload(
+            source_path=source_path,
+            item=item,
+            manifest_item=manifest_item,
         )
-    if ensure_not_delete_requested:
-        ensure_not_delete_requested("extract_acoustic_units")
 
-    if on_stage:
-        on_stage("generate_artifacts", "Writing speaker acoustic unit timeline.")
-    timeline_payload = _build_speaker_acoustic_units_timeline(
-        source_record=source_record,
-        speaker_payload=speaker_payload,
-        acoustic_payload=acoustic_payload,
-        conversion_signature=request.generation_signature,
-        pipeline_version=request.pipeline_version,
-    )
-    timeline_json_path = timeline_dir / "speaker-acoustic-units-timeline.json"
-    timeline_preview_path = timeline_dir / "speaker-acoustic-units-timeline.md"
-    write_json_atomic(timeline_json_path, timeline_payload)
-    _write_timeline_preview(timeline_preview_path, timeline_payload)
-    _write_timeline_readme(media_dir / "README.md")
+        if on_stage:
+            on_stage("detect_speech_candidates", "Detecting speech candidates.")
+        vad_parameters = vad_config_for_profile(request.vad_profile)["vad_parameters"]
+        cut_map = trim_audio(
+            normalized_audio_path,
+            speech_candidate_audio_path,
+            manifest_item.duration_seconds,
+            min_silence_duration_ms=int(vad_parameters.get("min_silence_duration_ms", 500)),
+            write_audio=False,
+        )
+        if ensure_not_delete_requested:
+            ensure_not_delete_requested("detect_speech_candidates")
 
-    artifacts = [
-        entry
-        for entry in [
-            _artifact_entry(
-                media_dir=media_dir,
-                kind="speaker_acoustic_units_timeline",
-                title="Speaker Acoustic Units Timeline",
-                role="primary",
-                path=timeline_json_path,
-            ),
-            _artifact_entry(
-                media_dir=media_dir,
-                kind="speaker_acoustic_units_timeline_preview",
-                title="Speaker Acoustic Units Timeline Preview",
-                role="support",
-                path=timeline_preview_path,
-            ),
-            _artifact_entry(
-                media_dir=media_dir,
-                kind="speech_candidates",
-                title="Speech Candidates",
-                role="support",
-                path=segments_dir / "speech-candidates.json",
-            ),
-            _artifact_entry(
-                media_dir=media_dir,
-                kind="source_record",
-                title="Source Record",
-                role="support",
-                path=source_dir / "source-record.json",
-            ),
+        if on_stage:
+            on_stage("diarize_audio", "Running required speaker diarization.")
+        speaker_payload = generate_speaker_turns(
+            source_name=item.display_name,
+            audio_path=normalized_audio_path,
+            compute_mode=request.compute_mode,
+        )
+        if ensure_not_delete_requested:
+            ensure_not_delete_requested("diarize_audio")
+
+        speaker_labels = {
+            str(turn.get("speaker") or "").strip()
+            for turn in speaker_payload.get("turns", [])
+            if str(turn.get("speaker") or "").strip()
+        }
+        manifest_item.speaker_count = len(speaker_labels) or None
+        manifest_item.speaker_count_status = "confirmed" if speaker_labels else "unavailable"
+        manifest_item.speaker_count_note = (
+            None if speaker_labels else "No speaker turns were available."
+        )
+
+        if on_stage:
+            on_stage("extract_acoustic_units", "Extracting acoustic units.")
+        acoustic_result = generate_acoustic_unit_turns(
+            audio_path=normalized_audio_path,
+            cut_map=cut_map,
+            compute_mode=request.compute_mode,
+            span_time_basis="original",
+        )
+        acoustic_turn_rows = [
+            {
+                "index": turn.index,
+                "start_sec": turn.start,
+                "end_sec": turn.end,
+                "phone_tokens": turn.acoustic_units,
+                "unit_type": acoustic_result.unit_type,
+                "confidence": turn.confidence,
+            }
+            for turn in acoustic_result.turns
         ]
-        if entry is not None
-    ]
-    write_media_artifacts_index(
-        media_dir=media_dir,
-        media_id=str(manifest_item.media_id),
-        primary_artifact_kind="speaker_acoustic_units_timeline",
-        artifacts=artifacts,
-    )
-    if ensure_not_delete_requested:
-        ensure_not_delete_requested("generate_artifacts")
-    return list(acoustic_result.warnings)
+        acoustic_payload = {
+            "schema_version": 1,
+            "backend": acoustic_result.backend_name,
+            "model_id": acoustic_result.model_id,
+            "status": acoustic_result.status,
+            "unit_type": acoustic_result.unit_type,
+            "execution_provider": acoustic_result.execution_provider,
+            "available_execution_providers": list(acoustic_result.available_execution_providers),
+            "warning_count": len(acoustic_result.warnings),
+            "warnings": acoustic_result.warnings,
+            "turn_count": len(acoustic_turn_rows),
+            "turns": acoustic_turn_rows,
+        }
+        if acoustic_result.status == "unavailable":
+            raise RuntimeError(
+                "; ".join(acoustic_result.warnings) or "Acoustic unit extraction failed."
+            )
+        if ensure_not_delete_requested:
+            ensure_not_delete_requested("extract_acoustic_units")
+
+        if on_stage:
+            on_stage("generate_artifacts", "Writing final timeline artifacts.")
+        timeline_payload = _build_speaker_acoustic_units_timeline(
+            source_record=source_record,
+            speaker_payload=speaker_payload,
+            acoustic_payload=acoustic_payload,
+            conversion_signature=request.generation_signature,
+            pipeline_version=request.pipeline_version,
+        )
+        conversion_info_payload = _build_conversion_info_payload(
+            request=request,
+            source_record=source_record,
+            cut_map=cut_map,
+            speaker_payload=speaker_payload,
+            acoustic_payload=acoustic_payload,
+        )
+        timeline_json_path = media_dir / "speaker-phone-timeline.json"
+        conversion_info_path = media_dir / "conversion-info.json"
+        write_json_atomic(timeline_json_path, timeline_payload)
+        write_json_atomic(conversion_info_path, conversion_info_payload)
+        if ensure_not_delete_requested:
+            ensure_not_delete_requested("generate_artifacts")
+        return list(acoustic_result.warnings)
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
 
 
 def _recorded_at_metadata(source_path: Path, manifest_item: ManifestItem) -> dict[str, Any]:
@@ -883,20 +808,85 @@ def _source_record_payload(
     }
 
 
-def _candidate_payload(cut_map: list[dict[str, float]]) -> dict[str, Any]:
+def _build_conversion_info_payload(
+    *,
+    request: RunRequest,
+    source_record: dict[str, Any],
+    cut_map: list[dict[str, float]],
+    speaker_payload: dict[str, Any],
+    acoustic_payload: dict[str, Any],
+) -> dict[str, Any]:
+    vad_config = vad_config_for_profile(request.vad_profile)
     return {
         "schema_version": 1,
-        "candidate_count": len(cut_map),
-        "candidates": [
+        "artifact_type": "conversion-info",
+        "generated_at": now_iso(),
+        "source": source_record,
+        "pipeline": {
+            "pipeline_version": request.pipeline_version,
+            "generation_signature": request.generation_signature,
+            "compute_mode": request.compute_mode,
+            "speech_activity_detection": {
+                "backend": request.vad_backend,
+                "model_id": request.vad_model_id,
+                "profile": vad_config["profile"],
+                "parameters": vad_config["vad_parameters"],
+            },
+            "speaker_diarization": {
+                "required": True,
+                "backend": speaker_payload.get("backend"),
+                "model_id": speaker_payload.get("model_id"),
+                "turn_count": speaker_payload.get("turn_count"),
+            },
+            "phone_recognition": {
+                "backend": acoustic_payload.get("backend"),
+                "model_id": acoustic_payload.get("model_id"),
+                "unit_type": acoustic_payload.get("unit_type"),
+                "execution_provider": acoustic_payload.get("execution_provider"),
+                "available_execution_providers": acoustic_payload.get(
+                    "available_execution_providers"
+                ),
+                "turn_count": acoustic_payload.get("turn_count"),
+                "warning_count": acoustic_payload.get("warning_count"),
+            },
+        },
+        "processing_flow": [
             {
-                "index": index,
-                "start_sec": float(row.get("original_start", 0.0) or 0.0),
-                "end_sec": float(row.get("original_end", 0.0) or 0.0),
-                "trimmed_start_sec": float(row.get("trimmed_start", 0.0) or 0.0),
-                "trimmed_end_sec": float(row.get("trimmed_end", 0.0) or 0.0),
-            }
-            for index, row in enumerate(cut_map, start=1)
+                "step": 1,
+                "name": "audio_normalization",
+                "description": "Decode source audio into the worker's analysis format.",
+                "persistent_output": False,
+            },
+            {
+                "step": 2,
+                "name": "speech_activity_detection",
+                "description": "Find source-audio ranges that are likely to contain speech.",
+                "persistent_output": False,
+            },
+            {
+                "step": 3,
+                "name": "speaker_diarization",
+                "description": "Assign mechanical speaker labels to source-audio time ranges.",
+                "persistent_output": False,
+            },
+            {
+                "step": 4,
+                "name": "phone_recognition",
+                "description": "Extract phone-like tokens from speech candidate ranges.",
+                "persistent_output": False,
+            },
+            {
+                "step": 5,
+                "name": "timeline_merge",
+                "description": "Merge speaker labels, timestamps, and phone tokens into the final timeline JSON.",
+                "persistent_output": True,
+            },
         ],
+        "counts": {
+            "speech_candidate_ranges": len(cut_map),
+            "speaker_turns": len(speaker_payload.get("turns") or []),
+            "phone_turns": len(acoustic_payload.get("turns") or []),
+        },
     }
 
 
@@ -924,23 +914,27 @@ def _build_speaker_acoustic_units_timeline(
                 "absolute_start_at": _absolute_at(recorded_at, start),
                 "absolute_end_at": _absolute_at(recorded_at, end),
                 "speaker": speaker,
-                "acoustic_units": str(turn.get("acoustic_units") or ""),
+                "phone_tokens": str(
+                    turn.get("phone_tokens")
+                    or turn.get("acoustic_units")
+                    or ""
+                ),
                 "unit_type": str(acoustic_payload.get("unit_type") or ACOUSTIC_UNIT_TYPE),
                 "confidence": turn.get("confidence"),
             }
         )
     return {
         "schema_version": 1,
-        "artifact_type": "speaker-acoustic-units-timeline",
+        "artifact_type": "speaker-phone-timeline",
         "source": source_record,
         "pipeline": {
             "pipeline_version": pipeline_version,
             "generation_signature": conversion_signature,
             "speaker_backend": speaker_payload.get("backend"),
             "speaker_model_id": speaker_payload.get("model_id"),
-            "acoustic_unit_backend": acoustic_payload.get("backend"),
-            "acoustic_unit_model_id": acoustic_payload.get("model_id"),
-            "acoustic_unit_execution_provider": acoustic_payload.get("execution_provider"),
+            "phone_backend": acoustic_payload.get("backend"),
+            "phone_model_id": acoustic_payload.get("model_id"),
+            "phone_execution_provider": acoustic_payload.get("execution_provider"),
             "unit_type": acoustic_payload.get("unit_type"),
         },
         "turn_count": len(turns),
@@ -995,7 +989,8 @@ def _collect_runs_by_state(*states: str) -> list[Path]:
     root_path = configured_path(root_text)
     if not root_path.exists():
         return rows
-    run_dirs = list(root_path.glob("run-*"))
+    run_dirs = list((root_path / ".timeline-for-audio" / "runs").glob("run-*"))
+    run_dirs.extend(root_path.glob("run-*"))
     for candidate in sorted({item.resolve(): item for item in run_dirs}.values()):
         if not candidate.is_dir():
             continue
@@ -1043,6 +1038,7 @@ def process_run(run_dir: Path | None = None) -> bool:
 
     log_path = _run_log_path(run_dir)
     request = _load_request(run_dir)
+    assert_runtime_supports_compute_mode(request.compute_mode)
     _raise_if_delete_requested(run_dir, "queued")
     _write_support_docs(run_dir, request)
     status = RunStatus(
@@ -1493,6 +1489,18 @@ def process_run(run_dir: Path | None = None) -> bool:
                         "run_id": request.run_id,
                         "run_dir": str(run_dir),
                         "audio_id": manifest_item.media_id,
+                        "media_id": manifest_item.media_id,
+                        "item_dir": str(Path(request.output_root_path) / str(manifest_item.media_id)),
+                        "artifact_path": str(
+                            Path(request.output_root_path)
+                            / str(manifest_item.media_id)
+                            / "speaker-phone-timeline.json"
+                        ),
+                        "conversion_info_path": str(
+                            Path(request.output_root_path)
+                            / str(manifest_item.media_id)
+                            / "conversion-info.json"
+                        ),
                         "source_hash": manifest_item.sha256,
                         "conversion_signature": manifest_item.conversion_signature,
                         "source_id": manifest_item.source_id,
