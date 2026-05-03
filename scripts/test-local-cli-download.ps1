@@ -125,6 +125,21 @@ if (-not (Test-Path -LiteralPath $cliPath)) {
     throw "cli.ps1 was not found: $cliPath"
 }
 
+function ConvertFrom-TfaJsonPayload {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Text
+    )
+
+    $trimmed = $Text.Trim()
+    $jsonStart = $trimmed.IndexOf("{")
+    $jsonEnd = $trimmed.LastIndexOf("}")
+    if ($jsonStart -lt 0 -or $jsonEnd -lt $jsonStart) {
+        throw "Text did not contain a JSON object."
+    }
+    return $trimmed.Substring($jsonStart, $jsonEnd - $jsonStart + 1) | ConvertFrom-Json
+}
+
 Write-Host "Running local cli.ps1 download smoke test..."
 $result = Invoke-TfaPowerShellFile -FilePath $cliPath -Arguments @("items", "download", "--json")
 $exitCode = $result.ExitCode
@@ -135,14 +150,15 @@ if ($exitCode -ne 0) {
     throw "cli.ps1 items download failed with exit code $exitCode."
 }
 
-$jsonStart = $rawOutput.IndexOf("{")
-$jsonEnd = $rawOutput.LastIndexOf("}")
-if ($jsonStart -lt 0 -or $jsonEnd -lt $jsonStart) {
+$payload = $null
+try {
+    $payload = ConvertFrom-TfaJsonPayload -Text $rawOutput
+}
+catch {
     Write-Host $rawOutput
     throw "cli.ps1 items download did not return a JSON payload."
 }
 
-$payload = $rawOutput.Substring($jsonStart, $jsonEnd - $jsonStart + 1) | ConvertFrom-Json
 $itemIds = @($payload.item_ids)
 if ($itemIds.Count -le 0) {
     throw "cli.ps1 items download returned no item ids."
@@ -171,3 +187,21 @@ if (-not $KeepOutput) {
     Remove-Item -LiteralPath $hostArchivePath -Force
     Write-Host "  Cleanup: removed generated archive"
 }
+
+Write-Host "Running local cli.ps1 JSON error smoke test..."
+$errorResult = Invoke-TfaPowerShellFile -FilePath $cliPath -Arguments @("items", "download", "--item-id", "item-does-not-exist", "--json")
+if ($errorResult.ExitCode -eq 0) {
+    throw "cli.ps1 invalid items download unexpectedly succeeded."
+}
+if (-not [string]::IsNullOrWhiteSpace([string]$errorResult.Stderr)) {
+    Write-Host $errorResult.Stderr
+    throw "cli.ps1 JSON error wrote to stderr."
+}
+$errorPayload = ConvertFrom-TfaJsonPayload -Text ([string]$errorResult.Stdout)
+if ($true -eq $errorPayload.ok) {
+    throw "cli.ps1 JSON error payload did not report ok=false."
+}
+if ([string]$errorPayload.error.message -notmatch "Item not found") {
+    throw "cli.ps1 JSON error payload did not include the expected message."
+}
+Write-Host "Local cli.ps1 JSON error smoke test passed."

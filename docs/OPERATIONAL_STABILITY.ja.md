@@ -11,8 +11,9 @@
 - `items download` は、item 未指定時に利用可能な全 item を ZIP 化する。
 - `items download` の ZIP には `README.md`、`convert_info.json`、`timeline.json` を含める。
 - `--json` 付き CLI の実行時エラーは、可能な範囲で JSON error envelope を返す。
+- `cli.ps1` wrapper も、`--json` 付きの worker 起動失敗を JSON error envelope に寄せる。
 - 軽量 operational smoke test で、設定、ファイル一覧、queue-only refresh、run 一覧を確認している。
-- `cli.ps1` 経由の download smoke test で、外部呼び出しに近い経路を確認している。
+- `cli.ps1` 経由の download smoke test で、外部呼び出しに近い成功経路と JSON error 経路を確認している。
 - 実モデル operational smoke test で、実音声、実モデル、download、2回目 refresh skip を確認できる。
 
 ## 残しておく確認

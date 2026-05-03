@@ -72,7 +72,6 @@ $env:PYTHONPATH = "worker/src"
 Invoke-CheckedCommand $python -m unittest discover -s worker/tests -p "test_*.py"
 
 if ($IncludeLocalCliDownload) {
-    Write-Host "Running local cli.ps1 download smoke test..."
     & (Join-Path $repoRoot "scripts\test-local-cli-download.ps1")
     if ($LASTEXITCODE -ne 0) {
         throw "Local cli.ps1 download smoke test failed."
