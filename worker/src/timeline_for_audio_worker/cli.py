@@ -5,8 +5,6 @@ import json
 import os
 import threading
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 from .config import AppConfig, load_config
@@ -29,7 +27,6 @@ from .run_store import (
 from .model_inventory import build_model_inventory
 from .settings import (
     init_settings,
-    load_huggingface_token,
     load_settings,
     save_settings,
     save_worker_capabilities,
@@ -51,11 +48,6 @@ def parse_args() -> argparse.Namespace:
         "status", help="Show current settings readiness."
     )
     settings_status.add_argument("--json", action="store_true")
-    settings_validate_token = settings_subparsers.add_parser(
-        "validate-token", help="Validate the Hugging Face token used for local audio analysis."
-    )
-    settings_validate_token.add_argument("--token", type=str, required=False)
-    settings_validate_token.add_argument("--json", action="store_true")
     settings_save = settings_subparsers.add_parser("save", help="Save local settings.")
     settings_save.add_argument("--token", type=str, required=False)
     settings_save.add_argument("--compute-mode", choices=["cpu", "gpu"], required=False)
@@ -445,62 +437,6 @@ def cmd_settings_status(as_json: bool) -> int:
     return 0
 
 
-def _validate_token_value(token: str | None) -> dict[str, object]:
-    value = str(token or "").strip()
-    if not value:
-        return {
-            "valid": False,
-            "status": "missing",
-        }
-    if not value.startswith("hf_") or len(value) < 20:
-        return {
-            "valid": False,
-            "status": "invalid_format",
-        }
-
-    request = urllib.request.Request(
-        "https://huggingface.co/api/whoami-v2",
-        headers={
-            "Authorization": f"Bearer {value}",
-            "User-Agent": "TimelineForAudio/1.0",
-        },
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=10) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-            name = payload.get("name") or payload.get("fullname") or "Hugging Face account"
-            return {
-                "valid": True,
-                "status": "ok",
-                "account_name": name,
-            }
-    except urllib.error.HTTPError as exc:
-        if exc.code in {401, 403}:
-            return {
-                "valid": False,
-                "status": "rejected",
-                "http_status": exc.code,
-            }
-        return {
-            "valid": False,
-            "status": "remote_error",
-            "http_status": exc.code,
-        }
-    except Exception as exc:
-        return {
-            "valid": False,
-            "status": "connection_error",
-            "error": str(exc),
-        }
-
-
-def cmd_settings_validate_token(token: str | None, as_json: bool) -> int:
-    value = token if token is not None else load_huggingface_token()
-    payload = _validate_token_value(value)
-    _print_payload(payload, as_json)
-    return 0
-
-
 def cmd_settings_save(
     token: str | None,
     compute_mode: str | None,
@@ -681,8 +617,6 @@ def main() -> int:
             return 0
         if args.settings_command == "status":
             return cmd_settings_status(args.json)
-        if args.settings_command == "validate-token":
-            return cmd_settings_validate_token(args.token, args.json)
         if args.settings_command == "save":
             return cmd_settings_save(
                 args.token,
