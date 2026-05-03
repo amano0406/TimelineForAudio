@@ -42,6 +42,6 @@ Invoke-TfaWithFileLock -RepoRoot $repoRoot -LockName "docker-compose.lock" -Scri
 $exitCode = Get-TfaLastExitCode
 if ($exitCode -ne 0) {
     [Console]::Error.WriteLine("TimelineForAudio CLI failed while invoking the Docker worker. Exit code: $exitCode")
-    [Console]::Error.WriteLine("Run the same command from C:\apps\TimelineForAudio with cli.bat so Docker is started through the normal Windows command host.")
+    [Console]::Error.WriteLine("Run the same command from C:\apps\TimelineForAudio with .\cli.ps1 to inspect Docker worker output and settings.")
 }
 exit $exitCode

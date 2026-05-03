@@ -526,6 +526,10 @@ def _master_payload(settings: dict[str, object]) -> str | None:
     return str(value) if str(value or "").strip() else None
 
 
+def _settings_path_key(value: object) -> str:
+    return str(value or "").strip().replace("\\", "/").rstrip("/").lower()
+
+
 def cmd_settings_inputs_list(as_json: bool) -> int:
     settings = load_settings()
     _print_payload(_root_list_payload(settings, "inputRoots"), as_json)
@@ -536,8 +540,9 @@ def cmd_settings_inputs_add(*, path: Path, as_json: bool) -> int:
     settings = load_settings()
     rows = _root_list_payload(settings, "inputRoots")
     normalized_path = str(path)
+    normalized_key = _settings_path_key(normalized_path)
     for row in rows:
-        if str(row).strip().lower() == normalized_path.strip().lower():
+        if _settings_path_key(row) == normalized_key:
             _print_payload(_root_list_payload(settings, "inputRoots"), as_json)
             return 0
     rows.append(normalized_path)
@@ -549,10 +554,11 @@ def cmd_settings_inputs_add(*, path: Path, as_json: bool) -> int:
 
 def cmd_settings_inputs_remove(path: str, as_json: bool) -> int:
     settings = load_settings()
+    normalized_key = _settings_path_key(path)
     rows = [
         row
         for row in _root_list_payload(settings, "inputRoots")
-        if str(row).strip().lower() != path.strip().lower()
+        if _settings_path_key(row) != normalized_key
     ]
     settings["inputRoots"] = rows
     save_settings(settings)

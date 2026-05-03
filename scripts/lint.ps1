@@ -1,4 +1,7 @@
-param()
+param(
+    [Parameter()]
+    [switch] $IncludeLocalCliDownload
+)
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -64,3 +67,11 @@ Invoke-CheckedCommand $python -m compileall -q worker/src worker/tests
 Write-Host "Running Python tests..."
 $env:PYTHONPATH = "worker/src"
 Invoke-CheckedCommand $python -m unittest discover -s worker/tests -p "test_*.py"
+
+if ($IncludeLocalCliDownload) {
+    Write-Host "Running local cli.ps1 download smoke test..."
+    & (Join-Path $repoRoot "scripts\test-local-cli-download.ps1")
+    if ($LASTEXITCODE -ne 0) {
+        throw "Local cli.ps1 download smoke test failed."
+    }
+}

@@ -142,39 +142,39 @@ Run commands from the repository root:
 cd C:\apps\TimelineForAudio
 ```
 
-On Windows, `*.bat` launchers are the stable public entrypoints. They invoke the PowerShell implementation from the repository root with the expected execution policy.
+On Windows, `*.ps1` scripts are the primary entrypoints. `*.bat` files are thin compatibility wrappers for environments that cannot launch PowerShell scripts directly, and must not define different behavior.
 
 ```powershell
-.\start.bat
-.\cli.bat settings init
-.\cli.bat settings status
-.\cli.bat settings save --token <HUGGING_FACE_TOKEN> --compute-mode gpu
+.\start.ps1
+.\cli.ps1 settings init
+.\cli.ps1 settings status
+.\cli.ps1 settings save --token <HUGGING_FACE_TOKEN> --compute-mode gpu
 
-.\cli.bat files list --json
-.\cli.bat files list --page 1 --page-size 50 --json
-.\cli.bat items refresh --json
-.\cli.bat items refresh --max-items 3 --json
-.\cli.bat items list --json
-.\cli.bat items list --page 1 --page-size 50 --json
-.\cli.bat items remove --item-id item-a1b2c3d4e5f6,item-f6e5d4c3b2a1 --dry-run --json
-.\cli.bat items download --json
-.\cli.bat items download --item-id item-a1b2c3d4e5f6,item-f6e5d4c3b2a1 --json
-.\cli.bat runs list --json
-.\cli.bat runs show --run-id <RUN_ID> --json
+.\cli.ps1 files list --json
+.\cli.ps1 files list --page 1 --page-size 50 --json
+.\cli.ps1 items refresh --json
+.\cli.ps1 items refresh --max-items 3 --json
+.\cli.ps1 items list --json
+.\cli.ps1 items list --page 1 --page-size 50 --json
+.\cli.ps1 items remove --item-id item-a1b2c3d4e5f6,item-f6e5d4c3b2a1 --dry-run --json
+.\cli.ps1 items download --json
+.\cli.ps1 items download --item-id item-a1b2c3d4e5f6,item-f6e5d4c3b2a1 --json
+.\cli.ps1 runs list --json
+.\cli.ps1 runs show --run-id <RUN_ID> --json
 ```
 
 External application examples:
 
 ```cmd
-C:\apps\TimelineForAudio\cli.bat settings status --json
-C:\apps\TimelineForAudio\cli.bat files list --json
-C:\apps\TimelineForAudio\cli.bat items refresh --json
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File C:\apps\TimelineForAudio\cli.ps1 settings status --json
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File C:\apps\TimelineForAudio\cli.ps1 files list --json
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File C:\apps\TimelineForAudio\cli.ps1 items refresh --json
 ```
 
 When checking from WSL or Codex, call through the Windows command host:
 
 ```bash
-cmd.exe /c "cd /d C:\apps\TimelineForAudio && cli.bat settings status --json"
+cmd.exe /c "cd /d C:\apps\TimelineForAudio && powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File cli.ps1 settings status --json"
 ```
 
 Notes:
@@ -189,15 +189,15 @@ Notes:
 Model inventory:
 
 ```powershell
-.\cli.bat models list --json
-.\cli.bat models list --include-remote --json
+.\cli.ps1 models list --json
+.\cli.ps1 models list --include-remote --json
 ```
 
 `--include-remote` asks the Hugging Face API for license, gated, and tag metadata. Treat the upstream model page as the final source of truth.
 
 ## Docker Compose
 
-In normal Windows operation, use `start.bat`, `cli.bat`, and `stop.bat` rather than typing Docker commands directly.
+In normal Windows operation, use `start.ps1`, `cli.ps1`, and `stop.ps1` rather than typing Docker commands directly.
 
 The Compose project name is:
 
@@ -219,7 +219,7 @@ GPU mode uses `docker-compose.gpu.yml` only when `settings.json` has `"computeMo
 Stop the worker:
 
 ```powershell
-.\stop.bat
+.\stop.ps1
 ```
 
 Uninstall Docker resources:
@@ -245,11 +245,23 @@ python3 -m unittest discover -s /mnt/c/apps/TimelineForAudio/worker/tests -v
 Docker checks:
 
 ```powershell
-.\start.bat
-.\cli.bat settings status --json
-.\cli.bat files list --json
-.\cli.bat items refresh --max-items 1 --json
-.\cli.bat items list --json
+.\start.ps1
+.\cli.ps1 settings status --json
+.\cli.ps1 files list --json
+.\cli.ps1 items refresh --max-items 1 --json
+.\cli.ps1 items list --json
+```
+
+Local `cli.ps1` download smoke test:
+
+```powershell
+.\scripts\test-local-cli-download.ps1
+```
+
+Include that smoke test after the Python checks:
+
+```powershell
+.\scripts\lint.ps1 -IncludeLocalCliDownload
 ```
 
 ## Repo Layout

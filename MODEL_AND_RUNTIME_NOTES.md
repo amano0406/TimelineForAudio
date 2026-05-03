@@ -6,7 +6,7 @@ This document explains the current runtime model choices and local execution con
 
 TimelineForAudio is a local CLI worker. Windows `.bat` launchers are the stable public entrypoints and invoke the PowerShell implementation. WSL/macOS shell scripts are developer/backdoor paths.
 
-When a WSL-based tool needs to verify the Windows CLI, invoke it through `cmd.exe /c ... cli.bat ...`. Direct `powershell.exe` launches from WSL can fail to propagate nested Windows child-process behavior, including Docker calls.
+When a WSL-based tool needs to verify the Windows CLI, invoke it through `cmd.exe /c ... powershell.exe -File cli.ps1 ...`. Direct `powershell.exe` launches from WSL can fail to propagate nested Windows child-process behavior, including Docker calls.
 
 The worker does not reconstruct readable text, summarize meaning, or infer real speaker identities. It produces a structured timeline artifact that preserves the original audio timeline.
 
