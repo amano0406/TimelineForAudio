@@ -1,61 +1,111 @@
 # TimelineForAudio
 
-`TimelineForAudio` is a local Docker-first CLI tool that reads configured audio directories and keeps speaker-attributed phone-token timeline artifacts up to date.
+`TimelineForAudio` is a local Docker-first CLI product that reads configured audio directories and keeps speaker/time/phone-token artifacts up to date.
 
 Japanese README: [README.ja.md](README.ja.md)
 
-This product is CLI-only. There is no Web UI. The public surface is intentionally small: source audio paths, local settings, master artifacts, download ZIPs, and CLI JSON output. Internal run state, logs, model cache, and scratch files are product-managed implementation details.
+## README Role
 
-## What It Does
+This README is the entry point for first-time setup and daily operation.
 
-- Reads audio files from configured input directories.
-- Skips unchanged files when the source hash, source file identity, and generation signature are unchanged.
-- Keeps the original audio-relative timeline while processing speech candidate ranges in smaller chunks.
-- Runs required speaker diarization with `pyannote/speaker-diarization-community-1`.
-- Extracts phone tokens with the current ZIPA large ONNX backend.
-- Writes one master item directory per analyzed audio file.
-- Builds a small handoff ZIP on demand.
-- Exposes model inventory for license and usage-condition review.
+- Understand what this product does.
+- Start, configure, refresh, and export from Windows PowerShell.
+- See which files are public artifacts.
+- Jump to `docs/` for detailed contracts and operational notes.
 
-## What It Does Not Do
+The full CLI output contract, pipeline details, stability checklist, and release procedure live under `docs/`.
 
-- It does not provide a Web UI.
-- It does not reconstruct readable text.
-- It does not summarize meaning.
-- It does not infer real speaker names, identity, age, gender, or attributes.
-- It does not modify source audio files.
-- It does not put processing scratch files in the master output.
-- It does not treat run directories as user-facing download artifacts.
+## Product Scope
 
-## Current Pipeline
+TimelineForAudio does:
 
-1. Read audio files from configured input directories.
-2. Normalize each audio file for processing without modifying the original file.
-3. Detect speech candidate ranges and keep original audio-relative timestamps.
-4. Run speaker diarization.
-5. Extract phone tokens from speech candidate chunks.
-6. Merge speaker turns, timestamps, and phone tokens into `timeline.json`.
-7. Write `convert_info.json` with source, model, runtime, and processing-flow metadata.
+- read audio files from configured input directories
+- skip unchanged files by source hash, source file identity, and generation signature
+- preserve the original audio-relative timeline
+- run required speaker diarization with `pyannote/speaker-diarization-community-1`
+- extract phone tokens with the ZIPA large ONNX backend
+- write `timeline.json` and `convert_info.json` per analyzed item
+- create a small handoff ZIP on demand
 
-Long recordings are not sent to ZIPA as one large inference request. Speech candidates are chunked internally and merged back to the original timeline.
+TimelineForAudio does not:
+
+- provide a Web UI
+- reconstruct readable text
+- summarize or interpret meaning
+- infer real speaker names, identity, age, gender, or attributes
+- modify source audio files
+- expose run directories or scratch files as user-facing artifacts
+
+## Requirements
+
+- Windows PowerShell is the primary entrypoint.
+- Docker Desktop is required.
+- A Hugging Face token is required.
+- Speaker diarization requires access approval for `pyannote/speaker-diarization-community-1`.
+- GPU mode is optional and only used when NVIDIA GPU support is available from Docker.
+
+## Quick Start
+
+Run commands from the repository root:
+
+```powershell
+cd C:\apps\TimelineForAudio
+```
+
+Start the Docker worker:
+
+```powershell
+.\start.ps1
+```
+
+Create local settings if missing:
+
+```powershell
+.\cli.ps1 settings init --json
+```
+
+Save token and compute mode:
+
+```powershell
+.\cli.ps1 settings save --token <HUGGING_FACE_TOKEN> --compute-mode gpu --json
+```
+
+Use CPU mode when needed:
+
+```powershell
+.\cli.ps1 settings save --compute-mode cpu --json
+```
+
+Check configured inputs and master output:
+
+```powershell
+.\cli.ps1 settings inputs list --json
+.\cli.ps1 settings master show --json
+```
+
+List audio files and process changes:
+
+```powershell
+.\cli.ps1 files list --json
+.\cli.ps1 items refresh --json
+```
+
+List generated items and create a ZIP:
+
+```powershell
+.\cli.ps1 items list --json
+.\cli.ps1 items download --json
+```
 
 ## Settings
 
-Normal Docker Compose operation uses the repo-root local settings file:
+Normal operation uses:
 
 ```text
 C:\apps\TimelineForAudio\settings.json
 ```
 
-The repo keeps a Git-managed template:
-
-```text
-C:\apps\TimelineForAudio\settings.example.json
-```
-
-`settings.json` is intentionally not committed. It is created from `settings.example.json` when missing.
-
-Default shape:
+`settings.json` is local-only and not committed. The Git-managed template is `settings.example.json`.
 
 ```json
 {
@@ -69,18 +119,16 @@ Default shape:
 }
 ```
 
-User-controlled settings:
-
 | Key | Meaning |
 |---|---|
-| `inputRoots` | Fixed source audio directories. Each entry is a path string. |
-| `outputRoot` | Fixed master artifact directory. |
-| `huggingfaceToken` | Local Hugging Face token for model access. |
-| `computeMode` | `cpu` or `gpu`. |
+| `inputRoots` | Fixed input directories, as an array of path strings |
+| `outputRoot` | Fixed master artifact directory |
+| `huggingfaceToken` | Hugging Face token for model access |
+| `computeMode` | `cpu` or `gpu` |
 
 Product-owned defaults, such as supported audio extensions, live in runtime defaults and are not user settings.
 
-## Output Contract
+## Output
 
 Master output:
 
@@ -101,189 +149,76 @@ items/
     timeline.json
 ```
 
-`timeline.json` is the final structured audio timeline:
+`timeline.json` is the primary artifact. It stores speaker labels, audio-relative timestamps, absolute timestamps when available, and phone tokens.
 
-```json
-{
-  "schema_version": 1,
-  "artifact_type": "timeline",
-  "source": {},
-  "pipeline": {},
-  "turns": [
-    {
-      "start_sec": 12.34,
-      "end_sec": 15.67,
-      "speaker": "SPEAKER_00",
-      "phone_tokens": "..."
-    }
-  ]
-}
-```
+`convert_info.json` stores source fingerprint, model/runtime metadata, processing-flow metadata, counts, and output file names.
 
-`convert_info.json` contains source fingerprint, model/runtime metadata, processing-flow metadata, counts, and output file names.
+Source audio files are not included in the master output or download ZIP.
 
-## Storage Model
+## Common CLI
 
-| Location | Owner | Persistent | User-facing | Purpose |
-|---|---|---:|---:|---|
-| `settings.json` | User/local machine | Yes | Yes | Fixed input roots, output root, token, compute mode |
-| `outputRoot` | User/downstream tools | Yes | Yes | Master item artifacts |
-| `app-data` Docker volume | TimelineForAudio | Yes | No | Run state, status, logs, ETA history, catalog index |
-| `cache-data` Docker volume | TimelineForAudio / model libraries | Yes | No | Hugging Face, Transformers, Torch, and model cache |
-| `/tmp/...` inside container | TimelineForAudio | No | No | Temporary staging and scratch work |
+| Purpose | Command |
+|---|---|
+| Start | `.\start.ps1` |
+| Stop | `.\stop.ps1` |
+| Settings status | `.\cli.ps1 settings status --json` |
+| Add input directory | `.\cli.ps1 settings inputs add "C:\TimelineData\input-audio\" --json` |
+| Set master output | `.\cli.ps1 settings master set "C:\TimelineData\audio" --json` |
+| List source audio | `.\cli.ps1 files list --json` |
+| Refresh changed items | `.\cli.ps1 items refresh --json` |
+| Small test batch | `.\cli.ps1 items refresh --max-items 3 --json` |
+| List generated items | `.\cli.ps1 items list --json` |
+| Remove generated items | `.\cli.ps1 items remove --item-id item-a,item-b --dry-run --json` |
+| Create ZIP | `.\cli.ps1 items download --json` |
+| Model inventory | `.\cli.ps1 models list --json` |
 
-Internal storage can change as long as the public output contract and CLI contract stay stable. The master output and download ZIP are the surfaces downstream products should rely on.
+For CLI JSON details, see [docs/CLI_OUTPUTS.ja.md](docs/CLI_OUTPUTS.ja.md).
 
-## CLI Usage
+`runs` commands are diagnostic-only. Run directories are internal runtime files, not user-facing artifacts.
 
-Run commands from the repository root:
-
-```powershell
-cd C:\apps\TimelineForAudio
-```
-
-On Windows, `*.ps1` scripts are the primary entrypoints. `*.bat` files are thin compatibility wrappers for environments that cannot launch PowerShell scripts directly, and must not define different behavior.
-
-```powershell
-.\start.ps1
-.\cli.ps1 settings init
-.\cli.ps1 settings status
-.\cli.ps1 settings save --token <HUGGING_FACE_TOKEN> --compute-mode gpu
-
-.\cli.ps1 files list --json
-.\cli.ps1 files list --page 1 --page-size 50 --json
-.\cli.ps1 items refresh --json
-.\cli.ps1 items refresh --max-items 3 --json
-.\cli.ps1 items list --json
-.\cli.ps1 items list --page 1 --page-size 50 --json
-.\cli.ps1 items remove --item-id item-a1b2c3d4e5f6,item-f6e5d4c3b2a1 --dry-run --json
-.\cli.ps1 items download --json
-.\cli.ps1 items download --item-id item-a1b2c3d4e5f6,item-f6e5d4c3b2a1 --json
-.\cli.ps1 runs list --json
-.\cli.ps1 runs show --run-id <RUN_ID> --json
-```
-
-External application examples:
-
-```cmd
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File C:\apps\TimelineForAudio\cli.ps1 settings status --json
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File C:\apps\TimelineForAudio\cli.ps1 files list --json
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File C:\apps\TimelineForAudio\cli.ps1 items refresh --json
-```
-
-When checking from WSL or Codex, call through the Windows command host:
-
-```bash
-cmd.exe /c "cd /d C:\apps\TimelineForAudio && powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File cli.ps1 settings status --json"
-```
-
-Notes:
-
-- `items refresh` queues all changed files by default.
-- Use `items refresh --max-items <N>` for smaller test or retry batches.
-- Use `items refresh --reprocess-duplicates` only when you intentionally want to recompute unchanged files.
-- `items remove` deletes managed item data and generated artifacts only. It does not delete source audio files.
-- `runs` commands are diagnostic-only because run directories are product-managed runtime files.
-- For CLI JSON output details, see [docs/CLI_OUTPUTS.ja.md](docs/CLI_OUTPUTS.ja.md).
-
-Model inventory:
-
-```powershell
-.\cli.ps1 models list --json
-.\cli.ps1 models list --include-remote --json
-```
-
-`--include-remote` asks the Hugging Face API for license, gated, and tag metadata. Treat the upstream model page as the final source of truth.
-
-## Docker Compose
+## Docker And Storage
 
 In normal Windows operation, use `start.ps1`, `cli.ps1`, and `stop.ps1` rather than typing Docker commands directly.
 
-The Compose project name is:
+| Location | User-facing | Purpose |
+|---|---:|---|
+| `settings.json` | Yes | Fixed input roots, output root, token, compute mode |
+| `outputRoot` | Yes | Master item artifacts |
+| `app-data` Docker volume | No | Run state, status, logs, catalog index |
+| `cache-data` Docker volume | No | Hugging Face, Transformers, Torch, and model cache |
+| `/tmp/...` inside container | No | Temporary staging and scratch work |
 
-```text
-timeline-for-audio
-```
-
-The worker service runs the Python CLI. It exposes no browser port.
-
-Docker resources:
-
-- `app-data`: product-managed runtime data
-- `cache-data`: model and library cache
-- input roots: generated read-only bind mounts from `settings.json`
-- `outputRoot`: generated writable bind mount from `settings.json`
-
-GPU mode uses `docker-compose.gpu.yml` only when `settings.json` has `"computeMode": "gpu"` and an NVIDIA GPU is available from the shell.
-
-Stop the worker:
-
-```powershell
-.\stop.ps1
-```
-
-Uninstall Docker resources:
-
-```powershell
-.\uninstall.ps1
-```
-
-`uninstall.ps1` keeps `app-data`, `cache-data`, and `settings.json` by default. Use deletion options only when you intentionally want to delete those.
+`uninstall.ps1` keeps `app-data`, `cache-data`, and `settings.json` by default. Use deletion options only when you intentionally want to delete them.
 
 ## Testing
 
 Host Python CLI execution is blocked for normal use. Tests may use the explicit development override.
 
-Unit tests:
-
-```bash
-TIMELINE_FOR_AUDIO_ALLOW_HOST_CLI=1 \
-PYTHONPATH=/mnt/c/apps/TimelineForAudio/worker/src \
-python3 -m unittest discover -s /mnt/c/apps/TimelineForAudio/worker/tests -v
-```
-
-Docker checks:
+Normal checks:
 
 ```powershell
-.\start.ps1
-.\cli.ps1 settings status --json
-.\cli.ps1 files list --json
-.\cli.ps1 items refresh --max-items 1 --json
-.\cli.ps1 items list --json
+.\scripts\lint.ps1 -IncludeLocalCliDownload -IncludeOperationalSmoke
 ```
 
-Local `cli.ps1` download smoke test:
-
-```powershell
-.\scripts\test-local-cli-download.ps1
-```
-
-Isolated operational smoke test:
-
-```powershell
-.\scripts\test-operational.ps1
-```
-
-This test creates a separate temporary settings file, points input and output to a generated test workspace, and leaves the normal `settings.json` untouched. By default it uses `items refresh --queue-only` and does not run the heavy models. Use real models only when you explicitly want to verify the full pipeline:
-
-```powershell
-.\scripts\test-operational.ps1 -UseRealModels -KeepOutput
-```
-
-When `-UseRealModels` is set, the test copies one small supported audio file from `settings.inputRoots` into the isolated test workspace. You can pin the source file explicitly when you want reproducible operational verification:
+Full pipeline smoke with a real short audio file:
 
 ```powershell
 .\scripts\test-operational.ps1 -UseRealModels -SourceAudioPath "C:\TimelineData\input-audio\sample.mp3" -KeepOutput
 ```
 
-Include smoke tests after the Python checks:
+The real-model smoke test uses an isolated test workspace and does not modify the normal `settings.json`.
 
-```powershell
-.\scripts\lint.ps1 -IncludeLocalCliDownload
-.\scripts\lint.ps1 -IncludeOperationalSmoke
-```
+## Docs
 
-Operational stability notes: [docs/OPERATIONAL_STABILITY.ja.md](docs/OPERATIONAL_STABILITY.ja.md)
+| Document | Purpose |
+|---|---|
+| [docs/CLI_OUTPUTS.ja.md](docs/CLI_OUTPUTS.ja.md) | CLI JSON output contract |
+| [docs/PIPELINE.md](docs/PIPELINE.md) | Pipeline and artifact details |
+| [docs/OPERATIONAL_STABILITY.ja.md](docs/OPERATIONAL_STABILITY.ja.md) | Operational stability checklist |
+| [docs/SECURITY_AND_SAFETY.md](docs/SECURITY_AND_SAFETY.md) | Safety boundaries and cleanup risks |
+| [MODEL_AND_RUNTIME_NOTES.md](MODEL_AND_RUNTIME_NOTES.md) | Model and runtime notes |
+| [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | Third-party notices |
+| [docs/MANUAL_RELEASE.md](docs/MANUAL_RELEASE.md) | Manual release procedure |
 
 ## Repo Layout
 

@@ -1,61 +1,111 @@
 # TimelineForAudio
 
-`TimelineForAudio` は、固定された入力ディレクトリ内の音声を読み取り、話者ラベル付きの phone token timeline を更新するローカル Docker-first CLI ツールです。
+`TimelineForAudio` は、固定された入力ディレクトリ内の音声を Docker 上で解析し、話者・時刻・phone token を持つ `timeline.json` と `convert_info.json` を維持する CLI 製品です。
 
 [English README](README.md) | [Third-Party Notices](THIRD_PARTY_NOTICES.md) | [Model and Runtime Notes](MODEL_AND_RUNTIME_NOTES.md) | [License](LICENSE)
 
-この製品は CLI 専用です。Web UI はありません。表に出る面は、入力音声 path、ローカル設定、マスター成果物、ダウンロード ZIP、CLI JSON 出力に限定します。run 状態、ログ、モデル cache、一時ファイルは製品内部の管理対象です。
+## README の役割
 
-## できること
+この README は、初回確認と通常運用の入口です。
 
-- 固定された入力ディレクトリから音声ファイルを読む
-- `source hash`、`source file identity`、`generation signature` が変わらないファイルを skip する
-- 元音声の時間軸を維持したまま、発話候補区間を短い単位で処理する
+- 何をする製品かを短く把握する
+- Windows PowerShell から起動・設定・変換・取得する
+- どの成果物に依存すればよいかを確認する
+- 詳細仕様が必要な場合に `docs/` へ進む
+
+CLI の全返却仕様、pipeline 詳細、安定性チェック、release 手順は README ではなく `docs/` に分けています。
+
+## 製品の責務
+
+この製品が行うこと:
+
+- 設定済み入力ディレクトリから音声ファイルを読む
+- 変更がない音声は skip する
+- 元音声の時間軸を維持する
 - `pyannote/speaker-diarization-community-1` で話者分離する
 - ZIPA large ONNX backend で phone token を抽出する
-- 解析済み音声ごとに master item directory を作る
-- 必要に応じて handoff ZIP を作る
-- 利用モデルの一覧を出し、license や利用条件確認に使える情報を返す
+- `timeline.json` と `convert_info.json` を master 出力に保存する
+- 必要に応じて downstream 用 ZIP を作る
 
-## しないこと
+この製品が行わないこと:
 
 - Web UI は提供しない
 - 可読テキストには復元しない
-- 意味の要約はしない
+- 要約や意味解釈はしない
 - 話者の実名、本人性、年齢、性別、属性は推測しない
-- 元の音声ファイルは変更しない
-- 処理途中の scratch file を master output に置かない
-- run directory をユーザー向け download artifact として扱わない
+- 元音声ファイルは変更しない
+- run directory や scratch file をユーザー向け成果物として扱わない
 
-## 処理の流れ
+## 前提
 
-1. 設定済み入力ディレクトリから音声ファイルを読む
-2. 元ファイルを変更せず、処理用に音声を正規化する
-3. 発話候補区間を検出し、元音声から見た相対時刻を保持する
-4. 話者分離を行う
-5. 発話候補区間から phone token を抽出する
-6. 話者 turn、timestamp、phone token を `timeline.json` に統合する
-7. source、model、runtime、処理手順を `convert_info.json` に保存する
+- Windows では PowerShell が正面入口です。
+- Docker Desktop が必要です。
+- Hugging Face token が必要です。
+- 話者分離には `pyannote/speaker-diarization-community-1` の利用承認が必要です。
+- GPU mode は任意です。NVIDIA GPU と Docker GPU support が使える場合だけ有効にします。
 
-長時間音声を ZIPA に一つの大きな推論として渡しません。発話候補区間を内部で分割し、結果を元の時間軸へ戻します。
+## Quick Start
+
+repo ルートで実行します。
+
+```powershell
+cd C:\apps\TimelineForAudio
+```
+
+1. Docker worker を起動します。
+
+```powershell
+.\start.ps1
+```
+
+2. 設定ファイルがなければ作成します。
+
+```powershell
+.\cli.ps1 settings init --json
+```
+
+3. token と処理 mode を保存します。
+
+```powershell
+.\cli.ps1 settings save --token <HUGGING_FACE_TOKEN> --compute-mode gpu --json
+```
+
+CPU で使う場合:
+
+```powershell
+.\cli.ps1 settings save --compute-mode cpu --json
+```
+
+4. 入力ディレクトリと master 出力先を確認します。
+
+```powershell
+.\cli.ps1 settings inputs list --json
+.\cli.ps1 settings master show --json
+```
+
+5. 音声ファイルを確認し、変換します。
+
+```powershell
+.\cli.ps1 files list --json
+.\cli.ps1 items refresh --json
+```
+
+6. 生成物を確認し、ZIP を作成します。
+
+```powershell
+.\cli.ps1 items list --json
+.\cli.ps1 items download --json
+```
 
 ## Settings
 
-通常の Docker Compose 運用では、repo 直下のローカル設定ファイルを使います。
+通常運用では、repo 直下のローカル設定ファイルを使います。
 
 ```text
 C:\apps\TimelineForAudio\settings.json
 ```
 
-Git 管理するテンプレートは次です。
-
-```text
-C:\apps\TimelineForAudio\settings.example.json
-```
-
-`settings.json` は Git 管理しません。存在しない場合は `settings.example.json` から作成します。
-
-設定例:
+`settings.json` は Git 管理しません。テンプレートは `settings.example.json` です。
 
 ```json
 {
@@ -69,18 +119,16 @@ C:\apps\TimelineForAudio\settings.example.json
 }
 ```
 
-ユーザーが設定する項目:
-
 | Key | 意味 |
 |---|---|
-| `inputRoots` | 固定入力ディレクトリ。各行は path 文字列 |
-| `outputRoot` | 固定の master artifact directory |
-| `huggingfaceToken` | model access 用のローカル Hugging Face token |
+| `inputRoots` | 固定入力ディレクトリ。配列で path 文字列を並べる |
+| `outputRoot` | master 成果物を保存する固定ディレクトリ |
+| `huggingfaceToken` | model access 用の Hugging Face token |
 | `computeMode` | `cpu` または `gpu` |
 
 対応音声拡張子などの製品固定値は runtime defaults 側で管理し、ユーザー設定には含めません。
 
-## Output Contract
+## Output
 
 Master output:
 
@@ -101,189 +149,76 @@ items/
     timeline.json
 ```
 
-`timeline.json` は最終的な構造化音声 timeline です。
+`timeline.json` が最終成果物です。話者、音声相対時刻、絶対時刻が取れる場合の時刻、phone token を保持します。
 
-```json
-{
-  "schema_version": 1,
-  "artifact_type": "timeline",
-  "source": {},
-  "pipeline": {},
-  "turns": [
-    {
-      "start_sec": 12.34,
-      "end_sec": 15.67,
-      "speaker": "SPEAKER_00",
-      "phone_tokens": "..."
-    }
-  ]
-}
-```
+`convert_info.json` は変換情報です。source fingerprint、model/runtime metadata、processing-flow metadata、counts、output file names を保持します。
 
-`convert_info.json` には、source fingerprint、model/runtime metadata、processing-flow metadata、counts、output file names を入れます。
+音声ファイルそのものは master output や download ZIP に含めません。
 
-## Storage Model
+## よく使う CLI
 
-| 場所 | 管理者 | 永続 | 表に見える | 用途 |
-|---|---|---:|---:|---|
-| `settings.json` | ユーザー / ローカルPC | Yes | Yes | 固定入力元、出力先、token、compute mode |
-| `outputRoot` | ユーザー / 後段製品 | Yes | Yes | master item artifacts |
-| `app-data` Docker volume | TimelineForAudio | Yes | No | run state、status、logs、ETA history、catalog index |
-| `cache-data` Docker volume | TimelineForAudio / model libraries | Yes | No | Hugging Face、Transformers、Torch、model cache |
-| container 内 `/tmp/...` | TimelineForAudio | No | No | 一時 staging と scratch work |
+| 目的 | コマンド |
+|---|---|
+| 起動 | `.\start.ps1` |
+| 停止 | `.\stop.ps1` |
+| 設定状態 | `.\cli.ps1 settings status --json` |
+| 入力追加 | `.\cli.ps1 settings inputs add "C:\TimelineData\input-audio\" --json` |
+| master 出力先変更 | `.\cli.ps1 settings master set "C:\TimelineData\audio" --json` |
+| 入力音声一覧 | `.\cli.ps1 files list --json` |
+| 変更分を変換 | `.\cli.ps1 items refresh --json` |
+| 小さく試す | `.\cli.ps1 items refresh --max-items 3 --json` |
+| 生成物一覧 | `.\cli.ps1 items list --json` |
+| 生成物削除 | `.\cli.ps1 items remove --item-id item-a,item-b --dry-run --json` |
+| ZIP 作成 | `.\cli.ps1 items download --json` |
+| 利用モデル確認 | `.\cli.ps1 models list --json` |
 
-内部 storage は製品側で変更してよい領域です。後段製品が依存すべきなのは、master output、download ZIP、CLI JSON contract です。
+CLI JSON の詳細は [docs/CLI_OUTPUTS.ja.md](docs/CLI_OUTPUTS.ja.md) を参照してください。
 
-## CLI Usage
+`runs` は診断用です。run directory は製品内部の runtime file であり、ユーザー向け成果物ではありません。
 
-repo ルートで実行します。
-
-```powershell
-cd C:\apps\TimelineForAudio
-```
-
-Windows では `*.ps1` を正面入口にします。`*.bat` は PowerShell script を直接起動できない環境向けの薄い互換ラッパーで、別挙動を持たせません。
-
-```powershell
-.\start.ps1
-.\cli.ps1 settings init
-.\cli.ps1 settings status
-.\cli.ps1 settings save --token <HUGGING_FACE_TOKEN> --compute-mode gpu
-
-.\cli.ps1 files list --json
-.\cli.ps1 files list --page 1 --page-size 50 --json
-.\cli.ps1 items refresh --json
-.\cli.ps1 items refresh --max-items 3 --json
-.\cli.ps1 items list --json
-.\cli.ps1 items list --page 1 --page-size 50 --json
-.\cli.ps1 items remove --item-id item-a1b2c3d4e5f6,item-f6e5d4c3b2a1 --dry-run --json
-.\cli.ps1 items download --json
-.\cli.ps1 items download --item-id item-a1b2c3d4e5f6,item-f6e5d4c3b2a1 --json
-.\cli.ps1 runs list --json
-.\cli.ps1 runs show --run-id <RUN_ID> --json
-```
-
-外部アプリケーションからの呼び出し例:
-
-```cmd
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File C:\apps\TimelineForAudio\cli.ps1 settings status --json
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File C:\apps\TimelineForAudio\cli.ps1 files list --json
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File C:\apps\TimelineForAudio\cli.ps1 items refresh --json
-```
-
-WSL や Codex から確認する場合は、Windows command host 経由で呼び出します。
-
-```bash
-cmd.exe /c "cd /d C:\apps\TimelineForAudio && powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File cli.ps1 settings status --json"
-```
-
-補足:
-
-- `items refresh` は、変更された対象をデフォルトで全件 queue に入れます。
-- 小さく試す場合は `items refresh --max-items <N>` を使います。
-- 同じファイルを意図的に再処理する場合だけ `items refresh --reprocess-duplicates` を使います。
-- `items remove` は管理 item と生成物だけを削除します。元音声は削除しません。
-- `runs` は診断用です。run directory は製品内部の runtime file です。
-- CLI JSON 出力の詳細は [docs/CLI_OUTPUTS.ja.md](docs/CLI_OUTPUTS.ja.md) を参照してください。
-
-使用モデルの確認:
-
-```powershell
-.\cli.ps1 models list --json
-.\cli.ps1 models list --include-remote --json
-```
-
-`--include-remote` は Hugging Face API から license、gated、tag などを取得します。利用条件の最終確認は、出力される upstream model page で行ってください。
-
-## Docker Compose
+## Docker と storage
 
 通常の Windows 運用では、Docker command を直接打たず、`start.ps1`、`cli.ps1`、`stop.ps1` を使います。
 
-Compose project name:
+| 場所 | 表に見える | 用途 |
+|---|---:|---|
+| `settings.json` | Yes | 固定入力元、出力先、token、compute mode |
+| `outputRoot` | Yes | master item artifacts |
+| `app-data` Docker volume | No | run state、status、logs、catalog index |
+| `cache-data` Docker volume | No | Hugging Face、Transformers、Torch、model cache |
+| container 内 `/tmp/...` | No | 一時 staging と scratch work |
 
-```text
-timeline-for-audio
-```
-
-worker service は Python CLI を実行します。browser port は公開しません。
-
-Docker resources:
-
-- `app-data`: 製品内部の runtime data
-- `cache-data`: model と library cache
-- input roots: `settings.json` から生成する read-only bind mount
-- `outputRoot`: `settings.json` から生成する writable bind mount
-
-GPU mode は、`settings.json` が `"computeMode": "gpu"` で、PowerShell から NVIDIA GPU を確認できる場合だけ `docker-compose.gpu.yml` を使います。
-
-worker 停止:
-
-```powershell
-.\stop.ps1
-```
-
-Docker resource の削除:
-
-```powershell
-.\uninstall.ps1
-```
-
-`uninstall.ps1` は既定では `app-data`、`cache-data`、`settings.json` を残します。削除したい場合だけ、削除オプションを明示して使います。
+`uninstall.ps1` は既定では `app-data`、`cache-data`、`settings.json` を残します。削除したい場合だけ削除オプションを明示します。
 
 ## Testing
 
 通常利用で host Python CLI を直接実行することは許可していません。テスト時だけ明示的な開発用 override を使います。
 
-Unit tests:
-
-```bash
-TIMELINE_FOR_AUDIO_ALLOW_HOST_CLI=1 \
-PYTHONPATH=/mnt/c/apps/TimelineForAudio/worker/src \
-python3 -m unittest discover -s /mnt/c/apps/TimelineForAudio/worker/tests -v
-```
-
-Docker checks:
+通常チェック:
 
 ```powershell
-.\start.ps1
-.\cli.ps1 settings status --json
-.\cli.ps1 files list --json
-.\cli.ps1 items refresh --max-items 1 --json
-.\cli.ps1 items list --json
+.\scripts\lint.ps1 -IncludeLocalCliDownload -IncludeOperationalSmoke
 ```
 
-ローカル `cli.ps1` download smoke test:
-
-```powershell
-.\scripts\test-local-cli-download.ps1
-```
-
-隔離された運用 smoke test:
-
-```powershell
-.\scripts\test-operational.ps1
-```
-
-このテストは一時的な設定ファイルを別に作り、入力と出力を生成されたテスト用 workspace に向けます。通常の `settings.json` は変更しません。既定では `items refresh --queue-only` を使うため、重い model は実行しません。full pipeline を確認したい場合だけ明示します。
-
-```powershell
-.\scripts\test-operational.ps1 -UseRealModels -KeepOutput
-```
-
-`-UseRealModels` を付けた場合、`settings.inputRoots` から小さい対応音声ファイルを 1 つ選び、隔離された test workspace にコピーして実行します。毎回同じ音声で確認したい場合は、source audio を明示します。
+実モデルで full pipeline を確認したい場合:
 
 ```powershell
 .\scripts\test-operational.ps1 -UseRealModels -SourceAudioPath "C:\TimelineData\input-audio\sample.mp3" -KeepOutput
 ```
 
-Python checks の後に smoke test も含める場合:
+この実モデル smoke test は、入力と出力を隔離された test workspace に向けます。通常の `settings.json` は変更しません。
 
-```powershell
-.\scripts\lint.ps1 -IncludeLocalCliDownload
-.\scripts\lint.ps1 -IncludeOperationalSmoke
-```
+## Docs
 
-安定性の確認リストは [docs/OPERATIONAL_STABILITY.ja.md](docs/OPERATIONAL_STABILITY.ja.md) を参照してください。
+| 文書 | 役割 |
+|---|---|
+| [docs/CLI_OUTPUTS.ja.md](docs/CLI_OUTPUTS.ja.md) | CLI JSON 返却仕様 |
+| [docs/PIPELINE.md](docs/PIPELINE.md) | pipeline と artifact の詳細 |
+| [docs/OPERATIONAL_STABILITY.ja.md](docs/OPERATIONAL_STABILITY.ja.md) | 安定性チェックリスト |
+| [docs/SECURITY_AND_SAFETY.md](docs/SECURITY_AND_SAFETY.md) | 安全境界と削除系の注意 |
+| [MODEL_AND_RUNTIME_NOTES.md](MODEL_AND_RUNTIME_NOTES.md) | 利用モデルと runtime 補足 |
+| [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | third-party notices |
+| [docs/MANUAL_RELEASE.md](docs/MANUAL_RELEASE.md) | 手動 release 手順 |
 
 ## Repo Layout
 
