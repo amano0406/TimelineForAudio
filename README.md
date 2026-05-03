@@ -283,6 +283,8 @@ Include smoke tests after the Python checks:
 .\scripts\lint.ps1 -IncludeOperationalSmoke
 ```
 
+Operational stability notes: [docs/OPERATIONAL_STABILITY.ja.md](docs/OPERATIONAL_STABILITY.ja.md)
+
 ## Repo Layout
 
 ```text

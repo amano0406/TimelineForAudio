@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import threading
 import time
 from pathlib import Path
@@ -432,6 +433,29 @@ def _print_payload(payload: object, as_json: bool) -> None:
         print(f"{key}: {value}")
 
 
+def _argv_requests_json(argv: list[str] | None = None) -> bool:
+    return "--json" in (argv if argv is not None else sys.argv[1:])
+
+
+def _print_error(exc: Exception, as_json: bool) -> None:
+    if as_json:
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "error": {
+                        "type": exc.__class__.__name__,
+                        "message": str(exc),
+                    },
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
+    print(f"error: {exc}", file=sys.stderr)
+
+
 def cmd_settings_status(as_json: bool) -> int:
     _print_payload(settings_snapshot(), as_json)
     return 0
@@ -692,3 +716,13 @@ def main() -> int:
     if args.command == "daemon":
         return cmd_daemon(args.poll_interval)
     raise ValueError(f"Unsupported command: {args.command}")
+
+
+def run() -> int:
+    try:
+        return main()
+    except SystemExit:
+        raise
+    except Exception as exc:
+        _print_error(exc, _argv_requests_json())
+        return 1

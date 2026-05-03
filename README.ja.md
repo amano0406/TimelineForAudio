@@ -283,6 +283,8 @@ Python checks の後に smoke test も含める場合:
 .\scripts\lint.ps1 -IncludeOperationalSmoke
 ```
 
+安定性の確認リストは [docs/OPERATIONAL_STABILITY.ja.md](docs/OPERATIONAL_STABILITY.ja.md) を参照してください。
+
 ## Repo Layout
 
 ```text

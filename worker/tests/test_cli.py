@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from contextlib import redirect_stderr
+from contextlib import redirect_stdout
 from io import StringIO
+import json
 from pathlib import Path
 import sys
 import unittest
@@ -84,6 +86,43 @@ class CliTests(unittest.TestCase):
                 output=None,
                 as_json=True,
             )
+
+    def test_json_command_errors_are_machine_readable(self) -> None:
+        stdout = StringIO()
+        with (
+            patch.object(
+                sys,
+                "argv",
+                ["timeline-for-audio", "items", "download", "--json"],
+            ),
+            patch.object(cli, "assert_cli_runtime_allowed"),
+            patch.object(cli, "list_items", return_value=[]),
+            redirect_stdout(stdout),
+        ):
+            exit_code = cli.run()
+
+        self.assertEqual(1, exit_code)
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["ok"])
+        self.assertEqual("ValueError", payload["error"]["type"])
+        self.assertIn("At least one available item id", payload["error"]["message"])
+
+    def test_text_command_errors_do_not_print_traceback(self) -> None:
+        stdout = StringIO()
+        stderr = StringIO()
+        with (
+            patch.object(sys, "argv", ["timeline-for-audio", "items", "download"]),
+            patch.object(cli, "assert_cli_runtime_allowed"),
+            patch.object(cli, "list_items", return_value=[]),
+            redirect_stdout(stdout),
+            redirect_stderr(stderr),
+        ):
+            exit_code = cli.run()
+
+        self.assertEqual(1, exit_code)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("At least one available item id", stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
 
 
 if __name__ == "__main__":
