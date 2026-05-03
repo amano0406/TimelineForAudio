@@ -291,7 +291,6 @@ token と CPU/GPU を保存します。
 - 既定で `modified_at` の新しい順です。
 - オプションなしの既定は全件取得です。
 - `--page` または `--page-size` を指定した場合だけ `pagination.mode=page` になります。
-- オプションなしの既定は全件取得です。
 - `files list` は入力ディレクトリを直接 scan します。cache は使わず、毎回現在のファイル状態を見ます。
 
 ## `files scan`
@@ -412,7 +411,6 @@ TimelineForAudio が管理している生成済み item を一覧します。マ
 - `updated_at` は master artifact の更新時刻をもとにします。
 - オプションなしの既定は全件取得です。
 - `--page` または `--page-size` を指定した場合だけ `pagination.mode=page` になります。
-- オプションなしの既定は全件取得です。
 - 一覧は master artifact と catalog を毎回読みます。別の派生 cache は持ちません。
 
 ## `items refresh`

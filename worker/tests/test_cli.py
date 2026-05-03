@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from contextlib import redirect_stderr
+from io import StringIO
 from pathlib import Path
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -8,6 +11,12 @@ from timeline_for_audio_worker import cli
 
 
 class CliTests(unittest.TestCase):
+    def test_settings_validate_token_is_not_public_cli(self) -> None:
+        with patch.object(sys, "argv", ["timeline-for-audio", "settings", "validate-token"]):
+            with redirect_stderr(StringIO()):
+                with self.assertRaises(SystemExit):
+                    cli.parse_args()
+
     def test_items_download_defaults_to_available_item_ids(self) -> None:
         with (
             patch.object(
