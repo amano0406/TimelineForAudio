@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$RepoRoot = ""
+    [string]$RepoRoot = "",
+    [string]$SettingsPath = ""
 )
 
 Set-StrictMode -Version Latest
@@ -68,16 +69,38 @@ function Add-Mount {
     }
 }
 
-$settingsPath = Join-Path $RepoRoot "settings.json"
+$repoSettingsPath = Join-Path $RepoRoot "settings.json"
 $settingsExamplePath = Join-Path $RepoRoot "settings.example.json"
-$sourceSettingsPath = if (Test-Path -LiteralPath $settingsPath) { $settingsPath } else { $settingsExamplePath }
-if (-not (Test-Path -LiteralPath $sourceSettingsPath)) {
-    throw "settings.json or settings.example.json was not found."
+$settingsOverridePath = [string]$SettingsPath
+if (-not $settingsOverridePath -and $env:TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH) {
+    $settingsOverridePath = [string]$env:TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH
 }
+
+$usingSettingsOverride = -not [string]::IsNullOrWhiteSpace($settingsOverridePath)
+$sourceSettingsPath = if ($usingSettingsOverride) {
+    $settingsOverridePath
+}
+elseif (Test-Path -LiteralPath $repoSettingsPath) {
+    $repoSettingsPath
+}
+else {
+    $settingsExamplePath
+}
+if (-not (Test-Path -LiteralPath $sourceSettingsPath)) {
+    throw "settings file was not found: $sourceSettingsPath"
+}
+$sourceSettingsPath = (Resolve-Path -LiteralPath $sourceSettingsPath).Path
 
 $settings = Get-Content -LiteralPath $sourceSettingsPath -Raw | ConvertFrom-Json
 $mappings = [System.Collections.Generic.List[object]]::new()
 $volumeLines = [System.Collections.Generic.List[string]]::new()
+
+if ($usingSettingsOverride) {
+    $VolumeLines.Add("      - type: bind") | Out-Null
+    $VolumeLines.Add("        source: $(Convert-ToYamlSingleQuoted -Value $sourceSettingsPath)") | Out-Null
+    $VolumeLines.Add("        target: /host/settings/settings.json") | Out-Null
+    $VolumeLines.Add("        read_only: true") | Out-Null
+}
 
 $inputIndex = 0
 foreach ($root in @($settings.inputRoots)) {
@@ -124,6 +147,9 @@ $lines.Add("services:") | Out-Null
 $lines.Add("  worker:") | Out-Null
 $lines.Add("    environment:") | Out-Null
 $lines.Add("      TIMELINE_FOR_AUDIO_PATH_MAPPINGS: $(Convert-ToYamlSingleQuoted -Value $json)") | Out-Null
+if ($usingSettingsOverride) {
+    $lines.Add("      TIMELINE_FOR_AUDIO_SETTINGS_PATH: /host/settings/settings.json") | Out-Null
+}
 if ($volumeLines.Count -gt 0) {
     $lines.Add("    volumes:") | Out-Null
     foreach ($line in $volumeLines) {
@@ -131,10 +157,17 @@ if ($volumeLines.Count -gt 0) {
     }
 }
 
-$generatedDir = Join-Path $RepoRoot ".docker"
+$overridePath = [string]$env:TIMELINE_FOR_AUDIO_PATHS_OVERRIDE_PATH
+if ($overridePath) {
+    $overridePath = [System.IO.Path]::GetFullPath($overridePath)
+    $generatedDir = Split-Path -Parent $overridePath
+}
+else {
+    $generatedDir = Join-Path $RepoRoot ".docker"
+    $overridePath = Join-Path $generatedDir "docker-compose.paths.yml"
+}
 New-Item -ItemType Directory -Path $generatedDir -Force | Out-Null
-$overridePath = Join-Path $generatedDir "docker-compose.paths.yml"
-$lockPath = Join-Path $generatedDir "docker-compose.paths.lock"
+$lockPath = "$overridePath.lock"
 $tempPath = Join-Path $generatedDir ("docker-compose.paths.{0}.tmp" -f ([guid]::NewGuid().ToString("N")))
 $newContent = [string]::Join([Environment]::NewLine, $lines.ToArray()) + [Environment]::NewLine
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)

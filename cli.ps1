@@ -28,18 +28,18 @@ Invoke-TfaWithFileLock -RepoRoot $repoRoot -LockName "docker-compose.lock" -Scri
             $upArgs += "--force-recreate"
         }
         $upArgs += "worker"
-        & $docker @upArgs
+        $startResult = Invoke-TfaHiddenProcess -FilePath $docker -Arguments $upArgs -WorkingDirectory $repoRoot -SuppressOutput
     }
     else {
-        & $docker compose --progress quiet @composeArgs up -d --no-recreate worker
+        $startResult = Invoke-TfaHiddenProcess -FilePath $docker -Arguments (@("compose", "--progress", "quiet") + $composeArgs + @("up", "-d", "--no-recreate", "worker")) -WorkingDirectory $repoRoot -SuppressOutput
     }
-    if (-not $?) {
+    if ($startResult.ExitCode -ne 0) {
         throw "Failed to start TimelineForAudio worker."
     }
 }
 
-& $docker compose @composeArgs exec -T worker python -m timeline_for_audio_worker @CliArgs
-$exitCode = Get-TfaLastExitCode
+$cliResult = Invoke-TfaHiddenProcess -FilePath $docker -Arguments (@("compose") + $composeArgs + @("exec", "-T", "worker", "python", "-m", "timeline_for_audio_worker") + @($CliArgs)) -WorkingDirectory $repoRoot -WriteOutput
+$exitCode = $cliResult.ExitCode
 if ($exitCode -ne 0) {
     [Console]::Error.WriteLine("TimelineForAudio CLI failed while invoking the Docker worker. Exit code: $exitCode")
     [Console]::Error.WriteLine("Run the same command from C:\apps\TimelineForAudio with .\cli.ps1 to inspect Docker worker output and settings.")

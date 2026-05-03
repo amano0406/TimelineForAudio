@@ -258,10 +258,23 @@ Local `cli.ps1` download smoke test:
 .\scripts\test-local-cli-download.ps1
 ```
 
-Include that smoke test after the Python checks:
+Isolated operational smoke test:
+
+```powershell
+.\scripts\test-operational.ps1
+```
+
+This test creates a separate temporary settings file, points input and output to a generated test workspace, and leaves the normal `settings.json` untouched. By default it uses `items refresh --queue-only` and does not run the heavy models. Use real models only when you explicitly want to verify the full pipeline:
+
+```powershell
+.\scripts\test-operational.ps1 -UseRealModels -KeepOutput
+```
+
+Include smoke tests after the Python checks:
 
 ```powershell
 .\scripts\lint.ps1 -IncludeLocalCliDownload
+.\scripts\lint.ps1 -IncludeOperationalSmoke
 ```
 
 ## Repo Layout

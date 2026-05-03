@@ -1,6 +1,9 @@
 param(
     [Parameter()]
-    [switch] $IncludeLocalCliDownload
+    [switch] $IncludeLocalCliDownload,
+
+    [Parameter()]
+    [switch] $IncludeOperationalSmoke
 )
 
 $ErrorActionPreference = "Stop"
@@ -73,5 +76,13 @@ if ($IncludeLocalCliDownload) {
     & (Join-Path $repoRoot "scripts\test-local-cli-download.ps1")
     if ($LASTEXITCODE -ne 0) {
         throw "Local cli.ps1 download smoke test failed."
+    }
+}
+
+if ($IncludeOperationalSmoke) {
+    Write-Host "Running isolated operational smoke test..."
+    & (Join-Path $repoRoot "scripts\test-operational.ps1")
+    if (-not $?) {
+        throw "Operational smoke test failed."
     }
 }

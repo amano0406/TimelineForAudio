@@ -13,6 +13,135 @@ function Get-TfaLastExitCode {
     return 1
 }
 
+function Format-TfaProcessArgument {
+    param([string]$Value)
+
+    if ($null -eq $Value) {
+        return '""'
+    }
+    $text = [string]$Value
+    if ($text.Length -eq 0) {
+        return '""'
+    }
+    if ($text -notmatch '[\s"]') {
+        return $text
+    }
+
+    $builder = [System.Text.StringBuilder]::new()
+    [void]$builder.Append('"')
+    $backslashes = 0
+    foreach ($character in $text.ToCharArray()) {
+        if ($character -eq '\') {
+            $backslashes += 1
+            continue
+        }
+        if ($character -eq '"') {
+            if ($backslashes -gt 0) {
+                [void]$builder.Append(('\' * ($backslashes * 2)))
+                $backslashes = 0
+            }
+            [void]$builder.Append('\"')
+            continue
+        }
+        if ($backslashes -gt 0) {
+            [void]$builder.Append(('\' * $backslashes))
+            $backslashes = 0
+        }
+        [void]$builder.Append($character)
+    }
+    if ($backslashes -gt 0) {
+        [void]$builder.Append(('\' * ($backslashes * 2)))
+    }
+    [void]$builder.Append('"')
+    return $builder.ToString()
+}
+
+function Invoke-TfaHiddenProcess {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [string[]]$Arguments = @(),
+        [string]$WorkingDirectory = (Get-Location).Path,
+        [switch]$WriteOutput,
+        [switch]$SuppressOutput
+    )
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $FilePath
+    $startInfo.Arguments = (@($Arguments) | ForEach-Object { Format-TfaProcessArgument -Value ([string]$_) }) -join " "
+    $startInfo.WorkingDirectory = $WorkingDirectory
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.StandardOutputEncoding = [System.Text.UTF8Encoding]::new($false)
+    $startInfo.StandardErrorEncoding = [System.Text.UTF8Encoding]::new($false)
+    $fileDirectory = Split-Path -Parent $FilePath
+    if ($fileDirectory) {
+        $currentPath = $startInfo.EnvironmentVariables["PATH"]
+        if (-not $currentPath) {
+            $currentPath = $env:PATH
+        }
+        $updatedPath = "$fileDirectory;$currentPath"
+        $startInfo.EnvironmentVariables["PATH"] = $updatedPath
+        $startInfo.EnvironmentVariables["Path"] = $updatedPath
+    }
+    $startInfo.EnvironmentVariables["PATHEXT"] = ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.CPL"
+    foreach ($name in @(
+        "COMPOSE_PROJECT_NAME",
+        "TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH",
+        "TIMELINE_FOR_AUDIO_PATHS_OVERRIDE_PATH"
+    )) {
+        $value = switch ($name) {
+            "COMPOSE_PROJECT_NAME" { $env:COMPOSE_PROJECT_NAME }
+            "TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH" { $env:TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH }
+            "TIMELINE_FOR_AUDIO_PATHS_OVERRIDE_PATH" { $env:TIMELINE_FOR_AUDIO_PATHS_OVERRIDE_PATH }
+        }
+        if ($null -ne $value) {
+            $startInfo.EnvironmentVariables[$name] = $value
+        }
+    }
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    [void]$process.Start()
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit()
+
+    $stdout = [string]$stdoutTask.Result
+    $stderr = [string]$stderrTask.Result
+    if ($WriteOutput -and -not $SuppressOutput) {
+        if ($stdout.Length -gt 0) {
+            [Console]::Out.Write($stdout)
+        }
+        if ($stderr.Length -gt 0) {
+            [Console]::Error.Write($stderr)
+        }
+    }
+
+    return [pscustomobject]@{
+        ExitCode = [int]$process.ExitCode
+        Stdout = $stdout
+        Stderr = $stderr
+    }
+}
+
+function Invoke-TfaDocker {
+    param(
+        [string[]]$Arguments,
+        [switch]$WriteOutput,
+        [switch]$SuppressOutput
+    )
+
+    return Invoke-TfaHiddenProcess `
+        -FilePath (Get-TfaDockerCommand) `
+        -Arguments $Arguments `
+        -WorkingDirectory (Get-Location).Path `
+        -WriteOutput:$WriteOutput `
+        -SuppressOutput:$SuppressOutput
+}
+
 function Add-TfaDockerPath {
     $dockerBin = Join-Path $env:ProgramFiles "Docker\Docker\resources\bin"
     if (Test-Path -LiteralPath (Join-Path $dockerBin "docker.exe")) {
@@ -69,8 +198,8 @@ function Wait-TfaDockerEngine {
     )
 
     for ($attempt = 1; $attempt -le $MaxAttempts; $attempt += 1) {
-        & (Get-TfaDockerCommand) info *> $null
-        if ($?) {
+        $result = Invoke-TfaDocker -Arguments @("info") -SuppressOutput
+        if ($result.ExitCode -eq 0) {
             return
         }
         Start-Sleep -Seconds $SleepSeconds
@@ -105,8 +234,8 @@ function Initialize-TfaDocker {
         exit 1
     }
 
-    & (Get-TfaDockerCommand) info *> $null
-    if ($?) {
+    $dockerInfo = Invoke-TfaDocker -Arguments @("info") -SuppressOutput
+    if ($dockerInfo.ExitCode -eq 0) {
         return
     }
 
@@ -127,6 +256,11 @@ function Initialize-TfaLocalFiles {
     )
 
     $pathScript = Join-Path $RepoRoot "scripts\prepare-docker-paths.ps1"
+    $settingsOverridePath = [string]$env:TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH
+    if ($settingsOverridePath) {
+        & $pathScript -RepoRoot $RepoRoot -SettingsPath $settingsOverridePath | Out-Null
+        return
+    }
     & $pathScript -RepoRoot $RepoRoot | Out-Null
 }
 
@@ -165,8 +299,8 @@ function Test-TfaNvidiaGpuAvailable {
         return $false
     }
 
-    & $nvidia --query-gpu=name --format=csv,noheader *> $null
-    return [bool]$?
+    $result = Invoke-TfaHiddenProcess -FilePath $nvidia -Arguments @("--query-gpu=name", "--format=csv,noheader") -SuppressOutput
+    return $result.ExitCode -eq 0
 }
 
 function Get-TfaComputeMode {
@@ -175,7 +309,10 @@ function Get-TfaComputeMode {
         [string]$RepoRoot
     )
 
-    $settingsPath = Join-Path $RepoRoot "settings.json"
+    $settingsPath = [string]$env:TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH
+    if (-not $settingsPath) {
+        $settingsPath = Join-Path $RepoRoot "settings.json"
+    }
     if (-not (Test-Path -LiteralPath $settingsPath)) {
         $settingsPath = Join-Path $RepoRoot "settings.example.json"
     }
@@ -245,10 +382,18 @@ function Get-TfaComposeArgs {
     )
 
     $args = [System.Collections.Generic.List[string]]::new()
+    $projectName = [string]$env:COMPOSE_PROJECT_NAME
+    if (-not [string]::IsNullOrWhiteSpace($projectName)) {
+        $args.Add("-p")
+        $args.Add($projectName)
+    }
     $args.Add("-f")
     $args.Add((Join-Path $RepoRoot "docker-compose.yml"))
 
-    $pathsOverride = Join-Path $RepoRoot ".docker\docker-compose.paths.yml"
+    $pathsOverride = [string]$env:TIMELINE_FOR_AUDIO_PATHS_OVERRIDE_PATH
+    if (-not $pathsOverride) {
+        $pathsOverride = Join-Path $RepoRoot ".docker\docker-compose.paths.yml"
+    }
     if (Test-Path -LiteralPath $pathsOverride) {
         $args.Add("-f")
         $args.Add($pathsOverride)
@@ -280,17 +425,21 @@ function Get-TfaCurrentWorkerFlavor {
     )
 
     $docker = Get-TfaDockerCommand
-    $containerIds = & $docker compose @ComposeArgs ps -q worker 2>$null
-    $containerId = @($containerIds | Select-Object -First 1)
+    $psResult = Invoke-TfaHiddenProcess -FilePath $docker -Arguments (@("compose") + $ComposeArgs + @("ps", "-q", "worker")) -WorkingDirectory $RepoRoot -SuppressOutput
+    if ($psResult.ExitCode -ne 0) {
+        return $null
+    }
+    $containerId = @($psResult.Stdout -split "\r?\n" | Where-Object { $_ } | Select-Object -First 1)
     if (-not $containerId) {
         return $null
     }
 
-    $envRows = & $docker inspect $containerId --format '{{range .Config.Env}}{{println .}}{{end}}' 2>$null
-    if (-not $?) {
+    $inspectResult = Invoke-TfaHiddenProcess -FilePath $docker -Arguments @("inspect", $containerId, "--format", "{{range .Config.Env}}{{println .}}{{end}}") -WorkingDirectory $RepoRoot -SuppressOutput
+    if ($inspectResult.ExitCode -ne 0) {
         return $null
     }
 
+    $envRows = $inspectResult.Stdout -split "\r?\n"
     foreach ($row in $envRows) {
         if ([string]$row -like "TIMELINE_FOR_AUDIO_WORKER_FLAVOR=*") {
             $value = ([string]$row).Substring("TIMELINE_FOR_AUDIO_WORKER_FLAVOR=".Length)

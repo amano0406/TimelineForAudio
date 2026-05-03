@@ -27,8 +27,8 @@ Invoke-TfaWithFileLock -RepoRoot $repoRoot -LockName "docker-compose.lock" -Scri
         $upArgs += "--force-recreate"
     }
     $upArgs += "worker"
-    & $docker @upArgs
-    if (-not $?) {
+    $startResult = Invoke-TfaHiddenProcess -FilePath $docker -Arguments $upArgs -WorkingDirectory $repoRoot -WriteOutput
+    if ($startResult.ExitCode -ne 0) {
         throw "docker compose failed."
     }
 }
@@ -43,8 +43,8 @@ Write-Host "  .\cli.ps1 items refresh"
 Write-Host "  .\cli.ps1 runs list"
 Write-Host ""
 Write-Host "Docker status:"
-& $docker compose @composeArgs ps
-$statusExitCode = Get-TfaLastExitCode
+$statusResult = Invoke-TfaHiddenProcess -FilePath $docker -Arguments (@("compose") + $composeArgs + @("ps")) -WorkingDirectory $repoRoot -WriteOutput
+$statusExitCode = $statusResult.ExitCode
 if ($statusExitCode -ne 0) {
     Write-Warning "TimelineForAudio worker started, but Docker status could not be displayed. Docker status exit code: $statusExitCode"
     exit 0

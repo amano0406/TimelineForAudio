@@ -12,6 +12,6 @@ $composeArgs = Get-TfaComposeArgs -RepoRoot $repoRoot
 $docker = Get-TfaDockerCommand
 
 Invoke-TfaWithFileLock -RepoRoot $repoRoot -LockName "docker-compose.lock" -ScriptBlock {
-    & $docker compose @composeArgs down --remove-orphans
+    $script:TfaStopResult = Invoke-TfaHiddenProcess -FilePath $docker -Arguments (@("compose") + $composeArgs + @("down", "--remove-orphans")) -WorkingDirectory $repoRoot -WriteOutput
 }
-exit (Get-TfaLastExitCode)
+exit ([int]$script:TfaStopResult.ExitCode)

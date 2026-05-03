@@ -27,6 +27,95 @@ function Convert-TfaContainerPathToHostPath {
     return $PathText
 }
 
+function Format-TfaProcessArgument {
+    param([string]$Value)
+
+    if ($null -eq $Value) {
+        return '""'
+    }
+    $text = [string]$Value
+    if ($text.Length -eq 0) {
+        return '""'
+    }
+    if ($text -notmatch '[\s"]') {
+        return $text
+    }
+
+    $builder = [System.Text.StringBuilder]::new()
+    [void]$builder.Append('"')
+    $backslashes = 0
+    foreach ($character in $text.ToCharArray()) {
+        if ($character -eq '\') {
+            $backslashes += 1
+            continue
+        }
+        if ($character -eq '"') {
+            if ($backslashes -gt 0) {
+                [void]$builder.Append(('\' * ($backslashes * 2)))
+                $backslashes = 0
+            }
+            [void]$builder.Append('\"')
+            continue
+        }
+        if ($backslashes -gt 0) {
+            [void]$builder.Append(('\' * $backslashes))
+            $backslashes = 0
+        }
+        [void]$builder.Append($character)
+    }
+    if ($backslashes -gt 0) {
+        [void]$builder.Append(('\' * ($backslashes * 2)))
+    }
+    [void]$builder.Append('"')
+    return $builder.ToString()
+}
+
+function Invoke-TfaPowerShellFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+        [string[]]$Arguments = @()
+    )
+
+    $powershellPath = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+    if (-not (Test-Path -LiteralPath $powershellPath)) {
+        $powershellPath = "powershell.exe"
+    }
+
+    $allArguments = @(
+        "-NoLogo",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $FilePath
+    ) + @($Arguments)
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $powershellPath
+    $startInfo.Arguments = (@($allArguments) | ForEach-Object { Format-TfaProcessArgument -Value ([string]$_) }) -join " "
+    $startInfo.WorkingDirectory = $repoRoot
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.StandardOutputEncoding = [System.Text.UTF8Encoding]::new($false)
+    $startInfo.StandardErrorEncoding = [System.Text.UTF8Encoding]::new($false)
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    [void]$process.Start()
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit()
+
+    return [pscustomobject]@{
+        ExitCode = [int]$process.ExitCode
+        Stdout = [string]$stdoutTask.Result
+        Stderr = [string]$stderrTask.Result
+    }
+}
+
 if ([System.IO.Path]::DirectorySeparatorChar -ne "\") {
     throw "This smoke test must be run from Windows PowerShell because it verifies local cli.ps1 execution."
 }
@@ -37,11 +126,12 @@ if (-not (Test-Path -LiteralPath $cliPath)) {
 }
 
 Write-Host "Running local cli.ps1 download smoke test..."
-$commandOutput = & $cliPath items download --json 2>&1
-$exitCode = $LASTEXITCODE
-$rawOutput = ($commandOutput | ForEach-Object { $_.ToString() }) -join "`n"
+$result = Invoke-TfaPowerShellFile -FilePath $cliPath -Arguments @("items", "download", "--json")
+$exitCode = $result.ExitCode
+$rawOutput = [string]$result.Stdout
 if ($exitCode -ne 0) {
     Write-Host $rawOutput
+    Write-Host $result.Stderr
     throw "cli.ps1 items download failed with exit code $exitCode."
 }
 

@@ -258,10 +258,23 @@ Docker checks:
 .\scripts\test-local-cli-download.ps1
 ```
 
-Python checks の後にこの smoke test も含める場合:
+隔離された運用 smoke test:
+
+```powershell
+.\scripts\test-operational.ps1
+```
+
+このテストは一時的な設定ファイルを別に作り、入力と出力を生成されたテスト用 workspace に向けます。通常の `settings.json` は変更しません。既定では `items refresh --queue-only` を使うため、重い model は実行しません。full pipeline を確認したい場合だけ明示します。
+
+```powershell
+.\scripts\test-operational.ps1 -UseRealModels -KeepOutput
+```
+
+Python checks の後に smoke test も含める場合:
 
 ```powershell
 .\scripts\lint.ps1 -IncludeLocalCliDownload
+.\scripts\lint.ps1 -IncludeOperationalSmoke
 ```
 
 ## Repo Layout
