@@ -7,6 +7,12 @@ param(
     [switch]$KeepOutput,
 
     [Parameter()]
+    [string]$SourceAudioPath = "",
+
+    [Parameter()]
+    [long]$MaxSourceAudioBytes = 52428800,
+
+    [Parameter()]
     [string]$WorkRoot = "C:\Codex\workspaces\TimelineForAudio\operational-tests"
 )
 
@@ -253,6 +259,73 @@ function Get-TfaOriginalSettings {
     }
 }
 
+function Get-TfaOperationalSourceAudio {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Settings,
+        [string]$ExplicitPath = "",
+        [long]$MaxBytes = 52428800
+    )
+
+    $supportedExtensions = @(".aac", ".flac", ".m4a", ".mp3", ".wav")
+
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitPath)) {
+        if (-not (Test-Path -LiteralPath $ExplicitPath -PathType Leaf)) {
+            throw "SourceAudioPath was not found: $ExplicitPath"
+        }
+        $source = Get-Item -LiteralPath $ExplicitPath
+        if ($supportedExtensions -notcontains $source.Extension.ToLowerInvariant()) {
+            throw "SourceAudioPath is not a supported audio file: $ExplicitPath"
+        }
+        return $source
+    }
+
+    $roots = @()
+    if ($Settings.PSObject.Properties.Name -contains "inputRoots") {
+        $roots = @($Settings.inputRoots)
+    }
+
+    $candidates = [System.Collections.Generic.List[System.IO.FileInfo]]::new()
+    foreach ($root in @($roots)) {
+        $rootPath = [string]$root
+        if ([string]::IsNullOrWhiteSpace($rootPath)) {
+            continue
+        }
+        if (-not (Test-Path -LiteralPath $rootPath -PathType Container)) {
+            continue
+        }
+        Get-ChildItem -LiteralPath $rootPath -File -Recurse -ErrorAction SilentlyContinue |
+            Where-Object {
+                $supportedExtensions -contains $_.Extension.ToLowerInvariant() -and
+                $_.Length -gt 0 -and
+                $_.Length -le $MaxBytes
+            } |
+            ForEach-Object { $candidates.Add($_) }
+    }
+
+    $selected = $candidates | Sort-Object Length, FullName | Select-Object -First 1
+    return $selected
+}
+
+function Convert-TfaContainerPathToHostPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PathText,
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot
+    )
+
+    $normalized = $PathText.Replace("\", "/")
+    if ($normalized -eq "/workspace") {
+        return $RepoRoot
+    }
+    if ($normalized.StartsWith("/workspace/")) {
+        $relativePath = $normalized.Substring("/workspace/".Length).Replace("/", [System.IO.Path]::DirectorySeparatorChar)
+        return Join-Path $RepoRoot $relativePath
+    }
+    return $PathText
+}
+
 function Test-TfaZipContains {
     param(
         [Parameter(Mandatory = $true)]
@@ -281,16 +354,15 @@ $runId = "operational-$timestamp-$(([guid]::NewGuid().ToString('N')).Substring(0
 $runRoot = Join-Path $WorkRoot $runId
 $inputRoot = Join-Path $runRoot "input"
 $outputRoot = Join-Path $runRoot "output"
-$samplePath = Join-Path $inputRoot "operational-sample.wav"
 $testSettingsPath = Join-Path $runRoot "settings.json"
 $testPathsOverridePath = Join-Path $runRoot "docker-compose.paths.yml"
 $originalComposeProjectName = $env:COMPOSE_PROJECT_NAME
 $originalHostSettingsPath = $env:TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH
 $originalPathsOverridePath = $env:TIMELINE_FOR_AUDIO_PATHS_OVERRIDE_PATH
 $projectName = "timeline-for-audio-operational-$($runId.ToLowerInvariant() -replace '[^a-z0-9-]', '-')"
+$generatedArchiveHostPath = $null
 
 New-Item -ItemType Directory -Path $runRoot, $inputRoot, $outputRoot -Force | Out-Null
-New-TfaOperationalWaveFile -Path $samplePath
 
 $originalSettings = Get-TfaOriginalSettings
 $computeMode = "cpu"
@@ -302,9 +374,26 @@ if ($UseRealModels) {
     if ([string]::IsNullOrWhiteSpace($token)) {
         throw "UseRealModels requires huggingfaceToken in the current settings.json."
     }
+    if ($originalSettings.PSObject.Properties.Name -contains "computeMode") {
+        $settingsComputeMode = [string]$originalSettings.computeMode
+        if ($settingsComputeMode -in @("cpu", "gpu")) {
+            $computeMode = $settingsComputeMode
+        }
+    }
+    $sourceAudio = Get-TfaOperationalSourceAudio `
+        -Settings $originalSettings `
+        -ExplicitPath $SourceAudioPath `
+        -MaxBytes $MaxSourceAudioBytes
+    if (-not $sourceAudio) {
+        throw "UseRealModels requires -SourceAudioPath or at least one supported audio file in settings.inputRoots within MaxSourceAudioBytes."
+    }
+    $samplePath = Join-Path $inputRoot ([System.IO.Path]::GetFileName([string]$sourceAudio.FullName))
+    Copy-Item -LiteralPath ([string]$sourceAudio.FullName) -Destination $samplePath -Force
 }
 else {
     $token = "hf_operational_test_placeholder_000000"
+    $samplePath = Join-Path $inputRoot "operational-sample.wav"
+    New-TfaOperationalWaveFile -Path $samplePath
 }
 
 $testSettings = [ordered]@{
@@ -349,6 +438,7 @@ try {
     Write-Host "Running isolated operational test."
     Write-Host "  Work root: $runRoot"
     Write-Host "  Real models: $UseRealModels"
+    Write-Host "  Source audio: $samplePath"
 
     $status = Invoke-TfaCliJson -Arguments @("settings", "status", "--json")
     if ([string]$status.setup.state -ne "ready") {
@@ -376,16 +466,18 @@ try {
 
         $download = Invoke-TfaCliJson -Arguments @("items", "download", "--json")
         $archivePath = [string]$download.archive_path
-        if (-not (Test-Path -LiteralPath $archivePath -PathType Leaf)) {
-            throw "items download archive was not created: $archivePath"
+        $archiveHostPath = Convert-TfaContainerPathToHostPath -PathText $archivePath -RepoRoot $repoRoot
+        $generatedArchiveHostPath = $archiveHostPath
+        if (-not (Test-Path -LiteralPath $archiveHostPath -PathType Leaf)) {
+            throw "items download archive was not created: $archiveHostPath"
         }
-        if (-not (Test-TfaZipContains -ArchivePath $archivePath -Pattern "README.md")) {
+        if (-not (Test-TfaZipContains -ArchivePath $archiveHostPath -Pattern "README.md")) {
             throw "download archive does not contain README.md."
         }
-        if (-not (Test-TfaZipContains -ArchivePath $archivePath -Pattern "items/*/timeline.json")) {
+        if (-not (Test-TfaZipContains -ArchivePath $archiveHostPath -Pattern "items/*/timeline.json")) {
             throw "download archive does not contain timeline.json."
         }
-        if (-not (Test-TfaZipContains -ArchivePath $archivePath -Pattern "items/*/convert_info.json")) {
+        if (-not (Test-TfaZipContains -ArchivePath $archiveHostPath -Pattern "items/*/convert_info.json")) {
             throw "download archive does not contain convert_info.json."
         }
 
@@ -453,6 +545,9 @@ finally {
     }
 
     if (-not $KeepOutput) {
+        if ($null -ne $generatedArchiveHostPath -and (Test-Path -LiteralPath $generatedArchiveHostPath -PathType Leaf)) {
+            Remove-Item -LiteralPath $generatedArchiveHostPath -Force -ErrorAction SilentlyContinue
+        }
         Remove-Item -LiteralPath $runRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
     else {

@@ -270,6 +270,12 @@ Docker checks:
 .\scripts\test-operational.ps1 -UseRealModels -KeepOutput
 ```
 
+`-UseRealModels` を付けた場合、`settings.inputRoots` から小さい対応音声ファイルを 1 つ選び、隔離された test workspace にコピーして実行します。毎回同じ音声で確認したい場合は、source audio を明示します。
+
+```powershell
+.\scripts\test-operational.ps1 -UseRealModels -SourceAudioPath "C:\TimelineData\input-audio\sample.mp3" -KeepOutput
+```
+
 Python checks の後に smoke test も含める場合:
 
 ```powershell

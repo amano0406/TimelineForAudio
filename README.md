@@ -270,6 +270,12 @@ This test creates a separate temporary settings file, points input and output to
 .\scripts\test-operational.ps1 -UseRealModels -KeepOutput
 ```
 
+When `-UseRealModels` is set, the test copies one small supported audio file from `settings.inputRoots` into the isolated test workspace. You can pin the source file explicitly when you want reproducible operational verification:
+
+```powershell
+.\scripts\test-operational.ps1 -UseRealModels -SourceAudioPath "C:\TimelineData\input-audio\sample.mp3" -KeepOutput
+```
+
 Include smoke tests after the Python checks:
 
 ```powershell
