@@ -102,9 +102,9 @@ The first LP CTA should send users to the release page, not directly to the asse
 ## Release Checks
 
 - `settings.example.json` reflects the current CLI-only product contract.
-- `.\cli.ps1 settings init` works from Windows PowerShell.
-- `.\cli.ps1 items refresh` processes configured input roots.
-- `.\cli.ps1 items download` exports `README.md`, `convert_info.json`, and `timeline.json`.
+- `.\cli.bat settings init` works from Windows PowerShell.
+- `.\cli.bat items refresh` processes configured input roots.
+- `.\cli.bat items download` exports `README.md`, `convert_info.json`, and `timeline.json`.
 - Docker CPU worker starts successfully.
 - Docker GPU worker starts successfully when NVIDIA Docker support is available.
 - A real audio sample produces `timeline.json`.

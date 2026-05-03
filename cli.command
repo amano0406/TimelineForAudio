@@ -47,7 +47,7 @@ elif command -v powershell >/dev/null 2>&1; then
 else
   if [[ "${requires_configured_worker}" == "true" ]]; then
     echo "This command needs configured Docker host path mounts." >&2
-    echo "Run it through cli.ps1 or cli.bat from Windows PowerShell so settings.json paths are mounted correctly." >&2
+    echo "Run it through cli.bat from Windows so settings.json paths are mounted correctly." >&2
     exit 1
   fi
   echo "PowerShell was not found; cannot start or update Docker host path mounts from this WSL/Unix shell."
