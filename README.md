@@ -1,44 +1,59 @@
 # TimelineForAudio
 
-TimelineForAudio is a local Docker-first CLI tool for turning configured audio directories into speaker-attributed phone-token timelines.
+`TimelineForAudio` is a local Docker-first CLI tool that reads configured audio directories and keeps speaker-attributed phone-token timeline artifacts up to date.
 
-The product does not reconstruct readable text, infer real speaker names, or summarize meaning. It prepares audio in a structured form that downstream tools can use.
+Japanese README: [README.ja.md](README.ja.md)
+
+This product is CLI-only. There is no Web UI. The public surface is intentionally small: source audio paths, local settings, master artifacts, download ZIPs, and CLI JSON output. Internal run state, logs, model cache, and scratch files are product-managed implementation details.
+
+## What It Does
+
+- Reads audio files from configured input directories.
+- Skips unchanged files when the source hash, source file identity, and generation signature are unchanged.
+- Keeps the original audio-relative timeline while processing speech candidate ranges in smaller chunks.
+- Runs required speaker diarization with `pyannote/speaker-diarization-community-1`.
+- Extracts phone tokens with the current ZIPA large ONNX backend.
+- Writes one master item directory per analyzed audio file.
+- Builds a small handoff ZIP on demand.
+- Exposes model inventory for license and usage-condition review.
+
+## What It Does Not Do
+
+- It does not provide a Web UI.
+- It does not reconstruct readable text.
+- It does not summarize meaning.
+- It does not infer real speaker names, identity, age, gender, or attributes.
+- It does not modify source audio files.
+- It does not put processing scratch files in the master output.
+- It does not treat run directories as user-facing download artifacts.
 
 ## Current Pipeline
 
 1. Read audio files from configured input directories.
 2. Normalize each audio file for processing without modifying the original file.
 3. Detect speech candidate ranges and keep original audio-relative timestamps.
-4. Run required speaker diarization with `pyannote/speaker-diarization-community-1`.
-5. Extract phone tokens with the current ZIPA large ONNX backend in small speech-candidate chunks.
-6. Write the persistent JSON artifacts.
+4. Run speaker diarization.
+5. Extract phone tokens from speech candidate chunks.
+6. Merge speaker turns, timestamps, and phone tokens into `timeline.json`.
+7. Write `convert_info.json` with source, model, runtime, and processing-flow metadata.
 
 Long recordings are not sent to ZIPA as one large inference request. Speech candidates are chunked internally and merged back to the original timeline.
 
-Persistent per-item artifacts:
-
-```text
-<item-id>/conversion-info.json
-<item-id>/timeline.json
-```
-
-Processing-only files such as normalized WAV, speech candidate maps, and model scratch files are temporary. They are not kept in the master output.
-
-Run-level operational files are temporary Docker/container state for CLI status and troubleshooting. They are not part of the master output. If the container is recreated, unfinished run state can disappear; completed item artifacts remain in the master directory.
-
-```text
-<temporary app data>/runs/<run-id>/RUN_PERFORMANCE.json
-```
-
 ## Settings
 
-Persistent settings are stored in:
+Normal Docker Compose operation uses the repo-root local settings file:
 
 ```text
 C:\apps\TimelineForAudio\settings.json
 ```
 
-`settings.example.json` is tracked by Git. `settings.json` is local-only and is not tracked.
+The repo keeps a Git-managed template:
+
+```text
+C:\apps\TimelineForAudio\settings.example.json
+```
+
+`settings.json` is intentionally not committed. It is created from `settings.example.json` when missing.
 
 Default shape:
 
@@ -46,167 +61,208 @@ Default shape:
 {
   "schemaVersion": 1,
   "inputRoots": [
-    {
-      "id": "timeline-audio",
-      "path": "C:\\TimelineData\\Audio\\"
-    }
+    "C:\\TimelineData\\input-audio\\"
   ],
-  "outputRoot": {
-    "path": "C:\\TimelineData\\AudioMaster\\"
-  },
-  "audioExtensions": [".mp3", ".wav", ".m4a", ".aac", ".flac"],
+  "outputRoot": "C:\\TimelineData\\audio",
   "huggingfaceToken": "",
   "computeMode": "cpu"
 }
 ```
 
-`items refresh` queues all changed files by default. Use `items refresh --max-items <N>` when you want a smaller test or retry batch.
+User-controlled settings:
 
-## Windows Entry Points
+| Key | Meaning |
+|---|---|
+| `inputRoots` | Fixed source audio directories. Each entry is a path string. |
+| `outputRoot` | Fixed master artifact directory. |
+| `huggingfaceToken` | Local Hugging Face token for model access. |
+| `computeMode` | `cpu` or `gpu`. |
 
-Use PowerShell from the project directory.
+Product-owned defaults, such as supported audio extensions, live in runtime defaults and are not user settings.
+
+## Output Contract
+
+Master output:
+
+```text
+<outputRoot>/
+  <item-id>/
+    convert_info.json
+    timeline.json
+```
+
+Download ZIP:
+
+```text
+README.md
+items/
+  <item-id>/
+    convert_info.json
+    timeline.json
+```
+
+`timeline.json` is the final structured audio timeline:
+
+```json
+{
+  "schema_version": 1,
+  "artifact_type": "timeline",
+  "source": {},
+  "pipeline": {},
+  "turns": [
+    {
+      "start_sec": 12.34,
+      "end_sec": 15.67,
+      "speaker": "SPEAKER_00",
+      "phone_tokens": "..."
+    }
+  ]
+}
+```
+
+`convert_info.json` contains source fingerprint, model/runtime metadata, processing-flow metadata, counts, and output file names.
+
+## Storage Model
+
+| Location | Owner | Persistent | User-facing | Purpose |
+|---|---|---:|---:|---|
+| `settings.json` | User/local machine | Yes | Yes | Fixed input roots, output root, token, compute mode |
+| `outputRoot` | User/downstream tools | Yes | Yes | Master item artifacts |
+| `app-data` Docker volume | TimelineForAudio | Yes | No | Run state, status, logs, ETA history, catalog index |
+| `cache-data` Docker volume | TimelineForAudio / model libraries | Yes | No | Hugging Face, Transformers, Torch, and model cache |
+| `/tmp/...` inside container | TimelineForAudio | No | No | Temporary staging and scratch work |
+
+Internal storage can change as long as the public output contract and CLI contract stay stable. The master output and download ZIP are the surfaces downstream products should rely on.
+
+## CLI Usage
+
+Run commands from the repository root:
+
+```powershell
+cd C:\apps\TimelineForAudio
+```
+
+On Windows, `*.ps1` scripts are the primary entrypoints. `*.bat` files are thin compatibility wrappers for environments that cannot launch PowerShell scripts directly, and must not define different behavior.
 
 ```powershell
 .\start.ps1
 .\cli.ps1 settings init
+.\cli.ps1 settings status
 .\cli.ps1 settings save --token <HUGGING_FACE_TOKEN> --compute-mode gpu
-.\cli.ps1 items refresh
+
 .\cli.ps1 files list --json
+.\cli.ps1 files list --page 1 --page-size 50 --json
+.\cli.ps1 items refresh --json
+.\cli.ps1 items refresh --max-items 3 --json
 .\cli.ps1 items list --json
+.\cli.ps1 items list --page 1 --page-size 50 --json
 .\cli.ps1 items remove --item-id item-a1b2c3d4e5f6,item-f6e5d4c3b2a1 --dry-run --json
+.\cli.ps1 items download --json
 .\cli.ps1 items download --item-id item-a1b2c3d4e5f6,item-f6e5d4c3b2a1 --json
-.\cli.ps1 items download --all --json
-.\cli.ps1 runs list
-.\cli.ps1 runs show --run-id <RUN_ID>
-.\stop.ps1
+.\cli.ps1 runs list --json
+.\cli.ps1 runs show --run-id <RUN_ID> --json
 ```
 
-Use `.\cli.ps1 items refresh --reprocess-duplicates` only when you intentionally want to recompute unchanged files.
+External application examples:
 
-`items remove` does not delete the source audio file. It removes the managed item rows and generated `<item-id>` directories for the selected `item_id` values, so the next `items refresh` treats those source files as unprocessed. Use `--dry-run` before deleting when a management UI needs a confirmation step.
+```cmd
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File C:\apps\TimelineForAudio\cli.ps1 settings status --json
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File C:\apps\TimelineForAudio\cli.ps1 files list --json
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File C:\apps\TimelineForAudio\cli.ps1 items refresh --json
+```
 
-`items list`, `items remove`, and `items download` treat the master item directories as the source of truth. No persistent catalog directory is required inside the master output.
+When checking from WSL or Codex, call through the Windows command host:
 
-For JSON output details used by management UIs or other products, see [docs/CLI_OUTPUTS.ja.md](docs/CLI_OUTPUTS.ja.md).
+```bash
+cmd.exe /c "cd /d C:\apps\TimelineForAudio && powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File cli.ps1 settings status --json"
+```
 
-List model inventory for license and usage-condition review:
+Notes:
+
+- `items refresh` queues all changed files by default.
+- Use `items refresh --max-items <N>` for smaller test or retry batches.
+- Use `items refresh --reprocess-duplicates` only when you intentionally want to recompute unchanged files.
+- `items remove` deletes managed item data and generated artifacts only. It does not delete source audio files.
+- `runs` commands are diagnostic-only because run directories are product-managed runtime files.
+- For CLI JSON output details, see [docs/CLI_OUTPUTS.ja.md](docs/CLI_OUTPUTS.ja.md).
+
+Model inventory:
 
 ```powershell
 .\cli.ps1 models list --json
 .\cli.ps1 models list --include-remote --json
 ```
 
-`--include-remote` asks the Hugging Face API for license / gated / tags metadata. Treat the upstream model page as the final source of truth.
+`--include-remote` asks the Hugging Face API for license, gated, and tag metadata. Treat the upstream model page as the final source of truth.
 
-## CLI Structure
+## Docker Compose
 
-The CLI separates source files, managed items, execution runs, and fixed settings.
+In normal Windows operation, use `start.ps1`, `cli.ps1`, and `stop.ps1` rather than typing Docker commands directly.
 
-### Command Groups
-
-| Command group | Role |
-|---|---|
-| `files` | Inspect source files that currently exist in configured input directories |
-| `items` | Manage TimelineForAudio analysis targets and their generated data |
-| `runs` | Inspect temporary execution runs. Mainly diagnostic and developer-facing |
-| `settings` | Manage fixed configuration. Inputs are multiple; the master location is single |
-
-Main commands:
-
-```powershell
-.\cli.ps1 files list
-.\cli.ps1 items list
-.\cli.ps1 items refresh
-.\cli.ps1 items remove --item-id <ITEM_ID_1>,<ITEM_ID_2>
-.\cli.ps1 items download --item-id <ITEM_ID_1>,<ITEM_ID_2>
-.\cli.ps1 items download --all
-.\cli.ps1 runs list
-.\cli.ps1 runs show --run-id <RUN_ID>
-```
-
-`settings` should clearly separate multiple input locations from the single master storage location.
-
-```powershell
-.\cli.ps1 settings inputs add "C:\TimelineData\Audio\"
-.\cli.ps1 settings inputs list
-.\cli.ps1 settings inputs remove input-a7f3k9
-.\cli.ps1 settings master set "C:\TimelineData\AudioMaster\"
-.\cli.ps1 settings master show
-```
-
-### Separating `files` and `items`
-
-`files` is for source audio files that currently exist in the configured input directories. It should not manage files that existed in the past but have since been removed, and it should not remove generated data.
-
-`items` is for analysis targets managed by TimelineForAudio. A generated item can remain managed even when the original source file no longer exists in the input directory. For that reason, generated-data removal and download belong under `items`, not `files`.
-
-`items remove` does not delete the original source audio. It removes only the managed item data and generated artifacts for the selected `item_id` values. Multiple `item_id` values can be passed as a comma-separated list. If the source file still exists in an input directory, the next `items refresh` can recreate the item.
-
-`items download` retrieves generated data for the selected `item_id` values. When multiple IDs are provided, they are downloaded together. Use `items download --all` to export every currently available managed item. There is no separate `outputs` command group; generated data is treated as part of the item.
-
-When `--output` is omitted in Docker usage, the ZIP is written under the project `output` directory, not inside the master directory. The master directory should contain only item artifact directories.
-
-### Removed Old Commands
-
-| Old command | Current handling | Intent |
-|---|---|---|
-| `settings input-root` | `settings inputs` | Inputs are multiple, so use a plural command group |
-| `settings output-root` | `settings master` | The generated-data master location is single |
-| `scan` | `files scan` | Group source-file inspection under `files` |
-| `files delete-generated` | `items remove --item-id <ITEM_ID>` | Remove generated data through managed items, not current source files |
-| `refresh` | `items refresh` | Refresh updates managed items, so it belongs under `items` |
-| `runs archive` | Remove | Run-scoped download should not be provided |
-| `process-run` | Internal command | Hide from normal user workflows |
-| `daemon` | Internal command | Hide from normal user workflows |
-
-### Input Directory Management
-
-Input directories should not require users to invent stable identifiers. The CLI keeps this to add, list, and remove.
-
-```powershell
-.\cli.ps1 settings inputs add "C:\TimelineData\Audio\"
-.\cli.ps1 settings inputs list
-.\cli.ps1 settings inputs remove input-a7f3k9
-```
-
-Direction:
-
-- Do not ask for an ID during `add`
-- Generate a short random ID such as `input-a7f3k9`
-- Treat the ID as an operation handle for removal or targeted refresh, not as a user concept
-- Avoid `display-name` in the main path
-- Do not use `enable` / `disable`. Unused input directories should be removed
-- To change a path, remove the old input directory and add the new path
-
-`source_file_identity` may also move away from the input ID and toward an identity based on the input directory path plus the relative file path. This would let a re-added input directory keep the same file identity when the directory path and relative file path are unchanged.
-
-Example:
+The Compose project name is:
 
 ```text
-root-b4c91a:20220401020001.m4a
+timeline-for-audio
 ```
 
-This affects reuse behavior, so it should be handled as a separate breaking change from the command naming cleanup.
+The worker service runs the Python CLI. It exposes no browser port.
 
-## Required External Setup
+Docker resources:
 
-- Windows with Docker Desktop installed and running.
-- Hugging Face token.
-- Access approval for `pyannote/speaker-diarization-community-1`.
-- Input directories mounted through the Docker startup scripts.
+- `app-data`: product-managed runtime data
+- `cache-data`: model and library cache
+- input roots: generated read-only bind mounts from `settings.json`
+- `outputRoot`: generated writable bind mount from `settings.json`
 
-## Output Semantics
+GPU mode uses `docker-compose.gpu.yml` only when `settings.json` has `"computeMode": "gpu"` and an NVIDIA GPU is available from the shell.
 
-Speaker labels are mechanical labels such as `SPEAKER_00` and `SPEAKER_01`.
+Stop the worker:
 
-The timeline preserves:
+```powershell
+.\stop.ps1
+```
 
-- original source filename
-- source hash
-- audio-relative timestamps
-- best-effort recorded datetime when available
-- timezone metadata when known
-- speaker label
-- phone tokens
+Uninstall Docker resources:
 
-TimelineForAudio intentionally does not use language hints, supplemental text, or downstream LLM text restoration.
+```powershell
+.\uninstall.ps1
+```
+
+`uninstall.ps1` keeps `app-data`, `cache-data`, and `settings.json` by default. Use deletion options only when you intentionally want to delete those.
+
+## Testing
+
+Host Python CLI execution is blocked for normal use. Tests may use the explicit development override.
+
+Unit tests:
+
+```bash
+TIMELINE_FOR_AUDIO_ALLOW_HOST_CLI=1 \
+PYTHONPATH=/mnt/c/apps/TimelineForAudio/worker/src \
+python3 -m unittest discover -s /mnt/c/apps/TimelineForAudio/worker/tests -v
+```
+
+Docker checks:
+
+```powershell
+.\start.ps1
+.\cli.ps1 settings status --json
+.\cli.ps1 files list --json
+.\cli.ps1 items refresh --max-items 1 --json
+.\cli.ps1 items list --json
+```
+
+## Repo Layout
+
+```text
+configs/
+docker/
+docs/
+scripts/
+worker/
+cli.ps1
+start.ps1
+stop.ps1
+uninstall.ps1
+settings.example.json
+```

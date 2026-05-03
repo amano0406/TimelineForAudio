@@ -15,6 +15,8 @@ from timeline_for_audio_worker.run_store import (
     create_refresh_run,
     generation_signature_for_settings,
     list_items,
+    list_items_page,
+    list_audio_file_page,
     list_audio_file_rows,
     list_runs,
     remove_items,
@@ -69,6 +71,7 @@ def write_master_item(
     source_relative_path: str,
     source_file_identity: str,
     file_name: str | None = None,
+    generated_at: str = "2026-04-30T00:00:00+00:00",
     turns: list[dict[str, object]] | None = None,
 ) -> Path:
     item_dir = master_root / item_id
@@ -89,7 +92,8 @@ def write_master_item(
     }
     conversion = {
         "schema_version": 1,
-        "artifact_type": "conversion-info",
+        "artifact_type": "convert_info",
+        "generated_at": generated_at,
         "source": source,
         "pipeline": pipeline,
     }
@@ -102,7 +106,7 @@ def write_master_item(
         "turn_count": len(timeline_turns),
         "turns": timeline_turns,
     }
-    (item_dir / "conversion-info.json").write_text(
+    (item_dir / "convert_info.json").write_text(
         json.dumps(conversion, ensure_ascii=False),
         encoding="utf-8",
     )
@@ -127,9 +131,8 @@ class RunStoreTests(unittest.TestCase):
             ignored.write_text("x", encoding="utf-8")
 
             settings = {
-                "audioExtensions": [".wav", ".mp3"],
                 "inputRoots": [],
-                "outputRoot": {"path": str(root / "runs")},
+                "outputRoot": str(root / "runs"),
             }
 
             items = collect_input_items(settings=settings, files=[file_a], directories=[source_dir])
@@ -156,9 +159,8 @@ class RunStoreTests(unittest.TestCase):
             )
             try:
                 settings = {
-                    "audioExtensions": [".mp3"],
                     "inputRoots": [],
-                    "outputRoot": {"path": str(mapped_root)},
+                    "outputRoot": str(mapped_root),
                 }
 
                 items = collect_input_items(
@@ -184,14 +186,8 @@ class RunStoreTests(unittest.TestCase):
             (source_dir / "a.wav").write_bytes(b"a")
             (source_dir / "ignored.txt").write_text("x", encoding="utf-8")
             settings = {
-                "audioExtensions": [".wav"],
-                "inputRoots": [
-                    {
-                        "id": "meetings",
-                        "path": str(source_dir),
-                    }
-                ],
-                "outputRoot": {"path": str(runs_root)},
+                "inputRoots": [str(source_dir)],
+                "outputRoot": str(runs_root),
                 "computeMode": "cpu",
                 "uiLanguage": "ja",
             }
@@ -216,14 +212,8 @@ class RunStoreTests(unittest.TestCase):
             audio_file = source_dir / "2026-04-01 12-00-00.wav"
             audio_file.write_bytes(b"stable-audio")
             settings = {
-                "audioExtensions": [".wav"],
-                "inputRoots": [
-                    {
-                        "id": "meetings",
-                        "path": str(source_dir),
-                    }
-                ],
-                "outputRoot": {"path": str(runs_root)},
+                "inputRoots": [str(source_dir)],
+                "outputRoot": str(runs_root),
                 "computeMode": "cpu",
                 "uiLanguage": "ja",
             }
@@ -236,7 +226,8 @@ class RunStoreTests(unittest.TestCase):
                 source_hash=sha256_file(audio_file),
                 conversion_signature=signature,
                 source_relative_path="2026-04-01 12-00-00.wav",
-                source_file_identity="meetings:2026-04-01 12-00-00.wav",
+                source_id=str(source_dir),
+                source_file_identity=f"{source_dir}::2026-04-01 12-00-00.wav",
             )
 
             run_id, run_dir, summary = create_refresh_run(
@@ -250,7 +241,7 @@ class RunStoreTests(unittest.TestCase):
             self.assertEqual(1, summary["skipped_count"])
             self.assertEqual("unchanged", summary["skipped"][0]["reason"])
             self.assertEqual(
-                "meetings:2026-04-01 12-00-00.wav",
+                f"{source_dir}::2026-04-01 12-00-00.wav",
                 summary["skipped"][0]["source_file_identity"],
             )
 
@@ -263,14 +254,8 @@ class RunStoreTests(unittest.TestCase):
             renamed_audio = source_dir / "renamed-meeting.wav"
             renamed_audio.write_bytes(b"stable-audio")
             settings = {
-                "audioExtensions": [".wav"],
-                "inputRoots": [
-                    {
-                        "id": "meetings",
-                        "path": str(source_dir),
-                    }
-                ],
-                "outputRoot": {"path": str(runs_root)},
+                "inputRoots": [str(source_dir)],
+                "outputRoot": str(runs_root),
                 "computeMode": "cpu",
                 "uiLanguage": "ja",
             }
@@ -283,7 +268,8 @@ class RunStoreTests(unittest.TestCase):
                 source_hash=sha256_file(renamed_audio),
                 conversion_signature=signature,
                 source_relative_path="original-meeting.wav",
-                source_file_identity="meetings:original-meeting.wav",
+                source_id=str(source_dir),
+                source_file_identity=f"{source_dir}::original-meeting.wav",
             )
 
             run_id, run_dir, summary = create_refresh_run(
@@ -297,7 +283,7 @@ class RunStoreTests(unittest.TestCase):
             self.assertEqual(0, summary["skipped_count"])
             request = json.loads((Path(str(run_dir)) / "request.json").read_text(encoding="utf-8"))
             self.assertEqual(
-                "meetings:renamed-meeting.wav",
+                f"{source_dir}::renamed-meeting.wav",
                 request["input_items"][0]["source_file_identity"],
             )
 
@@ -312,14 +298,8 @@ class RunStoreTests(unittest.TestCase):
             target_audio.write_bytes(b"target-audio")
             other_audio.write_bytes(b"other-audio")
             settings = {
-                "audioExtensions": [".wav"],
-                "inputRoots": [
-                    {
-                        "id": "meetings",
-                        "path": str(source_dir),
-                    }
-                ],
-                "outputRoot": {"path": str(runs_root)},
+                "inputRoots": [str(source_dir)],
+                "outputRoot": str(runs_root),
                 "computeMode": "cpu",
             }
             signature = generation_signature_for_settings(settings=settings)
@@ -329,7 +309,8 @@ class RunStoreTests(unittest.TestCase):
                 source_hash=sha256_file(target_audio),
                 conversion_signature=signature,
                 source_relative_path="target.wav",
-                source_file_identity="meetings:target.wav",
+                source_id=str(source_dir),
+                source_file_identity=f"{source_dir}::target.wav",
                 turns=[{"speaker": "SPEAKER_00"}],
             )
             other_media = write_master_item(
@@ -338,12 +319,13 @@ class RunStoreTests(unittest.TestCase):
                 source_hash=sha256_file(other_audio),
                 conversion_signature=signature,
                 source_relative_path="other.wav",
-                source_file_identity="meetings:other.wav",
+                source_id=str(source_dir),
+                source_file_identity=f"{source_dir}::other.wav",
             )
 
             items = list_items(settings=settings)
             target_item = next(
-                item for item in items if item["source_file_identity"] == "meetings:target.wav"
+                item for item in items if item["source_file_identity"] == f"{source_dir}::target.wav"
             )
 
             payload = remove_items(
@@ -370,14 +352,8 @@ class RunStoreTests(unittest.TestCase):
             audio_file = source_dir / "target.wav"
             audio_file.write_bytes(b"target-audio")
             settings = {
-                "audioExtensions": [".wav"],
-                "inputRoots": [
-                    {
-                        "id": "meetings",
-                        "path": str(source_dir),
-                    }
-                ],
-                "outputRoot": {"path": str(runs_root)},
+                "inputRoots": [str(source_dir)],
+                "outputRoot": str(runs_root),
                 "computeMode": "cpu",
             }
             signature = generation_signature_for_settings(settings=settings)
@@ -387,7 +363,8 @@ class RunStoreTests(unittest.TestCase):
                 source_hash=sha256_file(audio_file),
                 conversion_signature=signature,
                 source_relative_path="target.wav",
-                source_file_identity="meetings:target.wav",
+                source_id=str(source_dir),
+                source_file_identity=f"{source_dir}::target.wav",
             )
 
             item_id = str(list_items(settings=settings)[0]["item_id"])
@@ -403,6 +380,181 @@ class RunStoreTests(unittest.TestCase):
             self.assertEqual(0, payload["media_dirs_removed"])
             self.assertTrue(media_dir.exists())
 
+    def test_files_list_prefers_available_item_over_stale_failed_run(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            with isolated_settings_environment(root):
+                source_dir = root / "audio"
+                master_root = root / "master"
+                source_dir.mkdir()
+                audio_file = source_dir / "target.wav"
+                audio_file.write_bytes(b"target-audio")
+                settings = {
+                    "inputRoots": [str(source_dir)],
+                    "outputRoot": str(master_root),
+                    "computeMode": "cpu",
+                }
+                signature = generation_signature_for_settings(settings=settings)
+                identity = f"{source_dir}::target.wav"
+                write_master_item(
+                    master_root,
+                    "target-item",
+                    source_hash=sha256_file(audio_file),
+                    conversion_signature=signature,
+                    source_relative_path="target.wav",
+                    source_id=str(source_dir),
+                    source_file_identity=identity,
+                )
+                input_items = collect_input_items(settings=settings, files=[audio_file])
+                _, run_dir = create_run(settings=settings, input_items=input_items)
+                status_path = Path(run_dir) / "status.json"
+                manifest_path = Path(run_dir) / "manifest.json"
+                status = json.loads(status_path.read_text(encoding="utf-8"))
+                status["state"] = "failed"
+                status_path.write_text(json.dumps(status, ensure_ascii=False), encoding="utf-8")
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                manifest["items"] = [
+                    {
+                        "status": "failed",
+                        "source_file_identity": identity,
+                        "source_relative_path": "target.wav",
+                        "duration_seconds": 1.0,
+                    }
+                ]
+                manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+
+                rows = list_audio_file_rows(settings=settings)
+
+            self.assertEqual("completed", rows[0]["status"])
+            self.assertEqual("target-item", rows[0]["media_id"])
+
+    def test_list_items_returns_latest_first_and_paginates(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            master_root = root / "master"
+            settings = {
+                "inputRoots": [str(root / "audio")],
+                "outputRoot": str(master_root),
+                "computeMode": "cpu",
+            }
+            signature = generation_signature_for_settings(settings=settings)
+            rows = [
+                ("media-old", "old.wav", 1_700_000_000),
+                ("media-new", "new.wav", 1_700_000_200),
+                ("media-mid", "mid.wav", 1_700_000_100),
+            ]
+            for item_id, file_name, mtime in rows:
+                item_dir = write_master_item(
+                    master_root,
+                    item_id,
+                    source_hash=f"sha-{item_id}",
+                    conversion_signature=signature,
+                    source_relative_path=file_name,
+                    source_id=str(root / "audio"),
+                    source_file_identity=f"{root / 'audio'}::{file_name}",
+                    file_name=file_name,
+                )
+                os.utime(item_dir / "convert_info.json", (mtime, mtime))
+                os.utime(item_dir / "timeline.json", (mtime, mtime))
+                os.utime(item_dir, (mtime, mtime))
+
+            all_items = list_items(settings=settings)
+            self.assertEqual(
+                ["media-new", "media-mid", "media-old"],
+                [str(row["item_id"]) for row in all_items],
+            )
+
+            first_page = list_items_page(settings=settings, page=1, page_size=2)
+            self.assertEqual(
+                ["media-new", "media-mid"],
+                [str(row["item_id"]) for row in first_page["items"]],
+            )
+            self.assertEqual(3, first_page["item_count"])
+            self.assertEqual(3, first_page["total_items"])
+            self.assertEqual(
+                {"order": "desc", "fields": ["updated_at", "created_at", "item_id"]},
+                first_page["sort"],
+            )
+            self.assertEqual(
+                {
+                    "mode": "page",
+                    "page": 1,
+                    "page_size": 2,
+                    "total_items": 3,
+                    "total_pages": 2,
+                    "returned_items": 2,
+                    "offset": 0,
+                    "range_start": 1,
+                    "range_end": 2,
+                    "has_previous": False,
+                    "has_next": True,
+                },
+                first_page["pagination"],
+            )
+            second_page = list_items_page(settings=settings, page=2, page_size=2)
+            self.assertEqual(["media-old"], [str(row["item_id"]) for row in second_page["items"]])
+            self.assertFalse(second_page["pagination"]["has_next"])
+            all_page = list_items_page(settings=settings)
+            self.assertEqual("all", all_page["pagination"]["mode"])
+            self.assertEqual(3, all_page["pagination"]["returned_items"])
+            self.assertEqual(["media-new", "media-mid", "media-old"], [row["item_id"] for row in all_page["items"]])
+
+    def test_list_audio_files_returns_latest_first_and_paginates(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_dir = root / "audio"
+            master_root = root / "master"
+            source_dir.mkdir()
+            files = [
+                ("old.wav", 1_700_000_000),
+                ("new.wav", 1_700_000_200),
+                ("mid.wav", 1_700_000_100),
+            ]
+            for file_name, mtime in files:
+                path = source_dir / file_name
+                path.write_bytes(file_name.encode())
+                os.utime(path, (mtime, mtime))
+            settings = {
+                "inputRoots": [str(source_dir)],
+                "outputRoot": str(master_root),
+                "computeMode": "cpu",
+            }
+
+            all_files = list_audio_file_rows(settings=settings)
+            self.assertEqual(["new.wav", "mid.wav", "old.wav"], [row["file_name"] for row in all_files])
+
+            first_page = list_audio_file_page(settings=settings, page=1, page_size=2)
+            self.assertEqual(["new.wav", "mid.wav"], [row["file_name"] for row in first_page["files"]])
+            self.assertEqual(3, first_page["file_count"])
+            self.assertEqual(3, first_page["total_files"])
+            self.assertEqual(
+                {"order": "desc", "fields": ["modified_at", "source_file_identity"]},
+                first_page["sort"],
+            )
+            self.assertEqual(
+                {
+                    "mode": "page",
+                    "page": 1,
+                    "page_size": 2,
+                    "total_files": 3,
+                    "total_pages": 2,
+                    "returned_files": 2,
+                    "offset": 0,
+                    "range_start": 1,
+                    "range_end": 2,
+                    "has_previous": False,
+                    "has_next": True,
+                },
+                first_page["pagination"],
+            )
+            second_page = list_audio_file_page(settings=settings, page=2, page_size=2)
+            self.assertEqual(["old.wav"], [row["file_name"] for row in second_page["files"]])
+            self.assertFalse(second_page["pagination"]["has_next"])
+            all_page = list_audio_file_page(settings=settings)
+            self.assertEqual("all", all_page["pagination"]["mode"])
+            self.assertEqual(3, all_page["pagination"]["returned_files"])
+            self.assertEqual(["new.wav", "mid.wav", "old.wav"], [row["file_name"] for row in all_page["files"]])
+
     def test_create_refresh_run_queues_all_items_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -412,14 +564,8 @@ class RunStoreTests(unittest.TestCase):
             for index in range(5):
                 (source_dir / f"sample-{index}.wav").write_bytes(f"audio-{index}".encode())
             settings = {
-                "audioExtensions": [".wav"],
-                "inputRoots": [
-                    {
-                        "id": "meetings",
-                        "path": str(source_dir),
-                    }
-                ],
-                "outputRoot": {"path": str(runs_root)},
+                "inputRoots": [str(source_dir)],
+                "outputRoot": str(runs_root),
                 "computeMode": "cpu",
             }
 
@@ -443,14 +589,8 @@ class RunStoreTests(unittest.TestCase):
             for index in range(5):
                 (source_dir / f"sample-{index}.wav").write_bytes(f"audio-{index}".encode())
             settings = {
-                "audioExtensions": [".wav"],
-                "inputRoots": [
-                    {
-                        "id": "meetings",
-                        "path": str(source_dir),
-                    }
-                ],
-                "outputRoot": {"path": str(runs_root)},
+                "inputRoots": [str(source_dir)],
+                "outputRoot": str(runs_root),
                 "computeMode": "cpu",
             }
 
@@ -472,9 +612,8 @@ class RunStoreTests(unittest.TestCase):
             runs_root = root / "runs"
             with isolated_settings_environment(root):
                 settings = {
-                    "audioExtensions": [".wav"],
                     "inputRoots": [],
-                    "outputRoot": {"path": str(runs_root)},
+                    "outputRoot": str(runs_root),
                     "computeMode": "gpu",
                 }
                 save_settings(settings)
@@ -501,9 +640,8 @@ class RunStoreTests(unittest.TestCase):
             root = Path(temp_dir)
             runs_root = root / "runs"
             settings = {
-                "audioExtensions": [".wav"],
                 "inputRoots": [],
-                "outputRoot": {"path": str(runs_root)},
+                "outputRoot": str(runs_root),
             }
 
             source_file = root / "sample.wav"
@@ -520,9 +658,8 @@ class RunStoreTests(unittest.TestCase):
             root = Path(temp_dir)
             runs_root = root / "runs"
             settings = {
-                "audioExtensions": [".wav"],
                 "inputRoots": [],
-                "outputRoot": {"path": str(runs_root)},
+                "outputRoot": str(runs_root),
             }
 
             first_file = root / "first.wav"
@@ -547,9 +684,8 @@ class RunStoreTests(unittest.TestCase):
                 source_dir = root / "audio"
                 source_dir.mkdir()
                 settings = {
-                    "audioExtensions": [".wav"],
-                    "inputRoots": [{"id": "meetings", "path": str(source_dir)}],
-                    "outputRoot": {"path": str(root / "runs")},
+                    "inputRoots": [str(source_dir)],
+                    "outputRoot": str(root / "runs"),
                     "huggingfaceToken": "hf_test_value",
                 }
                 save_settings(settings)
@@ -569,14 +705,8 @@ class RunStoreTests(unittest.TestCase):
             audio_file = source_dir / "target.wav"
             audio_file.write_bytes(b"target-audio")
             settings = {
-                "audioExtensions": [".wav"],
-                "inputRoots": [
-                    {
-                        "id": "meetings",
-                        "path": str(source_dir),
-                    }
-                ],
-                "outputRoot": {"path": str(runs_root)},
+                "inputRoots": [str(source_dir)],
+                "outputRoot": str(runs_root),
                 "computeMode": "cpu",
             }
             signature = generation_signature_for_settings(settings=settings)
@@ -586,7 +716,8 @@ class RunStoreTests(unittest.TestCase):
                 source_hash=sha256_file(audio_file),
                 conversion_signature=signature,
                 source_relative_path="target.wav",
-                source_file_identity="meetings:target.wav",
+                source_id=str(source_dir),
+                source_file_identity=f"{source_dir}::target.wav",
                 file_name="20260324_125832.wav",
             )
 
@@ -597,8 +728,8 @@ class RunStoreTests(unittest.TestCase):
             with zipfile.ZipFile(archive_path) as archive:
                 names = set(archive.namelist())
                 self.assertIn("README.md", names)
-                self.assertIn("media-0001/timeline.json", names)
-                self.assertIn("media-0001/conversion-info.json", names)
+                self.assertIn("items/media-0001/convert_info.json", names)
+                self.assertIn("items/media-0001/timeline.json", names)
 
 
 if __name__ == "__main__":

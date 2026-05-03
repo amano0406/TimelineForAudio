@@ -5,10 +5,24 @@ cd "$(dirname "$0")"
 
 COMPOSE_PROJECT="timeline-for-audio"
 APPDATA_VOLUME="${COMPOSE_PROJECT}_app-data"
-OUTPUTS_VOLUME="${COMPOSE_PROJECT}_outputs"
-UPLOADS_VOLUME="${COMPOSE_PROJECT}_uploads"
-HF_CACHE_VOLUME="${COMPOSE_PROJECT}_hf-cache"
-TORCH_CACHE_VOLUME="${COMPOSE_PROJECT}_torch-cache"
+CACHE_VOLUME="${COMPOSE_PROJECT}_cache-data"
+REMOVE_APP_DATA=0
+REMOVE_CACHE=0
+REMOVE_SETTINGS=0
+
+for arg in "$@"; do
+  case "${arg}" in
+    --remove-app-data)
+      REMOVE_APP_DATA=1
+      ;;
+    --remove-cache)
+      REMOVE_CACHE=1
+      ;;
+    --remove-settings)
+      REMOVE_SETTINGS=1
+      ;;
+  esac
+done
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "Docker Desktop is not installed or docker is not on PATH."
@@ -27,14 +41,13 @@ echo
 echo "This will remove:"
 echo "  - Docker containers for this project"
 echo "  - Docker images built for this project"
-echo "  - Docker volumes for this project"
 echo "  - Docker network for this project"
 echo
-echo "Optional:"
-echo "  - delete saved app data volume (includes worker state)"
-if [[ -f "settings.json" ]]; then
-  echo "  - delete local settings.json"
-fi
+echo "Persistent Docker volumes and settings are kept by default."
+echo "Optional flags:"
+echo "  --remove-app-data   remove run history, catalog cache, ETA history"
+echo "  --remove-cache      remove downloaded model cache"
+echo "  --remove-settings   remove local settings.json"
 echo
 
 confirm_yes() {
@@ -68,35 +81,35 @@ remove_volume_if_exists() {
   fi
 }
 
-remove_volume_if_exists "${UPLOADS_VOLUME}"
-remove_volume_if_exists "${OUTPUTS_VOLUME}"
-remove_volume_if_exists "${HF_CACHE_VOLUME}"
-remove_volume_if_exists "${TORCH_CACHE_VOLUME}"
-
-echo
-echo "Saved app data volume:"
-echo "  ${APPDATA_VOLUME}"
-echo "This includes worker state. Hugging Face token is stored in settings.json."
-if confirm_yes "Delete saved app data too? (y/n): "; then
+if [[ "${REMOVE_APP_DATA}" == "1" ]]; then
   remove_volume_if_exists "${APPDATA_VOLUME}"
   echo "Deleted saved app data volume."
 else
-  echo "Kept saved app data volume."
+  echo "Kept Docker volume: ${APPDATA_VOLUME}"
+fi
+
+if [[ "${REMOVE_CACHE}" == "1" ]]; then
+  remove_volume_if_exists "${CACHE_VOLUME}"
+  echo "Deleted cache volume."
+else
+  echo "Kept Docker volume: ${CACHE_VOLUME}"
 fi
 
 echo "Docker resources removed."
 
-if [[ -f "settings.json" ]]; then
+if [[ "${REMOVE_SETTINGS}" == "1" && -f "settings.json" ]]; then
   echo
   echo "Local settings file:"
   echo "  $(pwd)/settings.json"
   echo "This includes input/output directories and Hugging Face token."
-  if confirm_yes "Delete settings.json too? (y/n): "; then
+  if confirm_yes "Delete settings.json? (y/n): "; then
     rm -f "settings.json"
     echo "Deleted settings.json"
   else
     echo "Kept settings.json"
   fi
+elif [[ -f "settings.json" ]]; then
+  echo "Kept settings.json"
 fi
 
 echo

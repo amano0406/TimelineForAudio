@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [switch]$Yes,
-    [switch]$KeepSettings
+    [switch]$RemoveAppData,
+    [switch]$RemoveCache,
+    [switch]$RemoveSettings
 )
 
 Set-StrictMode -Version Latest
@@ -43,19 +45,19 @@ if (Test-Path -LiteralPath $gpuCompose) {
 }
 
 $composeProject = "timeline-for-audio"
-$volumes = @(
-    "${composeProject}_hf-cache",
-    "${composeProject}_torch-cache"
-)
+$appDataVolume = "${composeProject}_app-data"
+$cacheVolume = "${composeProject}_cache-data"
 
 Write-Host ""
 Write-Host "TimelineForAudio uninstall"
 Write-Host ""
-Write-Host "This will remove Docker containers, local images, project volumes, and the project network."
-Write-Host "Optional cleanup can also remove local settings."
-if (-not $KeepSettings -and (Test-Path -LiteralPath (Join-Path $repoRoot "settings.json"))) {
-    Write-Host "Optional: local settings.json."
-}
+Write-Host "This will remove Docker containers, local images, and the project network."
+Write-Host "Persistent volumes and settings are kept by default."
+Write-Host ""
+Write-Host "Optional removal switches:"
+Write-Host "  -RemoveAppData   remove run history, catalog cache, ETA history"
+Write-Host "  -RemoveCache     remove downloaded model cache"
+Write-Host "  -RemoveSettings  remove local settings.json"
 Write-Host ""
 
 if (-not (Confirm-TfaAction "Continue with uninstall? (y/n)")) {
@@ -70,17 +72,27 @@ if (-not $?) {
     throw "Docker cleanup failed."
 }
 
-foreach ($volume in $volumes) {
-    Remove-TfaVolumeIfExists -VolumeName $volume
+if ($RemoveAppData) {
+    Remove-TfaVolumeIfExists -VolumeName $appDataVolume
+}
+else {
+    Write-Host "Kept Docker volume: $appDataVolume"
+}
+
+if ($RemoveCache) {
+    Remove-TfaVolumeIfExists -VolumeName $cacheVolume
+}
+else {
+    Write-Host "Kept Docker volume: $cacheVolume"
 }
 
 $settingsPath = Join-Path $repoRoot "settings.json"
-if (-not $KeepSettings -and (Test-Path -LiteralPath $settingsPath)) {
+if ($RemoveSettings -and (Test-Path -LiteralPath $settingsPath)) {
     Write-Host ""
     Write-Host "Local settings file:"
     Write-Host "  $settingsPath"
     Write-Host "This includes input/output directories and Hugging Face token."
-    if (Confirm-TfaAction "Delete settings.json too? (y/n)") {
+    if ($Yes -or (Confirm-TfaAction "Delete settings.json? (y/n)")) {
         Remove-Item -LiteralPath $settingsPath -Force
         Write-Host "Deleted settings.json"
     }
@@ -88,7 +100,7 @@ if (-not $KeepSettings -and (Test-Path -LiteralPath $settingsPath)) {
         Write-Host "Kept settings.json"
     }
 }
-elseif ($KeepSettings -and (Test-Path -LiteralPath $settingsPath)) {
+elseif (Test-Path -LiteralPath $settingsPath) {
     Write-Host "Kept settings.json"
 }
 

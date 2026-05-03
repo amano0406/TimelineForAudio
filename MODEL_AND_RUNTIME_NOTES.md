@@ -4,7 +4,9 @@ This document explains the current runtime model choices and local execution con
 
 ## Public Contract
 
-TimelineForAudio is a local CLI worker. Windows PowerShell scripts are the primary entrypoint. WSL/macOS shell scripts are kept as developer/backdoor paths.
+TimelineForAudio is a local CLI worker. Windows PowerShell scripts are the primary entrypoint. `.bat` launchers are compatibility wrappers for command hosts that cannot launch PowerShell scripts directly. WSL/macOS shell scripts are developer/backdoor paths.
+
+When a WSL-based tool needs to verify the Windows CLI, invoke it through `cmd.exe /c ... powershell.exe -File cli.ps1 ...`. Direct `powershell.exe` launches from WSL can fail to propagate nested Windows child-process behavior, including Docker calls, even though `cli.ps1` itself is the correct Windows entrypoint.
 
 The worker does not reconstruct readable text, summarize meaning, or infer real speaker identities. It produces a structured timeline artifact that preserves the original audio timeline.
 
@@ -30,7 +32,7 @@ On first use, the worker may download:
 - Python package dependencies
 - Hugging Face model weights for pyannote and ZIPA
 
-Docker volumes cache model files so the same assets do not need to be downloaded on every run.
+The `cache-data` Docker volume stores model files under `/shared/cache` so the same assets do not need to be downloaded on every run. The `app-data` Docker volume stores lightweight run state, catalog cache, ETA history, and troubleshooting logs under `/shared/app-data`.
 
 ## Hugging Face Requirements
 

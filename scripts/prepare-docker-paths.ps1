@@ -13,21 +13,6 @@ else {
     $RepoRoot = (Resolve-Path $RepoRoot).Path
 }
 
-function Convert-ToSafeSegment {
-    param(
-        [string]$Value,
-        [string]$Fallback
-    )
-
-    $candidate = if ($Value) { $Value } else { $Fallback }
-    $candidate = $candidate.ToLowerInvariant() -replace '[^a-z0-9_-]+', '-'
-    $candidate = $candidate.Trim('-')
-    if ($candidate) {
-        return $candidate
-    }
-    return $Fallback
-}
-
 function Convert-ToYamlSingleQuoted {
     param([string]$Value)
     return "'" + $Value.Replace("'", "''") + "'"
@@ -100,11 +85,15 @@ foreach ($root in @($settings.inputRoots)) {
         continue
     }
     $inputIndex += 1
-    $id = Convert-ToSafeSegment -Value ([string]$root.id) -Fallback "input-$inputIndex"
+    if ($root -isnot [string]) {
+        throw "settings.inputRoots must be an array of path strings."
+    }
+    $rootPath = [string]$root
+    $id = "input-$inputIndex"
     Add-Mount `
         -Mappings $mappings `
         -VolumeLines $volumeLines `
-        -HostPath ([string]$root.path) `
+        -HostPath $rootPath `
         -ContainerPath "/host/input/$id" `
         -ReadOnly $true `
         -CreateIfMissing $false
@@ -112,10 +101,14 @@ foreach ($root in @($settings.inputRoots)) {
 
 $outputRoot = $settings.outputRoot
 if ($null -ne $outputRoot) {
+    if ($outputRoot -isnot [string]) {
+        throw "settings.outputRoot must be a path string."
+    }
+    $outputRootPath = [string]$outputRoot
     Add-Mount `
         -Mappings $mappings `
         -VolumeLines $volumeLines `
-        -HostPath ([string]$outputRoot.path) `
+        -HostPath $outputRootPath `
         -ContainerPath "/host/output/master" `
         -ReadOnly $false `
         -CreateIfMissing $true

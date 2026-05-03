@@ -107,8 +107,23 @@ def generate_speaker_turns(
         except Exception as exc:
             error = str(exc)
 
+    if error:
+        raise RuntimeError(error)
+
     if not diarization_rows:
-        raise RuntimeError(error or "Required speaker diarization produced no speaker turns.")
+        warning = "Speaker diarization completed, but no speaker turns were found."
+        return {
+            "schema_version": 1,
+            "source_name": source_name,
+            "backend": "pyannote.audio",
+            "model_id": _DIARIZATION_MODEL_ID,
+            "status": "no_speaker_turns",
+            "error": None,
+            "warning_count": 1,
+            "warnings": [warning],
+            "turn_count": 0,
+            "turns": [],
+        }
 
     return {
         "schema_version": 1,
@@ -117,6 +132,8 @@ def generate_speaker_turns(
         "model_id": _DIARIZATION_MODEL_ID,
         "status": "ok",
         "error": None,
+        "warning_count": 0,
+        "warnings": [],
         "turn_count": len(diarization_rows),
         "turns": diarization_rows,
     }

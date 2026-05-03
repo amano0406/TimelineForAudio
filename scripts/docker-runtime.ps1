@@ -231,7 +231,7 @@ function Test-TfaCliRequiresConfiguredWorker {
     if ($command -in @("process-run", "daemon")) {
         return $true
     }
-    if ($command -eq "items" -and $CliArgs.Count -ge 2 -and ([string]$CliArgs[1]) -eq "refresh") {
+    if ($command -in @("files", "items")) {
         return $true
     }
     return $false

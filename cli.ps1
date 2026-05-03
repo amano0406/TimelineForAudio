@@ -18,7 +18,8 @@ if ($requiresConfiguredWorker) {
     Assert-TfaGpuAvailableIfRequested -RepoRoot $repoRoot
 }
 
-$composeArgs = Get-TfaComposeArgs -RepoRoot $repoRoot -IncludeGpu:$requiresConfiguredWorker
+$includeGpuCompose = ((Get-TfaComputeMode -RepoRoot $repoRoot) -eq "gpu") -and (Test-TfaNvidiaGpuAvailable)
+$composeArgs = Get-TfaComposeArgs -RepoRoot $repoRoot -IncludeGpu:$includeGpuCompose
 $docker = Get-TfaDockerCommand
 Invoke-TfaWithFileLock -RepoRoot $repoRoot -LockName "docker-compose.lock" -ScriptBlock {
     if ($requiresConfiguredWorker) {
@@ -38,4 +39,9 @@ Invoke-TfaWithFileLock -RepoRoot $repoRoot -LockName "docker-compose.lock" -Scri
 }
 
 & $docker compose @composeArgs exec -T worker python -m timeline_for_audio_worker @CliArgs
-exit (Get-TfaLastExitCode)
+$exitCode = Get-TfaLastExitCode
+if ($exitCode -ne 0) {
+    [Console]::Error.WriteLine("TimelineForAudio CLI failed while invoking the Docker worker. Exit code: $exitCode")
+    [Console]::Error.WriteLine("Run the same command from C:\apps\TimelineForAudio with .\cli.ps1 to inspect Docker worker output and settings.")
+}
+exit $exitCode

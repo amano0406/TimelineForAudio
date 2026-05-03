@@ -99,7 +99,6 @@ function Copy-ReleaseFiles {
         "worker/pyproject.toml",
         "worker/requirements-cpu.txt",
         "worker/requirements-gpu.txt",
-        "docs/PUBLIC_RELEASE_CHECKLIST.md",
         "docs/SECURITY_AND_SAFETY.md",
         "scripts/docker-runtime.ps1",
         "scripts/prepare-docker-paths.ps1"

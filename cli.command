@@ -24,6 +24,16 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 compose_args=(-f docker-compose.yml)
+requires_configured_worker=false
+case "${1:-}" in
+  process-run|daemon)
+    requires_configured_worker=true
+    ;;
+  files|items)
+    requires_configured_worker=true
+    ;;
+esac
+
 can_start_worker=true
 ps_cmd=()
 if command -v pwsh >/dev/null 2>&1; then
@@ -35,22 +45,15 @@ elif command -v powershell >/dev/null 2>&1; then
   "${ps_cmd[@]}" -File "./scripts/prepare-docker-paths.ps1" -RepoRoot "$(pwd)" >/dev/null
   compose_args+=(-f .docker/docker-compose.paths.yml)
 else
+  if [[ "${requires_configured_worker}" == "true" ]]; then
+    echo "This command needs configured Docker host path mounts." >&2
+    echo "Run it through cli.ps1 or cli.bat from Windows PowerShell so settings.json paths are mounted correctly." >&2
+    exit 1
+  fi
   echo "PowerShell was not found; cannot start or update Docker host path mounts from this WSL/Unix shell."
   echo "Trying to use an already-running worker. Use PowerShell on Windows for refresh or path changes."
   can_start_worker=false
 fi
-
-requires_configured_worker=false
-case "${1:-}" in
-  process-run|daemon)
-    requires_configured_worker=true
-    ;;
-  items)
-    if [[ "${2:-}" == "refresh" ]]; then
-      requires_configured_worker=true
-    fi
-    ;;
-esac
 
 if [[ "${requires_configured_worker}" == "true" && "${#ps_cmd[@]}" -gt 0 ]]; then
   compute_mode=$("${ps_cmd[@]}" -Command '$p = Join-Path (Get-Location) "settings.json"; if (-not (Test-Path -LiteralPath $p)) { $p = Join-Path (Get-Location) "settings.example.json" }; $m = "cpu"; if (Test-Path -LiteralPath $p) { try { $s = Get-Content -LiteralPath $p -Raw | ConvertFrom-Json; if ($s.PSObject.Properties.Name -contains "computeMode") { $m = [string]$s.computeMode } } catch { $m = "cpu" } }; $m = $m.Trim().ToLowerInvariant(); if ($m -notin @("cpu", "gpu")) { $m = "cpu" }; Write-Output $m' | tr -d '\r')

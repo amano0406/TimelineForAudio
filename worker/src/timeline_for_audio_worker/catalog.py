@@ -9,7 +9,7 @@ from .fs_utils import ensure_dir
 from .settings import appdata_root
 
 _FINAL_TIMELINE_FILE = "timeline.json"
-_CONVERSION_INFO_FILE = "conversion-info.json"
+_CONVERSION_INFO_FILE = "convert_info.json"
 
 
 def catalog_path(output_root: Path) -> Path:

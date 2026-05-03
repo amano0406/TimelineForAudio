@@ -1,21 +1,9 @@
 {
   "schemaVersion": 1,
   "inputRoots": [
-    {
-      "id": "timeline-audio",
-      "path": "C:\\TimelineData\\Audio\\"
-    }
+    "C:\\TimelineData\\input-audio\\"
   ],
-  "outputRoot": {
-    "path": "C:\\TimelineData\\AudioMaster\\"
-  },
-  "audioExtensions": [
-    ".mp3",
-    ".wav",
-    ".m4a",
-    ".aac",
-    ".flac"
-  ],
+  "outputRoot": "C:\\TimelineData\\audio",
   "huggingfaceToken": "",
   "computeMode": "cpu"
 }

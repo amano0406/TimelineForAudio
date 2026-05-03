@@ -8,7 +8,7 @@ This document defines the first public GitHub Release line for `TimelineForAudio
 - tag format: `v0.x.y`
 - first tag: `v0.3.0`
 - initial support contract:
-  - Windows PowerShell primary
+  - Windows `.bat` launchers primary
   - WSL/Unix command scripts as a backdoor path
   - Docker Desktop required
   - CPU baseline
@@ -48,10 +48,9 @@ The Windows release bundle must contain a top folder named `TimelineForAudio-v0.
    - `README.md`
    - `README.ja.md`
    - `MODEL_AND_RUNTIME_NOTES.md`
-   - `docs/PUBLIC_RELEASE_CHECKLIST.md`
    - `THIRD_PARTY_NOTICES.md`
 3. Set the release version in `worker/pyproject.toml`.
-4. Run the public release checks from `docs/PUBLIC_RELEASE_CHECKLIST.md`.
+4. Run the release checks listed below.
 5. Build the Windows bundle:
 
    ```powershell
@@ -99,6 +98,17 @@ The Windows release bundle must contain a top folder named `TimelineForAudio-v0.
   - `https://github.com/amano0406/TimelineForAudio/releases/latest/download/TimelineForAudio-windows-local.zip`
 
 The first LP CTA should send users to the release page, not directly to the asset, so they can read requirements and known limitations first.
+
+## Release Checks
+
+- `settings.example.json` reflects the current CLI-only product contract.
+- `.\cli.ps1 settings init` works from Windows PowerShell.
+- `.\cli.ps1 items refresh` processes configured input roots.
+- `.\cli.ps1 items download` exports `README.md`, `convert_info.json`, and `timeline.json`.
+- Docker CPU worker starts successfully.
+- Docker GPU worker starts successfully when NVIDIA Docker support is available.
+- A real audio sample produces `timeline.json`.
+- The primary artifact contains speaker labels, audio-relative timestamps, and phone tokens.
 
 ## Future GitHub Actions Scope
 

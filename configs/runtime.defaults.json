@@ -9,12 +9,7 @@
   "themeMode": "system",
   "contextBuilderVersion": "context-builder-v2",
   "inputRoots": [
-    {
-      "id": "uploads",
-      "path": "/shared/uploads"
-    }
+    "/shared/uploads"
   ],
-  "outputRoot": {
-    "path": "/shared/outputs"
-  }
+  "outputRoot": "/shared/outputs"
 }

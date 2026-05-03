@@ -44,4 +44,9 @@ Write-Host "  .\cli.ps1 runs list"
 Write-Host ""
 Write-Host "Docker status:"
 & $docker compose @composeArgs ps
-exit (Get-TfaLastExitCode)
+$statusExitCode = Get-TfaLastExitCode
+if ($statusExitCode -ne 0) {
+    Write-Warning "TimelineForAudio worker started, but Docker status could not be displayed. Docker status exit code: $statusExitCode"
+    exit 0
+}
+exit 0

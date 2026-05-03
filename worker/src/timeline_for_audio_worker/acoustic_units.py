@@ -354,7 +354,7 @@ def generate_acoustic_unit_turns(
         return AcousticUnitResult(
             backend_name=ACOUSTIC_UNIT_BACKEND,
             model_id=ACOUSTIC_UNIT_MODEL_ID,
-            status="unavailable",
+            status="no_turns",
             unit_type=ACOUSTIC_UNIT_TYPE,
             execution_provider=loaded.execution_provider if loaded else None,
             available_execution_providers=loaded.available_execution_providers if loaded else (),

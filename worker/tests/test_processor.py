@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import os
+import time
 from types import SimpleNamespace
 import unittest
 from tempfile import TemporaryDirectory
@@ -12,6 +14,33 @@ from timeline_for_audio_worker.contracts import InputItem, RunRequest, ManifestI
 
 
 class ProcessorQueueTests(unittest.TestCase):
+    def test_pending_run_lock_is_not_stale_immediately(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run-1"
+            run_dir.mkdir()
+            (run_dir / "status.json").write_text(
+                json.dumps({"run_id": "run-1", "state": "pending"}),
+                encoding="utf-8",
+            )
+            (run_dir / ".run.lock").write_text("{}", encoding="utf-8")
+
+            self.assertFalse(processor._run_lock_is_stale(run_dir))
+
+    def test_pending_run_lock_becomes_stale_by_file_age(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run-1"
+            run_dir.mkdir()
+            (run_dir / "status.json").write_text(
+                json.dumps({"run_id": "run-1", "state": "pending"}),
+                encoding="utf-8",
+            )
+            lock_path = run_dir / ".run.lock"
+            lock_path.write_text("{}", encoding="utf-8")
+            old_timestamp = time.time() - 120
+            os.utime(lock_path, (old_timestamp, old_timestamp))
+
+            self.assertTrue(processor._run_lock_is_stale(run_dir))
+
     def test_process_run_returns_false_when_run_lock_exists(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -753,7 +782,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 processor,
                 "load_settings",
                 return_value={
-                    "outputRoot": {"path": str(root)}
+                    "outputRoot": str(root)
                 },
             ):
                 self.assertEqual([], processor._collect_pending_runs())
@@ -774,7 +803,7 @@ class ProcessorQueueTests(unittest.TestCase):
                     processor,
                     "load_settings",
                     return_value={
-                        "outputRoot": {"path": r"C:\TimelineData\AudioMaster\\"}
+                        "outputRoot": r"C:\TimelineData\audio"
                     },
                 ),
                 patch.object(processor, "configured_path", return_value=root),
@@ -1006,7 +1035,7 @@ class ProcessorQueueTests(unittest.TestCase):
 
             media_dir = root / str(manifest_item.media_id)
             timeline_path = media_dir / "timeline.json"
-            conversion_info_path = media_dir / "conversion-info.json"
+            conversion_info_path = media_dir / "convert_info.json"
             self.assertEqual([], warnings)
             self.assertTrue(timeline_path.exists())
             self.assertTrue(conversion_info_path.exists())
@@ -1028,7 +1057,10 @@ class ProcessorQueueTests(unittest.TestCase):
             self.assertEqual("SPEAKER_01", timeline["turns"][0]["speaker"])
             self.assertEqual("ko n ni chi wa", timeline["turns"][0]["phone_tokens"])
             conversion_info = json.loads(conversion_info_path.read_text(encoding="utf-8"))
-            self.assertEqual("conversion-info", conversion_info["artifact_type"])
+            self.assertEqual("convert_info", conversion_info["artifact_type"])
+            self.assertEqual("TimelineForAudio", conversion_info["application"])
+            self.assertEqual("convert_info.json", conversion_info["output_files"]["convert_info"])
+            self.assertEqual("timeline.json", conversion_info["output_files"]["timeline"])
             self.assertEqual(
                 "timeline_merge",
                 conversion_info["processing_flow"][-1]["name"],
@@ -1036,6 +1068,120 @@ class ProcessorQueueTests(unittest.TestCase):
             self.assertEqual(
                 "sample.wav",
                 conversion_info["source"]["file_name"],
+            )
+
+    def test_process_one_item_writes_zero_turn_timeline_when_models_find_no_turns(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_path = root / "silence.wav"
+            source_path.write_bytes(b"audio")
+            run_dir = root / "run-1"
+            run_dir.mkdir()
+
+            request = RunRequest(
+                schema_version=1,
+                run_id="run-1",
+                created_at="2026-04-10T10:00:00+09:00",
+                output_root_id="runs",
+                output_root_path=str(root),
+                profile="quality-first",
+                compute_mode="cpu",
+                pipeline_version="2026-05-01-v1-phone-timeline",
+                conversion_signature="sig-123",
+                acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
+                acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
+                diarization_enabled=True,
+                diarization_model_id="pyannote/speaker-diarization-community-1",
+                vad_backend="silero-vad",
+                vad_model_id="ffmpeg-silencedetect-noise-35db",
+                reprocess_duplicates=False,
+                token_enabled=True,
+                input_items=[],
+            )
+            item = InputItem(
+                input_id="upload-0001",
+                source_kind="upload",
+                source_id="uploads",
+                original_path=str(source_path),
+                display_name="silence.wav",
+                size_bytes=source_path.stat().st_size,
+                uploaded_path=str(source_path),
+            )
+            manifest_item = ManifestItem(
+                input_id=item.input_id,
+                source_kind=item.source_kind,
+                original_path=item.original_path,
+                file_name=item.display_name,
+                size_bytes=item.size_bytes,
+                duration_seconds=12.0,
+                source_hash="abc123",
+                conversion_signature="sig-123",
+                duplicate_status="new",
+                audio_id="silence-abc12345",
+                pipeline_version="2026-05-01-v1-phone-timeline",
+                model_id="anyspeech/zipa-large-crctc-300k",
+            )
+
+            def fake_extract_audio(input_path: Path, output_path: Path) -> None:
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"normalized")
+
+            with (
+                patch.object(processor, "extract_audio", side_effect=fake_extract_audio),
+                patch.object(processor, "trim_audio", return_value=[]),
+                patch.object(
+                    processor,
+                    "generate_speaker_turns",
+                    return_value={
+                        "schema_version": 1,
+                        "backend": "pyannote.audio",
+                        "model_id": "pyannote/speaker-diarization-community-1",
+                        "status": "no_speaker_turns",
+                        "warning_count": 1,
+                        "warnings": [
+                            "Speaker diarization completed, but no speaker turns were found."
+                        ],
+                        "turn_count": 0,
+                        "turns": [],
+                    },
+                ),
+                patch.object(
+                    processor,
+                    "generate_acoustic_unit_turns",
+                    return_value=SimpleNamespace(
+                        backend_name="zipa-stub",
+                        model_id="zipa-model",
+                        status="no_turns",
+                        unit_type="phone_like",
+                        execution_provider="CPUExecutionProvider",
+                        available_execution_providers=("CPUExecutionProvider",),
+                        warnings=["Acoustic unit extraction produced no turns."],
+                        turns=[],
+                    ),
+                ),
+            ):
+                warnings = processor._process_one_item(
+                    run_dir=run_dir,
+                    request=request,
+                    item=item,
+                    manifest_item=manifest_item,
+                )
+
+            media_dir = root / str(manifest_item.media_id)
+            timeline = json.loads((media_dir / "timeline.json").read_text(encoding="utf-8"))
+            conversion_info = json.loads(
+                (media_dir / "convert_info.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(0, timeline["turn_count"])
+            self.assertEqual([], timeline["turns"])
+            self.assertEqual("no_speaker_turns", conversion_info["pipeline"]["speaker_diarization"]["status"])
+            self.assertEqual("no_turns", conversion_info["pipeline"]["phone_recognition"]["status"])
+            self.assertEqual(
+                [
+                    "Speaker diarization completed, but no speaker turns were found.",
+                    "Acoustic unit extraction produced no turns.",
+                ],
+                warnings,
             )
 
 

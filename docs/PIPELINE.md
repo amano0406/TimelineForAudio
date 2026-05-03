@@ -92,7 +92,7 @@ The worker aligns phone-token spans to diarization turns by timestamp overlap.
 Primary output:
 
 ```text
-conversion-info.json
+convert_info.json
 timeline.json
 ```
 

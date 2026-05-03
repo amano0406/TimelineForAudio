@@ -389,12 +389,21 @@ def _run_lock_is_stale(run_dir: Path) -> bool:
     if not lock_path.exists():
         return False
     status = _load_status(run_dir)
+    now = datetime.now(timezone.utc)
     if str(status.state or "").lower() != "running":
-        return True
+        try:
+            lock_mtime = datetime.fromtimestamp(lock_path.stat().st_mtime, timezone.utc)
+        except OSError:
+            return False
+        return now - lock_mtime > _RUN_LOCK_STALE_AFTER
     updated_at = _parse_iso_timestamp(status.updated_at or status.started_at)
     if updated_at is None:
-        return True
-    return datetime.now(timezone.utc) - updated_at > _RUN_LOCK_STALE_AFTER
+        try:
+            lock_mtime = datetime.fromtimestamp(lock_path.stat().st_mtime, timezone.utc)
+        except OSError:
+            return False
+        return now - lock_mtime > _RUN_LOCK_STALE_AFTER
+    return now - updated_at > _RUN_LOCK_STALE_AFTER
 
 
 def _estimate_remaining(
@@ -547,30 +556,26 @@ def _write_support_docs(run_dir: Path, request: RunRequest) -> None:
             f"- Input Count: `{len(request.input_items)}`",
             f"- Reprocess Duplicates: `{request.reprocess_duplicates}`",
             "",
-            "This run uses file-based coordination between CLI-created run files and the Python worker.",
-            "",
-        ]
-    )
-    conversion_info = "\n".join(
-        [
-            "# Conversion Info",
+            "## Processing",
             "",
             f"- Acoustic unit backend: `{ACOUSTIC_UNIT_BACKEND}`",
             f"- Acoustic unit model: `{ACOUSTIC_UNIT_MODEL_ID}`",
             f"- Acoustic unit type: `{ACOUSTIC_UNIT_TYPE}`",
-            f"- Compute mode: `{request.compute_mode}`",
-            "- Diarization required: `True`",
+            f"- Diarization required: `True`",
             f"- Diarization model: `{request.diarization_model_id or ''}`",
             f"- VAD backend: `{request.vad_backend}` / `{request.vad_model_id}`",
-            f"- VAD profile: `{request.vad_profile or ''}`",
             f"- VAD parameters: `{vad_config['vad_parameters']}`",
             f"- Pipeline version: `{request.pipeline_version}`",
             f"- Generation signature: `{request.generation_signature}`",
-            "- Notes:",
-            "  - TimelineForAudio does not interpret meaning or restore readable text.",
-            "  - Per-item master artifacts are `conversion-info.json` and `timeline.json`.",
-            "  - Timestamps are mapped back to the original audio timeline.",
-            "  - Speaker labels are mechanical labels such as `SPEAKER_00`; identities are not inferred.",
+            "",
+            "## Notes",
+            "",
+            "- TimelineForAudio does not interpret meaning or restore readable text.",
+            "- Per-item master artifacts are `convert_info.json` and `timeline.json`.",
+            "- Timestamps are mapped back to the original audio timeline.",
+            "- Speaker labels are mechanical labels such as `SPEAKER_00`; identities are not inferred.",
+            "",
+            "This run uses file-based coordination between CLI-created run files and the Python worker.",
             "",
         ]
     )
@@ -586,7 +591,6 @@ def _write_support_docs(run_dir: Path, request: RunRequest) -> None:
         ]
     )
     write_text(run_dir / "RUN_INFO.md", run_info)
-    write_text(run_dir / "CONVERSION_INFO.md", conversion_info)
     write_text(run_dir / "NOTICE.md", notice)
 
 
@@ -740,12 +744,15 @@ def _process_one_item(
             acoustic_payload=acoustic_payload,
         )
         timeline_json_path = media_dir / "timeline.json"
-        conversion_info_path = media_dir / "conversion-info.json"
+        conversion_info_path = media_dir / "convert_info.json"
         write_json_atomic(timeline_json_path, timeline_payload)
         write_json_atomic(conversion_info_path, conversion_info_payload)
         if ensure_not_delete_requested:
             ensure_not_delete_requested("generate_artifacts")
-        return list(acoustic_result.warnings)
+        return [
+            *list(speaker_payload.get("warnings") or []),
+            *list(acoustic_result.warnings),
+        ]
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
 
@@ -823,7 +830,8 @@ def _build_conversion_info_payload(
     vad_config = vad_config_for_profile(request.vad_profile)
     return {
         "schema_version": 1,
-        "artifact_type": "conversion-info",
+        "artifact_type": "convert_info",
+        "application": "TimelineForAudio",
         "generated_at": now_iso(),
         "source": source_record,
         "pipeline": {
@@ -840,11 +848,14 @@ def _build_conversion_info_payload(
                 "required": True,
                 "backend": speaker_payload.get("backend"),
                 "model_id": speaker_payload.get("model_id"),
+                "status": speaker_payload.get("status"),
                 "turn_count": speaker_payload.get("turn_count"),
+                "warning_count": speaker_payload.get("warning_count"),
             },
             "phone_recognition": {
                 "backend": acoustic_payload.get("backend"),
                 "model_id": acoustic_payload.get("model_id"),
+                "status": acoustic_payload.get("status"),
                 "unit_type": acoustic_payload.get("unit_type"),
                 "execution_provider": acoustic_payload.get("execution_provider"),
                 "available_execution_providers": acoustic_payload.get(
@@ -890,6 +901,10 @@ def _build_conversion_info_payload(
             "speech_candidate_ranges": len(cut_map),
             "speaker_turns": len(speaker_payload.get("turns") or []),
             "phone_turns": len(acoustic_payload.get("turns") or []),
+        },
+        "output_files": {
+            "convert_info": "convert_info.json",
+            "timeline": "timeline.json",
         },
     }
 
@@ -987,7 +1002,7 @@ def _collect_runs_by_state(*states: str) -> list[Path]:
     settings = load_settings()
     rows: list[Path] = []
     root = settings.get("outputRoot")
-    root_text = str(root.get("path") or "").strip() if isinstance(root, dict) else ""
+    root_text = root.strip() if isinstance(root, str) else ""
     if not root_text:
         return rows
     root_path = configured_path(root_text)
@@ -1503,7 +1518,7 @@ def process_run(run_dir: Path | None = None) -> bool:
                         "conversion_info_path": str(
                             Path(request.output_root_path)
                             / str(manifest_item.media_id)
-                            / "conversion-info.json"
+                            / "convert_info.json"
                         ),
                         "source_hash": manifest_item.sha256,
                         "conversion_signature": manifest_item.conversion_signature,

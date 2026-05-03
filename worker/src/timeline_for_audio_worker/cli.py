@@ -17,7 +17,10 @@ from .run_store import (
     app_config_from_settings,
     build_items_archive,
     create_refresh_run,
+    find_run_dir,
     list_items,
+    list_items_page,
+    list_audio_file_page,
     list_audio_file_rows,
     list_runs,
     remove_items,
@@ -67,7 +70,7 @@ def parse_args() -> argparse.Namespace:
     inputs_add.add_argument("path", type=Path)
     inputs_add.add_argument("--json", action="store_true")
     inputs_remove = inputs_subparsers.add_parser("remove", help="Remove an input directory.")
-    inputs_remove.add_argument("id")
+    inputs_remove.add_argument("path")
     inputs_remove.add_argument("--json", action="store_true")
     inputs_clear = inputs_subparsers.add_parser("clear", help="Remove all input directories.")
     inputs_clear.add_argument("--json", action="store_true")
@@ -95,6 +98,8 @@ def parse_args() -> argparse.Namespace:
     files_subparsers = files_parser.add_subparsers(dest="files_command", required=True)
     files_list = files_subparsers.add_parser("list", help="List configured audio files.")
     files_list.add_argument("--probe", action="store_true")
+    files_list.add_argument("--page", type=int, required=False)
+    files_list.add_argument("--page-size", type=int, required=False)
     files_list.add_argument("--json", action="store_true")
     files_scan = files_subparsers.add_parser(
         "scan", help="Scan configured source directories and return raw discovery rows."
@@ -108,11 +113,13 @@ def parse_args() -> argparse.Namespace:
     )
     items_subparsers = items_parser.add_subparsers(dest="items_command", required=True)
     items_list = items_subparsers.add_parser("list", help="List managed analysis items.")
+    items_list.add_argument("--page", type=int, required=False)
+    items_list.add_argument("--page-size", type=int, required=False)
     items_list.add_argument("--json", action="store_true")
     items_refresh = items_subparsers.add_parser(
         "refresh", help="Read configured input directories and process changed audio only."
     )
-    items_refresh.add_argument("--source-id", dest="source_ids", action="append", default=[])
+    items_refresh.add_argument("--input-root", dest="source_ids", action="append", default=[])
     items_refresh.add_argument("--reprocess-duplicates", action="store_true")
     items_refresh.add_argument("--max-items", "--limit", dest="max_items", type=int, required=False)
     items_refresh.add_argument("--queue-only", action="store_true")
@@ -127,7 +134,6 @@ def parse_args() -> argparse.Namespace:
         "download", help="Create a ZIP package for one or more managed items."
     )
     items_download.add_argument("--item-id", required=False)
-    items_download.add_argument("--all", action="store_true")
     items_download.add_argument("--output", type=Path, required=False)
     items_download.add_argument("--json", action="store_true")
 
@@ -179,9 +185,19 @@ def cmd_scan(config_path: Path | None, output: Path | None, as_json: bool) -> in
     return 0
 
 
-def cmd_files_list(*, include_probe: bool, as_json: bool) -> int:
-    rows = list_audio_file_rows(include_probe=include_probe)
-    _print_payload(rows, as_json)
+def cmd_files_list(
+    *,
+    include_probe: bool,
+    page: int | None,
+    page_size: int | None,
+    as_json: bool,
+) -> int:
+    payload = list_audio_file_page(
+        include_probe=include_probe,
+        page=page,
+        page_size=page_size,
+    )
+    _print_payload(payload, as_json)
     return 0
 
 
@@ -194,9 +210,14 @@ def _split_cli_ids(value: str) -> list[str]:
     return rows
 
 
-def cmd_items_list(*, as_json: bool) -> int:
-    rows = list_items()
-    _print_payload(rows, as_json)
+def cmd_items_list(
+    *,
+    page: int | None,
+    page_size: int | None,
+    as_json: bool,
+) -> int:
+    payload = list_items_page(page=page, page_size=page_size)
+    _print_payload(payload, as_json)
     return 0
 
 
@@ -217,13 +238,11 @@ def cmd_items_remove(
 def cmd_items_download(
     *,
     item_id_value: str | None,
-    include_all: bool,
     output: Path | None,
     as_json: bool,
 ) -> int:
-    if include_all and item_id_value:
-        raise ValueError("Use either --all or --item-id, not both.")
-    if include_all:
+    effective_all = not str(item_id_value or "").strip()
+    if effective_all:
         item_ids = [
             str(row.get("item_id") or "")
             for row in list_items()
@@ -240,7 +259,6 @@ def cmd_items_download(
     payload = {
         "archive_path": str(archive_path),
         "item_ids": item_ids,
-        "all": include_all,
     }
     _print_payload(payload, as_json)
     return 0
@@ -357,7 +375,7 @@ def _write_worker_capabilities() -> None:
     save_worker_capabilities(payload)
 
 
-def _print_payload(payload: dict[str, object] | list[dict[str, object]], as_json: bool) -> None:
+def _print_payload(payload: object, as_json: bool) -> None:
     if as_json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return
@@ -367,7 +385,9 @@ def _print_payload(payload: dict[str, object] | list[dict[str, object]], as_json
             print("No rows found.")
             return
         for row in payload:
-            if "item_id" in row:
+            if not isinstance(row, dict):
+                print(json.dumps(row, ensure_ascii=False))
+            elif "item_id" in row:
                 print(
                     f"{row.get('item_id')} | {row.get('status')} | "
                     f"{row.get('source_file_name', '')} | {row.get('run_id', '')}"
@@ -385,6 +405,35 @@ def _print_payload(payload: dict[str, object] | list[dict[str, object]], as_json
                 )
             else:
                 print(json.dumps(row, ensure_ascii=False))
+        return
+
+    if not isinstance(payload, dict):
+        print(json.dumps(payload, ensure_ascii=False))
+        return
+
+    paged_key = ""
+    total_key = ""
+    if isinstance(payload.get("items"), list) and isinstance(payload.get("pagination"), dict):
+        paged_key = "items"
+        total_key = "total_items"
+        returned_key = "returned_items"
+    elif isinstance(payload.get("files"), list) and isinstance(payload.get("pagination"), dict):
+        paged_key = "files"
+        total_key = "total_files"
+        returned_key = "returned_files"
+
+    if paged_key:
+        _print_payload(payload[paged_key], as_json=False)
+        pagination = payload["pagination"]
+        if pagination.get("mode") == "all":
+            print(f"all: {pagination.get(returned_key)}/{pagination.get(total_key)}")
+        else:
+            print(
+                "page: "
+                f"{pagination.get('page')}/{pagination.get('total_pages')} | "
+                f"{paged_key}: {pagination.get(returned_key)}/{pagination.get(total_key)} | "
+                f"page_size: {pagination.get('page_size')}"
+            )
         return
 
     for key, value in payload.items():
@@ -467,14 +516,14 @@ def cmd_settings_save(
     return 0
 
 
-def _root_list_payload(settings: dict[str, object], key: str) -> list[dict[str, object]]:
+def _root_list_payload(settings: dict[str, object], key: str) -> list[str]:
     value = settings.get(key, [])
-    return value if isinstance(value, list) else []
+    return [str(row) for row in value] if isinstance(value, list) else []
 
 
-def _master_payload(settings: dict[str, object]) -> dict[str, object] | None:
+def _master_payload(settings: dict[str, object]) -> str | None:
     value = settings.get("outputRoot")
-    return value if isinstance(value, dict) and value.get("path") else None
+    return str(value) if str(value or "").strip() else None
 
 
 def cmd_settings_inputs_list(as_json: bool) -> int:
@@ -483,40 +532,27 @@ def cmd_settings_inputs_list(as_json: bool) -> int:
     return 0
 
 
-def _new_input_root_id(rows: list[dict[str, object]]) -> str:
-    existing = {str(row.get("id") or "").lower() for row in rows}
-    while True:
-        candidate = f"input-{os.urandom(3).hex()}"
-        if candidate.lower() not in existing:
-            return candidate
-
-
 def cmd_settings_inputs_add(*, path: Path, as_json: bool) -> int:
     settings = load_settings()
     rows = _root_list_payload(settings, "inputRoots")
     normalized_path = str(path)
     for row in rows:
-        if str(row.get("path") or "").strip().lower() == normalized_path.strip().lower():
+        if str(row).strip().lower() == normalized_path.strip().lower():
             _print_payload(_root_list_payload(settings, "inputRoots"), as_json)
             return 0
-    normalized_id = _new_input_root_id(rows)
-    root_row = {
-        "id": normalized_id,
-        "path": normalized_path,
-    }
-    rows.append(root_row)
+    rows.append(normalized_path)
     settings["inputRoots"] = rows
     save_settings(settings)
     _print_payload(_root_list_payload(load_settings(), "inputRoots"), as_json)
     return 0
 
 
-def cmd_settings_inputs_remove(root_id: str, as_json: bool) -> int:
+def cmd_settings_inputs_remove(path: str, as_json: bool) -> int:
     settings = load_settings()
     rows = [
         row
         for row in _root_list_payload(settings, "inputRoots")
-        if str(row.get("id") or "").lower() != root_id.strip().lower()
+        if str(row).strip().lower() != path.strip().lower()
     ]
     settings["inputRoots"] = rows
     save_settings(settings)
@@ -540,9 +576,7 @@ def cmd_settings_master_show(as_json: bool) -> int:
 
 def cmd_settings_master_set(*, path: Path, as_json: bool) -> int:
     settings = load_settings()
-    settings["outputRoot"] = {
-        "path": str(path),
-    }
+    settings["outputRoot"] = str(path)
     save_settings(settings)
     _print_payload(_master_payload(load_settings()) or {}, as_json)
     return 0
@@ -655,7 +689,7 @@ def main() -> int:
             if args.inputs_command == "add":
                 return cmd_settings_inputs_add(path=args.path, as_json=args.json)
             if args.inputs_command == "remove":
-                return cmd_settings_inputs_remove(args.id, args.json)
+                return cmd_settings_inputs_remove(args.path, args.json)
             if args.inputs_command == "clear":
                 return cmd_settings_inputs_clear(args.json)
         if args.settings_command == "master":
@@ -670,12 +704,21 @@ def main() -> int:
             return cmd_runs_show(args.run_id, args.json)
     if args.command == "files":
         if args.files_command == "list":
-            return cmd_files_list(include_probe=args.probe, as_json=args.json)
+            return cmd_files_list(
+                include_probe=args.probe,
+                page=args.page,
+                page_size=args.page_size,
+                as_json=args.json,
+            )
         if args.files_command == "scan":
             return cmd_scan(args.config, args.output, args.json)
     if args.command == "items":
         if args.items_command == "list":
-            return cmd_items_list(as_json=args.json)
+            return cmd_items_list(
+                page=args.page,
+                page_size=args.page_size,
+                as_json=args.json,
+            )
         if args.items_command == "refresh":
             return cmd_items_refresh(
                 source_ids=args.source_ids,
@@ -694,7 +737,6 @@ def main() -> int:
         if args.items_command == "download":
             return cmd_items_download(
                 item_id_value=args.item_id,
-                include_all=args.all,
                 output=args.output,
                 as_json=args.json,
             )

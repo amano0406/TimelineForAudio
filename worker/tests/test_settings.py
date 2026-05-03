@@ -23,15 +23,9 @@ class SettingsTests(unittest.TestCase):
                     {
                         "schemaVersion": 1,
                         "inputRoots": [
-                            {
-                                "id": "videos",
-                                "path": "C:\\Users\\amano\\Videos\\",
-                            }
+                            "C:\\Users\\amano\\Videos\\"
                         ],
-                        "outputRoot": {
-                            "path": "C:\\Users\\amano\\video\\",
-                        },
-                        "audioExtensions": [".mp3"],
+                        "outputRoot": "C:\\Users\\amano\\video\\",
                         "huggingfaceToken": "",
                         "computeMode": "cpu",
                     }
@@ -64,7 +58,7 @@ class SettingsTests(unittest.TestCase):
         self.assertNotIn("ipaBackend", loaded)
         self.assertNotIn("contextBuilderVersion", loaded)
         self.assertNotIn("refreshBatchSize", loaded)
-        self.assertEqual("C:\\Users\\amano\\Videos\\", loaded["inputRoots"][0]["path"])
+        self.assertEqual("C:\\Users\\amano\\Videos\\", loaded["inputRoots"][0])
 
     def test_configured_path_maps_windows_drive_on_unix(self) -> None:
         path = configured_path("C:\\Users\\amano\\Videos\\")
@@ -96,7 +90,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(Path("/host/input/videos"), root_path)
         self.assertEqual(Path("/host/input/videos/sample/a.mp3"), child_path)
 
-    def test_inputs_add_generates_id_and_remove_deletes_row(self) -> None:
+    def test_inputs_add_and_remove_manage_path_rows(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             settings_path = root / "settings.json"
@@ -105,13 +99,9 @@ class SettingsTests(unittest.TestCase):
                     {
                         "schemaVersion": 1,
                         "inputRoots": [
-                            {
-                                "id": "videos",
-                                "path": "C:\\Users\\amano\\Videos\\",
-                            }
+                            "C:\\Users\\amano\\Videos\\"
                         ],
-                        "outputRoot": {},
-                        "audioExtensions": [".mp3"],
+                        "outputRoot": "",
                     }
                 ),
                 encoding="utf-8",
@@ -122,13 +112,8 @@ class SettingsTests(unittest.TestCase):
                 with redirect_stdout(StringIO()):
                     cmd_settings_inputs_add(path=Path("C:\\TimelineData\\Audio\\"), as_json=True)
                 rows_after_add = load_settings()["inputRoots"]
-                generated_id = next(
-                    row["id"]
-                    for row in rows_after_add
-                    if row["path"] == "C:\\TimelineData\\Audio\\"
-                )
                 with redirect_stdout(StringIO()):
-                    cmd_settings_inputs_remove(generated_id, as_json=True)
+                    cmd_settings_inputs_remove("C:\\TimelineData\\Audio\\", as_json=True)
                 rows_after_remove = load_settings()["inputRoots"]
             finally:
                 if previous_settings is None:
@@ -136,9 +121,43 @@ class SettingsTests(unittest.TestCase):
                 else:
                     os.environ["TIMELINE_FOR_AUDIO_SETTINGS_PATH"] = previous_settings
 
-        self.assertTrue(generated_id.startswith("input-"))
         self.assertEqual(2, len(rows_after_add))
-        self.assertEqual(["videos"], [row["id"] for row in rows_after_remove])
+        self.assertEqual(["C:\\Users\\amano\\Videos\\"], rows_after_remove)
+
+    def test_audio_extensions_are_not_saved_as_user_settings(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            settings_path = root / "settings.json"
+            settings_path.write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "inputRoots": ["C:\\Users\\amano\\Videos\\"],
+                        "outputRoot": "C:\\TimelineData\\audio",
+                        "audioExtensions": [".mp3"],
+                        "videoExtensions": [".mp4"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            previous_settings = os.environ.get("TIMELINE_FOR_AUDIO_SETTINGS_PATH")
+            os.environ["TIMELINE_FOR_AUDIO_SETTINGS_PATH"] = str(settings_path)
+            try:
+                loaded = load_settings()
+                from timeline_for_audio_worker.settings import save_settings
+
+                save_settings(loaded)
+                saved = json.loads(settings_path.read_text(encoding="utf-8"))
+            finally:
+                if previous_settings is None:
+                    os.environ.pop("TIMELINE_FOR_AUDIO_SETTINGS_PATH", None)
+                else:
+                    os.environ["TIMELINE_FOR_AUDIO_SETTINGS_PATH"] = previous_settings
+
+        self.assertNotIn("audioExtensions", loaded)
+        self.assertNotIn("videoExtensions", loaded)
+        self.assertNotIn("audioExtensions", saved)
+        self.assertNotIn("videoExtensions", saved)
 
 
 if __name__ == "__main__":

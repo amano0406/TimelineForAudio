@@ -27,7 +27,13 @@ from .signature import (
     normalize_compute_mode,
     resolve_acoustic_unit_model_id,
 )
-from .settings import appdata_root, configured_path, load_huggingface_token, load_settings
+from .settings import (
+    appdata_root,
+    configured_path,
+    load_huggingface_token,
+    load_settings,
+    supported_audio_extensions,
+)
 
 _FIXED_VAD_PROFILE = resolve_vad_profile(None)
 _FINAL_TIMELINE_FILE = "timeline.json"
@@ -49,7 +55,7 @@ def _runs_root(output_root_path: Path) -> Path:
 def _allowed_extensions(settings: dict[str, Any]) -> set[str]:
     return {
         ext.lower() if str(ext).startswith(".") else f".{str(ext).lower()}"
-        for ext in settings.get("audioExtensions", settings.get("videoExtensions", []))
+        for ext in supported_audio_extensions()
         if str(ext).strip()
     }
 
@@ -60,20 +66,19 @@ def _enabled_output_root(
     if output_root_id and str(output_root_id).lower() != "master":
         raise ValueError("Only the master output root is supported.")
     root = settings.get("outputRoot")
-    if isinstance(root, dict) and root.get("path"):
-        return {"id": "master", "path": str(root["path"])}
+    if isinstance(root, str) and root.strip():
+        return {"id": "master", "path": root.strip()}
     raise ValueError("No master output root is configured.")
 
 
 def _enabled_input_roots(settings: dict[str, Any]) -> list[dict[str, Any]]:
-    return [
-        {
-            "id": str(root.get("id") or "source"),
-            "path": str(root.get("path") or ""),
-        }
-        for root in settings.get("inputRoots", [])
-        if isinstance(root, dict) and root.get("path")
-    ]
+    roots: list[dict[str, Any]] = []
+    for root in settings.get("inputRoots", []):
+        root_path = root.strip() if isinstance(root, str) else ""
+        if not root_path:
+            continue
+        roots.append({"id": root_path, "path": root_path})
+    return roots
 
 
 def _source_root_for_id(settings: dict[str, Any], source_id: str) -> dict[str, Any] | None:
@@ -98,7 +103,7 @@ def _relative_path_label(path: Path, root_path: Path | None = None) -> str:
 def _source_file_identity(source_id: str, relative_path: str) -> str:
     source = str(source_id or "local").strip() or "local"
     relative = str(relative_path or "").strip().replace("\\", "/").lstrip("/")
-    return f"{source}:{relative}"
+    return f"{source}::{relative}"
 
 
 def _display_path_from_root(root_path: str, relative_path: str, fallback: Path) -> str:
@@ -391,8 +396,6 @@ def create_run(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     write_text(run_dir / "RUN_INFO.md", "# Run Info\n\nPending worker pickup.\n")
-    conversion_info = "# Conversion Info\n\nPending worker pickup.\n"
-    write_text(run_dir / "CONVERSION_INFO.md", conversion_info)
     write_text(run_dir / "NOTICE.md", "# Notice\n\nPending worker pickup.\n")
 
     return run_id, run_dir
@@ -532,6 +535,8 @@ def list_items(
         source_info = _source_info_from_media_dir(media_dir)
         timeline_summary = _timeline_summary_from_artifact(artifact_path)
         source_relative_path = str(row.get("source_relative_path") or "")
+        created_at = str(row.get("created_at") or "")
+        updated_at = _item_updated_at(row=row, artifact_path=artifact_path, media_dir=media_dir)
         source_display_name = (
             str(source_info.get("display_name") or "").strip()
             or Path(source_relative_path).name
@@ -551,6 +556,8 @@ def list_items(
                 "source_hash": row.get("source_hash") or row.get("sha256"),
                 "conversion_signature": row.get("conversion_signature"),
                 "duration_sec": row.get("duration_seconds") or row.get("duration_sec"),
+                "created_at": created_at,
+                "updated_at": updated_at,
                 "status": "available" if artifact_path is not None else "missing_artifact",
                 "artifact_path": str(artifact_path) if artifact_path is not None else "",
                 "media_dir": str(media_dir) if media_dir is not None else "",
@@ -560,11 +567,123 @@ def list_items(
         )
     rows.sort(
         key=lambda item: (
-            str(item.get("source_file_name") or "").lower(),
+            str(item.get("updated_at") or ""),
+            str(item.get("created_at") or ""),
             str(item.get("item_id") or ""),
-        )
+        ),
+        reverse=True,
     )
     return rows
+
+
+def list_items_page(
+    *,
+    settings: dict[str, Any] | None = None,
+    output_root_id: str | None = None,
+    page: int | None = None,
+    page_size: int | None = None,
+) -> dict[str, Any]:
+    rows = list_items(settings=settings, output_root_id=output_root_id)
+    return _list_payload(
+        key="items",
+        count_key="item_count",
+        total_key="total_items",
+        returned_key="returned_items",
+        rows=rows,
+        page=page,
+        page_size=page_size,
+        sort_fields=["updated_at", "created_at", "item_id"],
+    )
+
+
+def _list_payload(
+    *,
+    key: str,
+    count_key: str,
+    total_key: str,
+    returned_key: str,
+    rows: list[dict[str, Any]],
+    page: int | None,
+    page_size: int | None,
+    sort_fields: list[str],
+) -> dict[str, Any]:
+    if page is not None and page < 1:
+        raise ValueError("--page must be 1 or greater.")
+    if page_size is not None and page_size < 1:
+        raise ValueError("--page-size must be 1 or greater.")
+
+    total = len(rows)
+    use_all = page is None and page_size is None
+    if use_all:
+        returned_rows = rows
+        pagination = {
+            "mode": "all",
+            "page": None,
+            "page_size": None,
+            total_key: total,
+            "total_pages": 1 if total else 0,
+            returned_key: total,
+            "offset": 0,
+            "range_start": 1 if total else 0,
+            "range_end": total,
+            "has_previous": False,
+            "has_next": False,
+        }
+    else:
+        effective_page = page or 1
+        effective_page_size = page_size or 100
+        total_pages = (total + effective_page_size - 1) // effective_page_size if total else 0
+        start = (effective_page - 1) * effective_page_size
+        end = start + effective_page_size
+        returned_rows = rows[start:end] if start < total else []
+        returned_count = len(returned_rows)
+        pagination = {
+            "mode": "page",
+            "page": effective_page,
+            "page_size": effective_page_size,
+            total_key: total,
+            "total_pages": total_pages,
+            returned_key: returned_count,
+            "offset": start,
+            "range_start": start + 1 if returned_count else 0,
+            "range_end": start + returned_count if returned_count else 0,
+            "has_previous": effective_page > 1 and total > 0,
+            "has_next": effective_page < total_pages,
+        }
+
+    return {
+        count_key: total,
+        total_key: total,
+        "pagination": pagination,
+        "sort": {
+            "order": "desc",
+            "fields": sort_fields,
+        },
+        key: returned_rows,
+    }
+
+
+def _item_updated_at(
+    *,
+    row: dict[str, Any],
+    artifact_path: Path | None,
+    media_dir: Path | None,
+) -> str:
+    candidates: list[float] = []
+    for path in (
+        artifact_path,
+        media_dir / "convert_info.json" if media_dir is not None else None,
+        media_dir if media_dir is not None else None,
+    ):
+        if path is None or not path.exists():
+            continue
+        try:
+            candidates.append(path.stat().st_mtime)
+        except OSError:
+            continue
+    if candidates:
+        return _iso_from_timestamp(max(candidates))
+    return str(row.get("updated_at") or row.get("created_at") or "")
 
 
 def remove_items(
@@ -690,7 +809,7 @@ def build_items_archive(
             source_info = _source_info_from_media_dir(media_dir)
             media_id = str(row.get("audio_id") or row.get("media_id") or "")
             item_id = item_id_from_catalog_row(row)
-            export_item_dir = staging_root / item_id
+            export_item_dir = staging_root / "items" / item_id
             export_item_dir.mkdir(parents=True, exist_ok=True)
             destination = export_item_dir / _FINAL_TIMELINE_FILE
             destination.write_text(
@@ -698,16 +817,16 @@ def build_items_archive(
                 encoding="utf-8",
             )
             conversion_info_path = (
-                media_dir / "conversion-info.json" if media_dir is not None else None
+                media_dir / "convert_info.json" if media_dir is not None else None
             )
             exported_conversion_path = ""
             if conversion_info_path is not None and conversion_info_path.exists():
-                conversion_destination = export_item_dir / "conversion-info.json"
+                conversion_destination = export_item_dir / "convert_info.json"
                 conversion_destination.write_text(
                     conversion_info_path.read_text(encoding="utf-8", errors="replace"),
                     encoding="utf-8",
                 )
-                exported_conversion_path = f"{item_id}/conversion-info.json"
+                exported_conversion_path = f"items/{item_id}/convert_info.json"
             items_manifest.append(
                 {
                     "item_id": item_id,
@@ -715,7 +834,7 @@ def build_items_archive(
                     "run_id": row.get("run_id") or row.get("job_id"),
                     "source_file_identity": row.get("source_file_identity"),
                     "source_hash": row.get("source_hash") or row.get("sha256"),
-                    "artifact_path": f"{item_id}/{_FINAL_TIMELINE_FILE}",
+                    "artifact_path": f"items/{item_id}/{_FINAL_TIMELINE_FILE}",
                     "conversion_info_path": exported_conversion_path,
                 }
             )
@@ -733,8 +852,8 @@ def build_items_archive(
             "",
             "Each item directory contains:",
             "",
-            "- `conversion-info.json`: source, model, runtime, and processing-flow information.",
-            f"- `{_FINAL_TIMELINE_FILE}`: speaker labels, timestamps, and phone tokens.",
+            "- `items/<item-id>/convert_info.json`: source, model, runtime, and processing-flow information.",
+            f"- `items/<item-id>/{_FINAL_TIMELINE_FILE}`: speaker labels, timestamps, and phone tokens.",
             "",
             "Generated at: `" + now_iso() + "`",
             "",
@@ -1047,7 +1166,7 @@ def list_audio_file_rows(
             if run_state in {"pending", "running"}:
                 status = "processing" if run_state == "running" else "queued"
                 catalog_row = manifest_row
-            elif manifest_status == "failed":
+            elif manifest_status == "failed" and status == "unprocessed":
                 status = "failed"
                 catalog_row = manifest_row
 
@@ -1104,12 +1223,32 @@ def list_audio_file_rows(
 
     rows.sort(
         key=lambda row: (
-            str(row.get("source_display_name") or "").lower(),
-            str(row.get("directory") or "").lower(),
-            str(row.get("file_name") or "").lower(),
-        )
+            str(row.get("modified_at") or ""),
+            str(row.get("source_file_identity") or ""),
+        ),
+        reverse=True,
     )
     return rows
+
+
+def list_audio_file_page(
+    *,
+    settings: dict[str, Any] | None = None,
+    include_probe: bool = False,
+    page: int | None = None,
+    page_size: int | None = None,
+) -> dict[str, Any]:
+    rows = list_audio_file_rows(settings=settings, include_probe=include_probe)
+    return _list_payload(
+        key="files",
+        count_key="file_count",
+        total_key="total_files",
+        returned_key="returned_files",
+        rows=rows,
+        page=page,
+        page_size=page_size,
+        sort_fields=["modified_at", "source_file_identity"],
+    )
 
 
 def _iter_run_dirs(output_path: Path) -> list[Path]:
@@ -1145,8 +1284,8 @@ def settings_snapshot(settings: dict[str, Any] | None = None) -> dict[str, Any]:
         "compute": {
             "mode": str(settings.get("computeMode") or "cpu"),
         },
-        "inputs": inputs,
-        "master": {"path": output_roots[0]["path"]} if output_roots else None,
+        "inputs": [str(root.get("path") or "") for root in inputs],
+        "master": str(output_roots[0]["path"]) if output_roots else None,
     }
 
 
