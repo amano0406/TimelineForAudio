@@ -225,10 +225,10 @@ worker 停止:
 Docker resource の削除:
 
 ```powershell
-.\uninstall.bat
+.\uninstall.ps1
 ```
 
-`uninstall.bat` は既定では `app-data`、`cache-data`、`settings.json` を残します。削除したい場合だけ、削除オプションを明示して使います。
+`uninstall.ps1` は既定では `app-data`、`cache-data`、`settings.json` を残します。削除したい場合だけ、削除オプションを明示して使います。
 
 ## Testing
 

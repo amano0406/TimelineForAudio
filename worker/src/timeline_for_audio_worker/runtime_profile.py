@@ -34,7 +34,7 @@ def assert_runtime_supports_compute_mode(compute_mode: str | None) -> None:
     if current_worker_flavor() != "gpu":
         raise RuntimeError(
             "settings.json computeMode is gpu, but the running worker container is cpu. "
-            "Restart the worker with start.bat or run cli.bat again so Docker can recreate "
+            "Restart the worker with start.ps1 or run cli.ps1 again so Docker can recreate "
             "the GPU worker."
         )
 

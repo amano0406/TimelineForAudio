@@ -225,10 +225,10 @@ Stop the worker:
 Uninstall Docker resources:
 
 ```powershell
-.\uninstall.bat
+.\uninstall.ps1
 ```
 
-`uninstall.bat` keeps `app-data`, `cache-data`, and `settings.json` by default. Use deletion options only when you intentionally want to delete those.
+`uninstall.ps1` keeps `app-data`, `cache-data`, and `settings.json` by default. Use deletion options only when you intentionally want to delete those.
 
 ## Testing
 
