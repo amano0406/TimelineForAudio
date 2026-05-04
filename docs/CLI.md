@@ -100,6 +100,8 @@ Common file statuses:
 
 `items download` creates a ZIP. If `--item-id` is omitted, every available item is included.
 
+When `--output` is a Windows host path, `cli.ps1` writes the ZIP to that exact host path and returns the same path in `archive_path`.
+
 `items remove` deletes generated item artifacts from the master output. It does not delete source audio files.
 
 ## Diagnostic Commands

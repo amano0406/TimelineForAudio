@@ -188,6 +188,41 @@ if (-not $KeepOutput) {
     Write-Host "  Cleanup: removed generated archive"
 }
 
+Write-Host "Running local cli.ps1 explicit --output download smoke test..."
+$explicitOutputDir = Join-Path $repoRoot "output\local-cli-download-smoke"
+$explicitOutputPath = Join-Path $explicitOutputDir "requested-items.zip"
+if (Test-Path -LiteralPath $explicitOutputPath) {
+    Remove-Item -LiteralPath $explicitOutputPath -Force
+}
+$explicitResult = Invoke-TfaPowerShellFile -FilePath $cliPath -Arguments @("items", "download", "--output", $explicitOutputPath, "--json")
+if ($explicitResult.ExitCode -ne 0) {
+    Write-Host $explicitResult.Stdout
+    Write-Host $explicitResult.Stderr
+    throw "cli.ps1 items download --output failed with exit code $($explicitResult.ExitCode)."
+}
+$explicitPayload = ConvertFrom-TfaJsonPayload -Text ([string]$explicitResult.Stdout)
+$explicitArchivePath = [string]$explicitPayload.archive_path
+$expectedArchivePath = [System.IO.Path]::GetFullPath($explicitOutputPath)
+if (-not ([System.String]::Equals($explicitArchivePath, $expectedArchivePath, [System.StringComparison]::OrdinalIgnoreCase))) {
+    throw "cli.ps1 items download --output returned the wrong archive_path. Expected $expectedArchivePath but got $explicitArchivePath"
+}
+if (-not (Test-Path -LiteralPath $expectedArchivePath)) {
+    throw "cli.ps1 items download --output did not create the requested host archive: $expectedArchivePath"
+}
+$explicitArchive = Get-Item -LiteralPath $expectedArchivePath
+if ($explicitArchive.Length -le 0) {
+    throw "Explicit output archive is empty: $expectedArchivePath"
+}
+Write-Host "Local cli.ps1 explicit --output download smoke test passed."
+Write-Host "  Archive: $expectedArchivePath"
+if (-not $KeepOutput) {
+    Remove-Item -LiteralPath $expectedArchivePath -Force
+    if (Test-Path -LiteralPath $explicitOutputDir) {
+        Remove-Item -LiteralPath $explicitOutputDir -Recurse -Force
+    }
+    Write-Host "  Cleanup: removed explicit output archive"
+}
+
 Write-Host "Running local cli.ps1 JSON error smoke test..."
 $errorResult = Invoke-TfaPowerShellFile -FilePath $cliPath -Arguments @("items", "download", "--item-id", "item-does-not-exist", "--json")
 if ($errorResult.ExitCode -eq 0) {
