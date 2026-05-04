@@ -15,6 +15,16 @@ This README is the entry point for first-time setup and daily operation.
 
 The full CLI output contract, pipeline details, stability checklist, and release procedure live under `docs/`.
 
+## Role In The Timeline Product Family
+
+`TimelineForAudio` is not the product that creates the final human-readable text. It is a sub-product that converts audio into structured data that downstream Timeline products and LLM workflows can reuse.
+
+The central asset is the original audio timeline. For long recordings, the product records when speech happened, which machine speaker label was active, and which phone tokens were observed.
+
+This product does not interpret meaning. It does not infer real speaker names. Readable-text reconstruction, summarization, and conversation interpretation belong to downstream products or LLM workflows that consume `timeline.json`.
+
+For that reason, the public surface stays intentionally small: configured input directories, `settings.json`, master artifacts, download ZIPs, and CLI JSON output. Run state, logs, caches, and temporary files are internal implementation details.
+
 ## Product Scope
 
 TimelineForAudio does:

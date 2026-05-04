@@ -4,11 +4,12 @@ This document defines the first public GitHub Release line for `TimelineForAudio
 
 ## Release Line
 
-- current public line example: `TimelineForAudio v0.4.0 Tech Preview`
+- current public line example: `TimelineForAudio v0.4.2 Tech Preview`
 - tag format: `v0.x.y`
 - first tag: `v0.3.0`
-- initial support contract:
-  - Windows `.bat` launchers primary
+- current support contract:
+  - Windows PowerShell launchers primary
+  - `.bat` launchers as compatibility wrappers
   - WSL/Unix command scripts as a backdoor path
   - Docker Desktop required
   - CPU baseline
@@ -54,29 +55,29 @@ The Windows release bundle must contain a top folder named `TimelineForAudio-v0.
 5. Build the Windows bundle:
 
    ```powershell
-   .\scripts\build-release-bundle.ps1 -Version 0.4.0 -OutputDir .\release\v0.4.0
+   .\scripts\build-release-bundle.ps1 -Version 0.4.2 -OutputDir .\release\v0.4.2
    ```
 
 6. Verify these files exist:
-   - `release\v0.4.0\TimelineForAudio-windows-local.zip`
-   - `release\v0.4.0\SHA256SUMS.txt`
+   - `release\v0.4.2\TimelineForAudio-windows-local.zip`
+   - `release\v0.4.2\SHA256SUMS.txt`
 7. Create the annotated tag:
 
    ```powershell
-   git tag -a v0.4.0 -m "TimelineForAudio v0.4.0"
+   git tag -a v0.4.2 -m "TimelineForAudio v0.4.2"
    ```
 
 8. Push `main` and the tag:
 
    ```powershell
    git push origin main
-   git push origin v0.4.0
+   git push origin v0.4.2
    ```
 
 9. Create the GitHub Release manually:
    - repository: `https://github.com/amano0406/TimelineForAudio`
-   - title: `TimelineForAudio v0.4.0 Tech Preview`
-   - tag: `v0.4.0`
+   - title: `TimelineForAudio v0.4.2 Tech Preview`
+   - tag: `v0.4.2`
    - latest release: enabled
    - pre-release: disabled
 10. Paste the release note template from `docs/RELEASE_NOTES_TEMPLATE.md`.
