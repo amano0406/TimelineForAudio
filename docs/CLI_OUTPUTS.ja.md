@@ -595,7 +595,7 @@ TimelineForAudio が管理している生成済み item を一覧します。マ
 
 ```powershell
 .\cli.ps1 items download --json
-.\cli.ps1 items download --output "C:\Temp\all-items.zip" --json
+.\cli.ps1 items download --output "C:\Temp\items.zip" --json
 .\cli.ps1 items download --item-id item-a,item-b --json
 .\cli.ps1 items download --item-id item-a,item-b --output "C:\Temp\items.zip" --json
 ```

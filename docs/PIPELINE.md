@@ -43,7 +43,7 @@ source hash + generation signature + source file identity
 
 `source file identity` includes the configured input root id and relative path. A renamed file is therefore treated as a different source.
 
-`items refresh` queues all changed files by default. `items refresh --max-items <N>` limits one invocation when a smaller test or retry batch is safer.
+`items refresh` queues changed files by default. `items refresh --max-items <N>` limits one invocation when a smaller test or retry batch is safer.
 
 The master directory is not used as a run-log store. It contains only completed item artifact directories. Runtime catalogs, logs, and locks are temporary and can be rebuilt or discarded.
 
