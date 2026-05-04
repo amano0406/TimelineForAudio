@@ -77,10 +77,7 @@ function Copy-ReleaseFiles {
     $exactFiles = @(
         ".dockerignore",
         "LICENSE",
-        "MODEL_AND_RUNTIME_NOTES.md",
         "README.md",
-        "README.ja.md",
-        "THIRD_PARTY_NOTICES.md",
         "docker-compose.yml",
         "docker-compose.gpu.yml",
         "start.ps1",
@@ -99,11 +96,13 @@ function Copy-ReleaseFiles {
         "worker/pyproject.toml",
         "worker/requirements-cpu.txt",
         "worker/requirements-gpu.txt",
-        "docs/CLI_OUTPUTS.ja.md",
-        "docs/MANUAL_RELEASE.md",
-        "docs/OPERATIONAL_STABILITY.ja.md",
+        "docs/CLI.md",
+        "docs/OUTPUTS.md",
         "docs/PIPELINE.md",
-        "docs/SECURITY_AND_SAFETY.md",
+        "docs/RUNTIME.md",
+        "docs/SAFETY.md",
+        "docs/TESTING.md",
+        "docs/THIRD_PARTY_NOTICES.md",
         "scripts/docker-runtime.ps1",
         "scripts/prepare-docker-paths.ps1"
     )

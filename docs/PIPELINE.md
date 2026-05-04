@@ -1,5 +1,7 @@
 # Pipeline
 
+[Back to README](../README.md)
+
 ## 1. Request Creation
 
 The CLI creates an internal temporary run directory under the worker runtime area.
@@ -41,7 +43,7 @@ The duplicate key is:
 source hash + generation signature + source file identity
 ```
 
-`source file identity` includes the configured input root id and relative path. A renamed file is therefore treated as a different source.
+`source file identity` includes the configured input root path and relative path. A renamed file is therefore treated as a different source.
 
 `items refresh` queues changed files by default. `items refresh --max-items <N>` limits one invocation when a smaller test or retry batch is safer.
 
@@ -79,7 +81,7 @@ Current backend:
 anyspeech/zipa-large-crctc-300k via ONNX Runtime
 ```
 
-The output field is named `phone_tokens`. TimelineForAudio stores phone-like tokens for downstream reconstruction, not readable text.
+The output field is named `phone_tokens`. TimelineForAudio stores phone-like acoustic units for downstream reconstruction, not readable text.
 
 In GPU mode, ZIPA must use ONNX Runtime with `CUDAExecutionProvider`. If the GPU Docker flavor, CUDA-enabled PyTorch, or ONNX Runtime CUDA provider is unavailable, the run fails early instead of silently using CPU. The worker records the actual execution provider in the primary timeline pipeline metadata.
 
