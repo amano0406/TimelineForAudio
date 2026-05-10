@@ -4,10 +4,7 @@ param(
     [string]$Version,
 
     [Parameter()]
-    [string]$OutputDir = ".\\release",
-
-    [Parameter()]
-    [switch]$KeepStaging
+    [string]$OutputDir = ".\release"
 )
 
 Set-StrictMode -Version Latest
@@ -31,124 +28,58 @@ function Normalize-Version {
     }
 }
 
-function Test-IsExcludedPath {
-    param([string]$RelativePath)
+function Resolve-GitCommand {
+    $command = Get-Command git -ErrorAction SilentlyContinue
+    if ($null -ne $command) {
+        return $command.Source
+    }
 
-    $normalized = $RelativePath.Replace('\', '/')
-    $excludedSegments = @(
-        ".git",
-        ".ruff_cache",
-        "__pycache__",
-        ".pytest_cache",
-        "bin",
-        "obj"
+    $candidates = @()
+    if (-not [string]::IsNullOrWhiteSpace($env:GIT_EXE)) {
+        $candidates += $env:GIT_EXE
+    }
+
+    $candidates += @(
+        "C:\Program Files\Git\cmd\git.exe",
+        "C:\Program Files\Git\bin\git.exe",
+        "C:\Program Files (x86)\Git\cmd\git.exe",
+        "C:\Program Files (x86)\Git\bin\git.exe"
     )
 
-    foreach ($segment in $excludedSegments) {
-        if ($normalized -match "(^|/)$([Regex]::Escape($segment))(/|$)") {
-            return $true
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
         }
     }
 
-    return $false
+    throw "Git for Windows was not found. Install Git or set GIT_EXE to git.exe."
 }
 
-function Get-RepoRelativePath {
-    param(
-        [string]$RepoRoot,
-        [string]$FullPath
-    )
+function Invoke-Git {
+    param([string[]]$Arguments)
 
-    $normalizedRoot = $RepoRoot.TrimEnd('\', '/')
-    $rootWithSeparator = $normalizedRoot + [System.IO.Path]::DirectorySeparatorChar
-    if (-not $FullPath.StartsWith($rootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "Path is not under the repository root: $FullPath"
+    $global:LASTEXITCODE = 0
+    $output = & $script:GitCommand @Arguments 2>&1
+    $exitCode = $global:LASTEXITCODE
+    if ($exitCode -ne 0) {
+        $joined = $Arguments -join " "
+        throw "git $joined failed: $output"
     }
 
-    return $FullPath.Substring($rootWithSeparator.Length).Replace('\', '/')
+    return $output
 }
 
-function Copy-ReleaseFiles {
+function Resolve-FullPath {
     param(
-        [string]$RepoRoot,
-        [string]$DestinationRoot
+        [string]$BasePath,
+        [string]$PathValue
     )
 
-    $exactFiles = @(
-        ".dockerignore",
-        "LICENSE",
-        "README.md",
-        "timeline-product.json",
-        "docker-compose.yml",
-        "docker-compose.gpu.yml",
-        "start.ps1",
-        "start.bat",
-        "start.command",
-        "cli.ps1",
-        "cli.bat",
-        "cli.command",
-        "stop.ps1",
-        "stop.bat",
-        "stop.command",
-        "settings.example.json",
-        "uninstall.ps1",
-        "uninstall.bat",
-        "uninstall.command",
-        "worker/pyproject.toml",
-        "worker/requirements-cpu.txt",
-        "worker/requirements-gpu.txt",
-        "docs/CLI.md",
-        "docs/OUTPUTS.md",
-        "docs/PIPELINE.md",
-        "docs/RUNTIME.md",
-        "docs/SAFETY.md",
-        "docs/TESTING.md",
-        "docs/THIRD_PARTY_NOTICES.md",
-        "scripts/docker-runtime.ps1",
-        "scripts/prepare-docker-paths.ps1"
-    )
-
-    $directories = @(
-        "configs",
-        "docker",
-        "worker/src"
-    )
-
-    foreach ($relativePath in $exactFiles) {
-        $sourcePath = Join-Path $RepoRoot $relativePath
-        if (-not (Test-Path -LiteralPath $sourcePath)) {
-            continue
-        }
-
-        $destinationPath = Join-Path $DestinationRoot $relativePath
-        $destinationDir = Split-Path -Parent $destinationPath
-        if (-not (Test-Path -LiteralPath $destinationDir)) {
-            New-Item -ItemType Directory -Path $destinationDir | Out-Null
-        }
-        Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
+    if ([System.IO.Path]::IsPathRooted($PathValue)) {
+        return [System.IO.Path]::GetFullPath($PathValue)
     }
 
-    foreach ($relativeDirectory in $directories) {
-        $sourceDirectory = Join-Path $RepoRoot $relativeDirectory
-        if (-not (Test-Path -LiteralPath $sourceDirectory)) {
-            continue
-        }
-
-        foreach ($file in Get-ChildItem -LiteralPath $sourceDirectory -Recurse -File) {
-            $sourcePath = $file.FullName
-            $relativePath = Get-RepoRelativePath -RepoRoot $RepoRoot -FullPath $sourcePath
-            if (Test-IsExcludedPath -RelativePath $relativePath) {
-                continue
-            }
-
-            $destinationPath = Join-Path $DestinationRoot $relativePath
-            $destinationDir = Split-Path -Parent $destinationPath
-            if (-not (Test-Path -LiteralPath $destinationDir)) {
-                New-Item -ItemType Directory -Path $destinationDir | Out-Null
-            }
-            Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
-        }
-    }
+    return [System.IO.Path]::GetFullPath((Join-Path $BasePath $PathValue))
 }
 
 $normalized = Normalize-Version -Value $Version
@@ -157,67 +88,75 @@ $tag = $normalized.Tag
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = (Resolve-Path (Join-Path $scriptRoot "..")).Path
-if ([System.IO.Path]::IsPathRooted($OutputDir)) {
-    $outputRoot = [System.IO.Path]::GetFullPath($OutputDir)
-}
-else {
-    $outputRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $OutputDir))
-}
-$bundleRootName = "TimelineForAudio-$tag"
-$bundleStageRoot = Join-Path $outputRoot "staging"
-$bundleRoot = Join-Path $bundleStageRoot $bundleRootName
-$zipPath = Join-Path $outputRoot "TimelineForAudio-windows-local.zip"
-$checksumPath = Join-Path $outputRoot "SHA256SUMS.txt"
+$repoName = Split-Path -Leaf $repoRoot
+$script:GitCommand = Resolve-GitCommand
 
-if (Test-Path -LiteralPath $bundleStageRoot) {
-    Remove-Item -LiteralPath $bundleStageRoot -Recurse -Force
-}
+Invoke-Git -Arguments @("-C", $repoRoot, "rev-parse", "--is-inside-work-tree") | Out-Null
+Invoke-Git -Arguments @("-C", $repoRoot, "rev-parse", "--verify", "refs/tags/$tag^{commit}") | Out-Null
+
+$outputRootBase = Resolve-FullPath -BasePath $repoRoot -PathValue $OutputDir
+$outputRoot = Join-Path $outputRootBase $tag
+$zipName = "$repoName-windows-local.zip"
+$zipPath = Join-Path $outputRoot $zipName
+$checksumPath = Join-Path $outputRoot "SHA256SUMS.txt"
+$prefix = "$repoName-$tag/"
+
 if (-not (Test-Path -LiteralPath $outputRoot)) {
     New-Item -ItemType Directory -Path $outputRoot | Out-Null
 }
+
 if (Test-Path -LiteralPath $zipPath) {
     Remove-Item -LiteralPath $zipPath -Force
 }
+
 if (Test-Path -LiteralPath $checksumPath) {
     Remove-Item -LiteralPath $checksumPath -Force
 }
 
-New-Item -ItemType Directory -Path $bundleRoot | Out-Null
-Copy-ReleaseFiles -RepoRoot $repoRoot -DestinationRoot $bundleRoot
+Invoke-Git -Arguments @(
+    "-C",
+    $repoRoot,
+    "archive",
+    "--format=zip",
+    "--output=$zipPath",
+    "--prefix=$prefix",
+    $tag
+) | Out-Null
 
-Add-Type -AssemblyName System.IO.Compression
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-$zipStream = [System.IO.File]::Open($zipPath, [System.IO.FileMode]::Create)
-try {
-    $archive = New-Object System.IO.Compression.ZipArchive($zipStream, [System.IO.Compression.ZipArchiveMode]::Create, $false)
+$zipCreated = $false
+for ($index = 0; $index -lt 20; $index++) {
+    if (Test-Path -LiteralPath $zipPath) {
+        $zipCreated = $true
+        break
+    }
+
+    Start-Sleep -Milliseconds 100
+}
+
+if (-not $zipCreated) {
+    throw "Release ZIP was not created: $zipPath"
+}
+
+$hashResult = $null
+for ($index = 0; $index -lt 50; $index++) {
     try {
-        $normalizedStageRoot = (Resolve-Path $bundleStageRoot).Path.TrimEnd('\', '/')
-        foreach ($file in Get-ChildItem -LiteralPath $bundleStageRoot -Recurse -File) {
-            $entryName = $file.FullName.Substring($normalizedStageRoot.Length + 1).Replace('\', '/')
-            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
-                $archive,
-                $file.FullName,
-                $entryName,
-                [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
-        }
+        $hashResult = Get-FileHash -LiteralPath $zipPath -Algorithm SHA256
+        break
     }
-    finally {
-        $archive.Dispose()
+    catch {
+        Start-Sleep -Milliseconds 100
     }
 }
-finally {
-    $zipStream.Dispose()
+
+if ($null -eq $hashResult) {
+    throw "Release ZIP could not be read for SHA256: $zipPath"
 }
 
-$hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-Set-Content -LiteralPath $checksumPath -Value "$hash  TimelineForAudio-windows-local.zip"
-
-if (-not $KeepStaging -and (Test-Path -LiteralPath $bundleStageRoot)) {
-    Remove-Item -LiteralPath $bundleStageRoot -Recurse -Force
-}
+$hash = $hashResult.Hash.ToLowerInvariant()
+Set-Content -LiteralPath $checksumPath -Value "$hash  $zipName" -Encoding ASCII
 
 Write-Host "Release bundle created:"
 Write-Host "  Version: $semVer"
-Write-Host "  Folder:  $bundleRootName"
+Write-Host "  Tag:     $tag"
 Write-Host "  ZIP:     $zipPath"
 Write-Host "  SHA256:  $checksumPath"
