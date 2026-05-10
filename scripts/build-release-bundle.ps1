@@ -78,6 +78,7 @@ function Copy-ReleaseFiles {
         ".dockerignore",
         "LICENSE",
         "README.md",
+        "timeline-product.json",
         "docker-compose.yml",
         "docker-compose.gpu.yml",
         "start.ps1",
