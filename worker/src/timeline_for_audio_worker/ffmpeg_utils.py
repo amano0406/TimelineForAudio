@@ -325,22 +325,3 @@ def trim_audio(
         )
         trimmed_cursor += segment_duration
     return cut_map
-
-
-def extract_frame(video_path: Path, output_path: Path, timestamp: float) -> None:
-    ensure_dir(output_path.parent)
-    run_command(
-        [
-            "ffmpeg",
-            "-y",
-            "-ss",
-            f"{max(0.0, timestamp):.3f}",
-            "-i",
-            str(video_path),
-            "-frames:v",
-            "1",
-            "-q:v",
-            "2",
-            str(output_path),
-        ]
-    )

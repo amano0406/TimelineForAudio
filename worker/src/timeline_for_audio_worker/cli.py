@@ -2,15 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
-import threading
 import time
 from pathlib import Path
 
 from .config import AppConfig, load_config
 from .discovery import discover_audio
-from .fs_utils import now_iso
 from .runtime_guard import assert_cli_runtime_allowed
 from .run_store import (
     app_config_from_settings,
@@ -30,9 +27,8 @@ from .settings import (
     init_settings,
     load_settings,
     save_settings,
-    save_worker_capabilities,
-    save_worker_heartbeat,
 )
+from .worker_runtime import start_worker_heartbeat, write_worker_capabilities
 
 
 def parse_args() -> argparse.Namespace:
@@ -295,77 +291,13 @@ def cmd_process_run(run_dir: Path) -> int:
 def cmd_daemon(poll_interval: int) -> int:
     from .processor import process_run
 
-    _write_worker_capabilities()
-    _start_worker_heartbeat()
+    write_worker_capabilities()
+    start_worker_heartbeat()
     while True:
         found = process_run()
         if not found:
             time.sleep(max(1, poll_interval))
     return 0
-
-
-def _start_worker_heartbeat(interval_seconds: int = 5) -> None:
-    def heartbeat_loop() -> None:
-        while True:
-            save_worker_heartbeat(
-                {
-                    "schema_version": 1,
-                    "state": "running",
-                    "updated_at": now_iso(),
-                    "pid": os.getpid(),
-                    "worker_flavor": os.getenv("TIMELINE_FOR_AUDIO_WORKER_FLAVOR", "cpu"),
-                }
-            )
-            time.sleep(max(1, interval_seconds))
-
-    thread = threading.Thread(target=heartbeat_loop, name="worker-heartbeat", daemon=True)
-    thread.start()
-
-
-def _write_worker_capabilities() -> None:
-    payload: dict[str, object] = {
-        "generatedAt": now_iso(),
-        "workerFlavor": os.getenv("TIMELINE_FOR_AUDIO_WORKER_FLAVOR", "cpu"),
-        "torchInstalled": False,
-        "torchCudaBuilt": False,
-        "gpuAvailable": False,
-        "deviceCount": 0,
-        "deviceNames": [],
-        "message": "Worker capability report created.",
-    }
-    try:
-        import torch
-
-        payload["torchInstalled"] = True
-        payload["torchCudaBuilt"] = bool(torch.backends.cuda.is_built())
-        payload["gpuAvailable"] = bool(torch.cuda.is_available())
-        payload["deviceCount"] = int(torch.cuda.device_count()) if torch.cuda.is_available() else 0
-        payload["deviceNames"] = (
-            [torch.cuda.get_device_name(index) for index in range(torch.cuda.device_count())]
-            if torch.cuda.is_available()
-            else []
-        )
-        payload["deviceMemoryGiB"] = (
-            [
-                round(
-                    torch.cuda.get_device_properties(index).total_memory / 1024 / 1024 / 1024,
-                    1,
-                )
-                for index in range(torch.cuda.device_count())
-            ]
-            if torch.cuda.is_available()
-            else []
-        )
-        payload["maxGpuMemoryGiB"] = max(payload["deviceMemoryGiB"], default=0.0)
-        payload["message"] = (
-            "GPU is available to the worker."
-            if payload["gpuAvailable"]
-            else "GPU is not available to the worker."
-        )
-    except Exception as exc:
-        payload["message"] = f"Capability check failed: {exc}"
-
-    save_worker_capabilities(payload)
 
 
 def _print_payload(payload: object, as_json: bool) -> None:
@@ -548,19 +480,8 @@ def cmd_settings_master_set(*, path: Path, as_json: bool) -> int:
     return 0
 
 
-def _rename_internal_id_to_run_id(payload: object) -> object:
-    if isinstance(payload, dict):
-        renamed = {
-            key: _rename_internal_id_to_run_id(value) for key, value in payload.items()
-        }
-        return renamed
-    if isinstance(payload, list):
-        return [_rename_internal_id_to_run_id(item) for item in payload]
-    return payload
-
-
 def cmd_runs_list(as_json: bool) -> int:
-    rows = _rename_internal_id_to_run_id(list_runs())
+    rows = list_runs()
     _print_payload(rows, as_json)
     return 0
 
@@ -585,7 +506,7 @@ def cmd_runs_show(run_id: str, as_json: bool) -> int:
         payload["performance"] = json.loads(
             performance_path.read_text(encoding="utf-8-sig", errors="replace")
         )
-    _print_payload(_rename_internal_id_to_run_id(payload), as_json)
+    _print_payload(payload, as_json)
     return 0
 
 
@@ -606,7 +527,6 @@ def cmd_items_refresh(
         reprocess_duplicates=reprocess_duplicates,
         max_items=max_items,
     )
-    summary = _rename_internal_id_to_run_id(summary)
     payload: dict[str, object] = {
         "state": "skipped" if run_id is None else "pending",
         "run_id": run_id,
@@ -626,9 +546,9 @@ def cmd_items_refresh(
             (run_dir / "result.json").read_text(encoding="utf-8-sig", errors="replace")
         )
         payload["state"] = status.get("state", "unknown")
-        payload["status"] = _rename_internal_id_to_run_id(status)
-        payload["result"] = _rename_internal_id_to_run_id(result)
-    _print_payload(_rename_internal_id_to_run_id(payload), as_json)
+        payload["status"] = status
+        payload["result"] = result
+    _print_payload(payload, as_json)
     return 0
 
 

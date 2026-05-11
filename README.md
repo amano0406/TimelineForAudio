@@ -118,7 +118,6 @@ For a local smoke test, put a short audio file in one configured input directory
 | [docs/CLI.md](docs/CLI.md) | Calling the CLI from another product or management UI |
 | [docs/OUTPUTS.md](docs/OUTPUTS.md) | Reading master artifacts and download ZIPs |
 | [docs/PIPELINE.md](docs/PIPELINE.md) | Understanding the processing pipeline |
-| [docs/RUNTIME.md](docs/RUNTIME.md) | Docker, storage, model, GPU, and token requirements |
+| [docs/RUNTIME.md](docs/RUNTIME.md) | Docker, storage, model, GPU, token, and local-file boundaries |
 | [docs/TESTING.md](docs/TESTING.md) | Running lightweight and operational checks |
-| [docs/SAFETY.md](docs/SAFETY.md) | Understanding deletion and local-file boundaries |
 | [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) | Reviewing dependency and model notices |

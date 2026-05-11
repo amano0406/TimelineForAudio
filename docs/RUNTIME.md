@@ -82,3 +82,18 @@ If GPU checks fail, processing fails early instead of silently switching to CPU.
 ## First Run
 
 The first run may download Docker image layers, Python dependencies, and model weights. Later runs reuse the Docker volumes unless they are explicitly removed.
+
+## Local File Boundaries
+
+TimelineForAudio is a local CLI tool, not a hosted service or OS sandbox.
+
+- source audio files are read from configured input directories
+- source audio files are not deleted by item cleanup
+- generated item cleanup removes selected master item directories
+- run logs, locks, scratch files, and model caches are internal runtime data
+- output ZIPs are written under the project `output` directory unless `--output` is specified
+- Hugging Face tokens are stored in local-only `settings.json`, which is not tracked by Git
+
+`items remove` deletes generated artifacts only. Use `--dry-run` first when selecting item IDs from another UI.
+
+`uninstall.ps1` is broader and can remove Docker runtime data if requested. Use it only when cleaning the local installation.

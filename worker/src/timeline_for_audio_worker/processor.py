@@ -30,6 +30,12 @@ from .fs_utils import (
     write_text,
 )
 from .hashing import sha256_file
+from .progress import (
+    completed_item_count,
+    completed_progress_percent,
+    current_item_stage_fraction,
+    overall_progress_percent,
+)
 from .settings import appdata_root, configured_path, load_settings, uploads_root
 from .transcription import (
     TRANSCRIPTION_BACKEND,
@@ -39,14 +45,6 @@ from .transcription import (
 )
 from .runtime_profile import assert_runtime_supports_compute_mode
 from .vad_profile import vad_config_for_profile
-
-_ITEM_STAGE_BOUNDS: dict[str, tuple[float, float]] = {
-    "extract_audio": (0.0, 0.18),
-    "detect_speech_candidates": (0.18, 0.30),
-    "diarize_audio": (0.30, 0.70),
-    "transcribe_audio": (0.70, 0.94),
-    "generate_artifacts": (0.96, 1.0),
-}
 
 _RUN_LOCK_STALE_AFTER = timedelta(seconds=30)
 _MIN_PREPROCESS_DURATION_SEC = 2.0
@@ -437,108 +435,6 @@ def _estimate_remaining_with_history(
         current_stage_elapsed_sec=current_stage_elapsed_sec,
         include_export_stage=include_export_stage,
     )
-
-
-def _stage_expected_seconds(stage_name: str, media_duration_sec: float, compute_mode: str) -> float:
-    safe_duration = max(1.0, media_duration_sec)
-    if stage_name == "extract_audio":
-        return max(1.5, min(25.0, safe_duration * 0.06))
-    if stage_name == "detect_speech_candidates":
-        return max(1.0, min(30.0, safe_duration * 0.08))
-    if stage_name == "diarize_audio":
-        factor = 0.10 if compute_mode == "gpu" else 0.45
-        ceiling = 120.0 if compute_mode == "gpu" else 480.0
-        return max(2.0, min(ceiling, safe_duration * factor))
-    if stage_name == "transcribe_audio":
-        factor = 0.18 if compute_mode == "gpu" else 0.90
-        ceiling = 180.0 if compute_mode == "gpu" else 720.0
-        return max(4.0, min(ceiling, safe_duration * factor))
-    if stage_name == "generate_artifacts":
-        return max(1.0, min(15.0, safe_duration * 0.03))
-    if stage_name == "llm_export":
-        return 5.0
-    if stage_name == "preflight":
-        return max(1.0, min(10.0, safe_duration * 0.02))
-    return 5.0
-
-
-def _current_item_stage_fraction(
-    stage_name: str, elapsed_sec: float, media_duration_sec: float, compute_mode: str
-) -> float:
-    lower, upper = _ITEM_STAGE_BOUNDS.get(stage_name, (0.0, 1.0))
-    if upper <= lower:
-        return upper
-    expected = _stage_expected_seconds(stage_name, media_duration_sec, compute_mode)
-    stage_progress = min(1.0, max(0.0, elapsed_sec / max(expected, 0.1)))
-    return lower + ((upper - lower) * stage_progress)
-
-
-def _overall_progress_percent(
-    *,
-    processed_duration_sec: float,
-    total_duration_sec: float,
-    current_stage: str,
-    current_stage_elapsed_sec: float,
-    current_media_duration_sec: float,
-    compute_mode: str,
-    preflight_fraction: float = 1.0,
-    total_items: int = 0,
-    completed_items: int = 0,
-) -> float:
-    if current_stage == "queued":
-        return 0.0
-    if current_stage == "preflight":
-        return round(5.0 * min(1.0, max(0.0, preflight_fraction)), 1)
-    if current_stage == "llm_export":
-        export_fraction = min(
-            1.0,
-            max(
-                0.0,
-                current_stage_elapsed_sec
-                / _stage_expected_seconds("llm_export", 1.0, compute_mode),
-            ),
-        )
-        return round(95.0 + (4.0 * export_fraction), 1)
-    if current_stage == "completed":
-        return 100.0
-    if total_duration_sec > 0:
-        current_item_fraction = _current_item_stage_fraction(
-            current_stage, current_stage_elapsed_sec, current_media_duration_sec, compute_mode
-        )
-        effective_processed = min(
-            total_duration_sec,
-            max(0.0, processed_duration_sec)
-            + (max(0.0, current_media_duration_sec) * current_item_fraction),
-        )
-        duration_fraction = effective_processed / total_duration_sec
-        return round(5.0 + (90.0 * duration_fraction), 1)
-
-    if total_items <= 0:
-        return 0.0
-
-    current_item_fraction = _current_item_stage_fraction(
-        current_stage, current_stage_elapsed_sec, current_media_duration_sec, compute_mode
-    )
-    completed_fraction = min(1.0, max(0.0, (completed_items + current_item_fraction) / total_items))
-    return round(5.0 + (90.0 * completed_fraction), 1)
-
-
-def _completed_progress_percent(
-    *,
-    processed_duration_sec: float,
-    total_duration_sec: float,
-    total_items: int,
-    completed_items: int,
-) -> float:
-    if total_duration_sec > 0:
-        completed_fraction = min(1.0, max(0.0, processed_duration_sec / total_duration_sec))
-        return round(5.0 + (90.0 * completed_fraction), 1)
-
-    if total_items <= 0:
-        return 0.0
-
-    completed_fraction = min(1.0, max(0.0, completed_items / total_items))
-    return round(5.0 + (90.0 * completed_fraction), 1)
 
 
 def _write_support_docs(run_dir: Path, request: RunRequest) -> None:
@@ -1095,16 +991,16 @@ def process_run(run_dir: Path | None = None) -> bool:
         append_log(log_path, f"[{now_iso()}] Starting run {request.run_id}")
         for index, input_item in enumerate(request.input_items, start=1):
             _raise_if_delete_requested(run_dir, "preflight")
-            status.current_media = input_item.display_name
+            status.current_item = input_item.display_name
             status.message = (
                 f"Preflight {index}/{len(request.input_items)}: {input_item.display_name}"
             )
-            status.progress_percent = _overall_progress_percent(
+            status.progress_percent = overall_progress_percent(
                 processed_duration_sec=0.0,
                 total_duration_sec=0.0,
                 current_stage="preflight",
                 current_stage_elapsed_sec=0.0,
-                current_media_duration_sec=0.0,
+                current_item_duration_sec=0.0,
                 compute_mode=compute_mode,
                 preflight_fraction=index / max(len(request.input_items), 1),
                 total_items=max(len(request.input_items), 1),
@@ -1145,7 +1041,7 @@ def process_run(run_dir: Path | None = None) -> bool:
                     )
                 )
                 preflight_skip_counts["skipped_invalid"] += 1
-                status.videos_skipped += 1
+                status.items_skipped += 1
                 _write_manifest(run_dir, request.run_id, manifest_items)
                 _write_status(run_dir, status)
                 continue
@@ -1186,7 +1082,7 @@ def process_run(run_dir: Path | None = None) -> bool:
                     )
                 )
                 preflight_skip_counts["skipped_too_short"] += 1
-                status.videos_skipped += 1
+                status.items_skipped += 1
                 _write_manifest(run_dir, request.run_id, manifest_items)
                 _write_status(run_dir, status)
                 continue
@@ -1253,9 +1149,9 @@ def process_run(run_dir: Path | None = None) -> bool:
             warning_text = _preflight_skip_warning_text(skip_status, count)
             if warning_text:
                 warnings.append(warning_text)
-        status.videos_total = len(manifest_items)
+        status.items_total = len(manifest_items)
         status.total_duration_sec = round(total_duration, 3)
-        status.current_media = None
+        status.current_item = None
         status.message = "Preflight completed."
         status.progress_percent = 5.0 if manifest_items else 0.0
         _write_manifest(run_dir, request.run_id, manifest_items)
@@ -1284,20 +1180,20 @@ def process_run(run_dir: Path | None = None) -> bool:
                     f"({manifest_item.status}): {input_item.original_path}",
                 )
                 continue
-            status.current_media = input_item.display_name
-            status.current_media_elapsed_sec = 0.0
+            status.current_item = input_item.display_name
+            status.current_item_elapsed_sec = 0.0
             status.current_stage_elapsed_sec = 0.0
             status.current_stage = "extract_audio"
             status.message = f"Processing {index}/{len(manifest_items)}: {input_item.display_name}"
-            status.progress_percent = _overall_progress_percent(
+            status.progress_percent = overall_progress_percent(
                 processed_duration_sec=status.processed_duration_sec,
                 total_duration_sec=status.total_duration_sec,
                 current_stage="extract_audio",
                 current_stage_elapsed_sec=0.0,
-                current_media_duration_sec=manifest_item.duration_seconds,
+                current_item_duration_sec=manifest_item.duration_seconds,
                 compute_mode=compute_mode,
                 total_items=max(len(manifest_items), 1),
-                completed_items=status.videos_done + status.videos_skipped + status.videos_failed,
+                completed_items=completed_item_count(status),
             )
             _write_status(run_dir, status)
 
@@ -1305,18 +1201,16 @@ def process_run(run_dir: Path | None = None) -> bool:
                 manifest_item.status = "skipped_duplicate"
                 manifest_item.processing_wall_seconds = 0.0
                 manifest_item.stage_elapsed_seconds = {}
-                status.videos_skipped += 1
+                status.items_skipped += 1
                 status.processed_duration_sec = round(
                     status.processed_duration_sec + manifest_item.duration_seconds, 3
                 )
                 status.current_stage_elapsed_sec = 0.0
-                status.progress_percent = _completed_progress_percent(
+                status.progress_percent = completed_progress_percent(
                     processed_duration_sec=status.processed_duration_sec,
                     total_duration_sec=status.total_duration_sec,
                     total_items=max(len(manifest_items), 1),
-                    completed_items=status.videos_done
-                    + status.videos_skipped
-                    + status.videos_failed,
+                    completed_items=completed_item_count(status),
                 )
                 legacy_remaining = _estimate_remaining(
                     status.total_duration_sec,
@@ -1371,10 +1265,8 @@ def process_run(run_dir: Path | None = None) -> bool:
                     now_value = monotonic()
                     elapsed = now_value - item_started
                     stage_name, current_stage_elapsed, _ = snapshot_stage_state(now_value)
-                    completed_count = (
-                        status.videos_done + status.videos_skipped + status.videos_failed
-                    )
-                    current_fraction = _current_item_stage_fraction(
+                    completed_count = completed_item_count(status)
+                    current_fraction = current_item_stage_fraction(
                         stage_name,
                         current_stage_elapsed,
                         manifest_item.duration_seconds,
@@ -1383,16 +1275,16 @@ def process_run(run_dir: Path | None = None) -> bool:
                     effective_processed = status.processed_duration_sec + (
                         manifest_item.duration_seconds * current_fraction
                     )
-                    status.current_media_elapsed_sec = round(elapsed, 3)
+                    status.current_item_elapsed_sec = round(elapsed, 3)
                     status.current_stage_elapsed_sec = current_stage_elapsed
                     status.progress_percent = max(
                         status.progress_percent,
-                        _overall_progress_percent(
+                        overall_progress_percent(
                             processed_duration_sec=status.processed_duration_sec,
                             total_duration_sec=status.total_duration_sec,
                             current_stage=stage_name,
                             current_stage_elapsed_sec=current_stage_elapsed,
-                            current_media_duration_sec=manifest_item.duration_seconds,
+                            current_item_duration_sec=manifest_item.duration_seconds,
                             compute_mode=compute_mode,
                             total_items=max(len(manifest_items), 1),
                             completed_items=completed_count,
@@ -1446,25 +1338,23 @@ def process_run(run_dir: Path | None = None) -> bool:
                 elapsed = now_value - item_started
                 status.current_stage = stage_name
                 status.message = message
-                status.current_media = input_item.display_name
-                status.current_media_elapsed_sec = round(elapsed, 3)
+                status.current_item = input_item.display_name
+                status.current_item_elapsed_sec = round(elapsed, 3)
                 status.current_stage_elapsed_sec = current_stage_elapsed
                 status.progress_percent = max(
                     status.progress_percent,
-                    _overall_progress_percent(
+                    overall_progress_percent(
                         processed_duration_sec=status.processed_duration_sec,
                         total_duration_sec=status.total_duration_sec,
                         current_stage=stage_name,
                         current_stage_elapsed_sec=current_stage_elapsed,
-                        current_media_duration_sec=manifest_item.duration_seconds,
+                        current_item_duration_sec=manifest_item.duration_seconds,
                         compute_mode=compute_mode,
                         total_items=max(len(manifest_items), 1),
-                        completed_items=status.videos_done
-                        + status.videos_skipped
-                        + status.videos_failed,
+                        completed_items=completed_item_count(status),
                     ),
                 )
-                current_fraction = _current_item_stage_fraction(
+                current_fraction = current_item_stage_fraction(
                     stage_name,
                     current_stage_elapsed,
                     manifest_item.duration_seconds,
@@ -1533,13 +1423,13 @@ def process_run(run_dir: Path | None = None) -> bool:
                         "created_at": now_iso(),
                     }
                 )
-                status.videos_done += 1
+                status.items_done += 1
                 append_log(log_path, f"[{now_iso()}] Completed: {input_item.original_path}")
             except RunDeletionRequested:
                 raise
             except Exception as exc:
                 manifest_item.status = "failed"
-                status.videos_failed += 1
+                status.items_failed += 1
                 warnings.append(f"{input_item.display_name}: {exc}")
                 append_log(log_path, f"[{now_iso()}] Failed: {input_item.original_path}")
                 append_log(log_path, traceback.format_exc())
@@ -1553,13 +1443,13 @@ def process_run(run_dir: Path | None = None) -> bool:
             status.processed_duration_sec = round(
                 status.processed_duration_sec + manifest_item.duration_seconds, 3
             )
-            status.current_media_elapsed_sec = round(monotonic() - item_started, 3)
+            status.current_item_elapsed_sec = round(monotonic() - item_started, 3)
             status.current_stage_elapsed_sec = 0.0
-            status.progress_percent = _completed_progress_percent(
+            status.progress_percent = completed_progress_percent(
                 processed_duration_sec=status.processed_duration_sec,
                 total_duration_sec=status.total_duration_sec,
                 total_items=max(len(manifest_items), 1),
-                completed_items=status.videos_done + status.videos_skipped + status.videos_failed,
+                completed_items=completed_item_count(status),
             )
             legacy_remaining = _estimate_remaining(
                 status.total_duration_sec,
@@ -1580,16 +1470,16 @@ def process_run(run_dir: Path | None = None) -> bool:
             append_catalog_rows(Path(request.output_root_path), appended_catalog_rows)
 
         _raise_if_delete_requested(run_dir, "finalize")
-        status.current_media = None
-        status.current_media_elapsed_sec = 0.0
+        status.current_item = None
+        status.current_item_elapsed_sec = 0.0
         status.current_stage_elapsed_sec = 0.0
         status.estimated_remaining_sec = 0.0
 
-        has_failures = status.videos_failed > 0
+        has_failures = status.items_failed > 0
         result.state = "failed" if has_failures else "completed"
-        result.processed_count = status.videos_done
-        result.skipped_count = status.videos_skipped
-        result.error_count = status.videos_failed
+        result.processed_count = status.items_done
+        result.skipped_count = status.items_skipped
+        result.error_count = status.items_failed
         result.batch_count = 0
         result.timeline_index_path = None
         result.warnings = warnings
@@ -1606,8 +1496,8 @@ def process_run(run_dir: Path | None = None) -> bool:
         status.current_stage = "failed" if has_failures else "completed"
         status.message = "Run finished with errors." if has_failures else "Run completed."
         status.warnings = warnings
-        status.current_media = None
-        status.current_media_elapsed_sec = 0.0
+        status.current_item = None
+        status.current_item_elapsed_sec = 0.0
         status.current_stage_elapsed_sec = 0.0
         status.estimated_remaining_sec = 0.0
         status.progress_percent = 100.0
@@ -1615,7 +1505,7 @@ def process_run(run_dir: Path | None = None) -> bool:
         _write_status(run_dir, status)
         append_log(
             log_path,
-            f"[{now_iso()}] Run {'finished with errors' if has_failures else 'completed'} with {status.videos_done} processed, {status.videos_skipped} skipped, {status.videos_failed} failed.",
+            f"[{now_iso()}] Run {'finished with errors' if has_failures else 'completed'} with {status.items_done} processed, {status.items_skipped} skipped, {status.items_failed} failed.",
         )
         return True
     except RunDeletionRequested as exc:
@@ -1625,17 +1515,17 @@ def process_run(run_dir: Path | None = None) -> bool:
         status.current_stage = "canceled"
         status.message = "Deletion requested. Run canceled."
         status.warnings = warnings
-        status.current_media = None
-        status.current_media_elapsed_sec = 0.0
+        status.current_item = None
+        status.current_item_elapsed_sec = 0.0
         status.current_stage_elapsed_sec = 0.0
         status.estimated_remaining_sec = 0.0
         status.progress_percent = max(status.progress_percent, 1.0)
         status.completed_at = now_iso()
         _write_status(run_dir, status)
         result.state = "canceled"
-        result.processed_count = status.videos_done
-        result.skipped_count = status.videos_skipped
-        result.error_count = status.videos_failed
+        result.processed_count = status.items_done
+        result.skipped_count = status.items_skipped
+        result.error_count = status.items_failed
         result.warnings = warnings
         _write_result(run_dir, result)
         return True
@@ -1651,9 +1541,9 @@ def process_run(run_dir: Path | None = None) -> bool:
         status.completed_at = now_iso()
         _write_status(run_dir, status)
         result.state = "failed"
-        result.processed_count = status.videos_done
-        result.skipped_count = status.videos_skipped
-        result.error_count = status.videos_failed + 1
+        result.processed_count = status.items_done
+        result.skipped_count = status.items_skipped
+        result.error_count = status.items_failed + 1
         result.warnings = warnings + [tail_text(log_path, max_lines=30)]
         _write_run_performance_summary(
             run_dir=run_dir,

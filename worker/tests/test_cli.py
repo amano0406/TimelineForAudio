@@ -13,6 +13,137 @@ from timeline_for_audio_worker import cli
 
 
 class CliTests(unittest.TestCase):
+    def test_settings_status_json_contract(self) -> None:
+        payload = {
+            "setup": {"state": "ready", "blocking_reasons": []},
+            "token": {"configured": True, "preview": "hf_t••••alue"},
+            "compute": {"mode": "gpu"},
+            "inputs": [r"C:\TimelineData\audio"],
+            "master": r"C:\TimelineData\audio",
+        }
+        stdout = StringIO()
+        with (
+            patch.object(cli, "settings_snapshot", return_value=payload),
+            redirect_stdout(stdout),
+        ):
+            exit_code = cli.cmd_settings_status(as_json=True)
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual(payload, json.loads(stdout.getvalue()))
+
+    def test_files_list_json_contract(self) -> None:
+        payload = {
+            "file_count": 1,
+            "total_files": 1,
+            "pagination": {
+                "mode": "all",
+                "page": None,
+                "page_size": None,
+                "total_files": 1,
+                "total_pages": 1,
+                "returned_files": 1,
+                "offset": 0,
+                "range_start": 1,
+                "range_end": 1,
+                "has_previous": False,
+                "has_next": False,
+            },
+            "sort": {"order": "desc", "fields": ["modified_at", "source_file_identity"]},
+            "files": [{"file_name": "sample.wav", "status": "unprocessed"}],
+        }
+        stdout = StringIO()
+        with (
+            patch.object(cli, "list_audio_file_page", return_value=payload) as list_page,
+            redirect_stdout(stdout),
+        ):
+            exit_code = cli.cmd_files_list(
+                include_probe=False,
+                page=None,
+                page_size=None,
+                as_json=True,
+            )
+
+        self.assertEqual(0, exit_code)
+        list_page.assert_called_once_with(include_probe=False, page=None, page_size=None)
+        self.assertEqual(payload, json.loads(stdout.getvalue()))
+
+    def test_items_list_json_contract(self) -> None:
+        payload = {
+            "item_count": 1,
+            "total_items": 1,
+            "pagination": {
+                "mode": "all",
+                "page": None,
+                "page_size": None,
+                "total_items": 1,
+                "total_pages": 1,
+                "returned_items": 1,
+                "offset": 0,
+                "range_start": 1,
+                "range_end": 1,
+                "has_previous": False,
+                "has_next": False,
+            },
+            "sort": {"order": "desc", "fields": ["updated_at", "created_at", "item_id"]},
+            "items": [{"item_id": "item-a", "status": "available"}],
+        }
+        stdout = StringIO()
+        with (
+            patch.object(cli, "list_items_page", return_value=payload) as list_page,
+            redirect_stdout(stdout),
+        ):
+            exit_code = cli.cmd_items_list(page=None, page_size=None, as_json=True)
+
+        self.assertEqual(0, exit_code)
+        list_page.assert_called_once_with(page=None, page_size=None)
+        self.assertEqual(payload, json.loads(stdout.getvalue()))
+
+    def test_items_refresh_queue_only_json_contract(self) -> None:
+        summary = {
+            "total_discovered": 1,
+            "queued_count": 1,
+            "skipped_count": 0,
+            "deferred_count": 0,
+            "queued_limit": None,
+            "queued": [{"file_name": "sample.wav"}],
+            "skipped": [],
+            "deferred": [],
+        }
+        stdout = StringIO()
+        with (
+            patch.object(cli, "load_settings", return_value={"computeMode": "cpu"}),
+            patch.object(
+                cli,
+                "create_refresh_run",
+                return_value=("run-1", Path("/tmp/run-1"), summary),
+            ) as create_run,
+            redirect_stdout(stdout),
+        ):
+            exit_code = cli.cmd_items_refresh(
+                source_ids=[],
+                output_root_id=None,
+                reprocess_duplicates=False,
+                max_items=None,
+                queue_only=True,
+                as_json=True,
+            )
+
+        self.assertEqual(0, exit_code)
+        create_run.assert_called_once_with(
+            settings={"computeMode": "cpu"},
+            source_ids=[],
+            output_root_id=None,
+            reprocess_duplicates=False,
+            max_items=None,
+        )
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual("pending", payload["state"])
+        self.assertEqual("run-1", payload["run_id"])
+        self.assertEqual("/tmp/run-1", payload["run_dir"])
+        self.assertEqual("timeline", payload["artifact"])
+        self.assertTrue(payload["queue_only"])
+        self.assertEqual(1, payload["total_discovered"])
+
     def test_settings_validate_token_is_not_public_cli(self) -> None:
         with patch.object(sys, "argv", ["timeline-for-audio", "settings", "validate-token"]):
             with redirect_stderr(StringIO()):
@@ -46,6 +177,7 @@ class CliTests(unittest.TestCase):
         )
 
     def test_items_download_defaults_to_all_when_item_id_is_omitted(self) -> None:
+        stdout = StringIO()
         with (
             patch.object(
                 cli,
@@ -56,7 +188,7 @@ class CliTests(unittest.TestCase):
                 ],
             ),
             patch.object(cli, "build_items_archive", return_value=Path("all-items.zip")) as build_archive,
-            patch.object(cli, "_print_payload"),
+            redirect_stdout(stdout),
         ):
             exit_code = cli.cmd_items_download(
                 item_id_value=None,
@@ -68,6 +200,10 @@ class CliTests(unittest.TestCase):
         build_archive.assert_called_once_with(
             item_ids=["item-a", "item-b"],
             output=None,
+        )
+        self.assertEqual(
+            {"archive_path": "all-items.zip", "item_ids": ["item-a", "item-b"]},
+            json.loads(stdout.getvalue()),
         )
 
     def test_items_download_requires_at_least_one_available_item(self) -> None:
