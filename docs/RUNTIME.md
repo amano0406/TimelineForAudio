@@ -63,10 +63,10 @@ Supported audio extensions are product-owned runtime defaults, not user settings
 | Component | Current model / backend | Role |
 |---|---|---|
 | Speaker diarization | `pyannote/speaker-diarization-community-1` | assign mechanical speaker turns |
-| Acoustic units | `anyspeech/zipa-large-crctc-300k` | extract phone-like acoustic units |
-| Speech candidate detection | FFmpeg silence detection | reduce heavy work over obvious silence |
+| Speech transcription | `Systran/faster-whisper-large-v3` via faster-whisper | transcribe source audio with automatic language detection |
+| Speech candidate detection | FFmpeg silence detection | record speech-candidate ranges for processing metadata |
 
-The public artifact uses `phone_tokens` as the current field name and treats them as phone-like acoustic units for downstream processing.
+The public artifact stores Whisper transcript text in `text`. The transcript text is treated as the source of what was said; speaker diarization only adds mechanical speaker labels by timestamp overlap.
 
 ## GPU Mode
 
@@ -76,7 +76,6 @@ The public artifact uses `phone_tokens` as the current field name and treats the
 - Docker GPU access
 - GPU Docker worker flavor
 - CUDA visible to PyTorch
-- `CUDAExecutionProvider` visible to ZIPA ONNX Runtime
 
 If GPU checks fail, processing fails early instead of silently switching to CPU.
 

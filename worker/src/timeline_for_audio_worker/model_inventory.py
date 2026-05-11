@@ -8,14 +8,14 @@ from typing import Any
 
 from .fs_utils import now_iso
 from .signature import (
-    ACOUSTIC_UNIT_BACKEND_NAME,
     DIARIZATION_MODEL_ID,
     PIPELINE_VERSION,
+    TRANSCRIPTION_BACKEND_NAME,
     VAD_BACKEND,
     VAD_MODEL_ID,
     build_generation_signature,
     normalize_compute_mode,
-    resolve_acoustic_unit_model_id,
+    resolve_transcription_model_id,
 )
 from .settings import load_huggingface_token
 from .vad_profile import resolve_vad_profile
@@ -98,20 +98,19 @@ def _configured_model_rows(*, settings: dict[str, Any]) -> list[ModelInventoryRo
             ],
         ),
         ModelInventoryRow(
-            role="acoustic_unit_extraction",
-            display_name="Acoustic unit extraction",
+            role="speech_transcription",
+            display_name="Speech transcription",
             source="huggingface",
-            model_id=resolve_acoustic_unit_model_id(),
-            backend=ACOUSTIC_UNIT_BACKEND_NAME,
+            model_id=resolve_transcription_model_id(),
+            backend=TRANSCRIPTION_BACKEND_NAME,
             required=True,
             configured=True,
             requires_huggingface_token=False,
             requires_access_approval=False,
-            unit_type="phone_like",
-            url=HUGGING_FACE_MODEL_URL.format(model_id=resolve_acoustic_unit_model_id()),
+            url=HUGGING_FACE_MODEL_URL.format(model_id=resolve_transcription_model_id()),
             notes=[
-                "Used to extract phone-like tokens.",
-                "TimelineForAudio stores this as phone_tokens, not readable text.",
+                "Used to transcribe source audio with automatic language detection.",
+                "TimelineForAudio stores Whisper text as-is and only adds speaker labels by timestamp overlap.",
             ],
         ),
         ModelInventoryRow(

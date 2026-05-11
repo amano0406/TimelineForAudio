@@ -54,10 +54,10 @@ class SettingsTests(unittest.TestCase):
         self.assertTrue(result["created"])
         self.assertFalse(second["created"])
         self.assertTrue(settings_exists)
-        self.assertNotIn("uiLanguage", loaded)
-        self.assertNotIn("ipaBackend", loaded)
-        self.assertNotIn("contextBuilderVersion", loaded)
-        self.assertNotIn("refreshBatchSize", loaded)
+        self.assertEqual(
+            {"schemaVersion", "inputRoots", "outputRoot", "huggingfaceToken", "computeMode"},
+            set(loaded),
+        )
         self.assertEqual("C:\\Users\\amano\\Videos\\", loaded["inputRoots"][0])
 
     def test_configured_path_maps_windows_drive_on_unix(self) -> None:
@@ -124,7 +124,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(2, len(rows_after_add))
         self.assertEqual(["C:\\Users\\amano\\Videos\\"], rows_after_remove)
 
-    def test_audio_extensions_are_not_saved_as_user_settings(self) -> None:
+    def test_only_supported_settings_are_saved(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             settings_path = root / "settings.json"
@@ -134,8 +134,7 @@ class SettingsTests(unittest.TestCase):
                         "schemaVersion": 1,
                         "inputRoots": ["C:\\Users\\amano\\Videos\\"],
                         "outputRoot": "C:\\TimelineData\\audio",
-                        "audioExtensions": [".mp3"],
-                        "videoExtensions": [".mp4"],
+                        "extraField": "not persisted",
                     }
                 ),
                 encoding="utf-8",
@@ -154,10 +153,9 @@ class SettingsTests(unittest.TestCase):
                 else:
                     os.environ["TIMELINE_FOR_AUDIO_SETTINGS_PATH"] = previous_settings
 
-        self.assertNotIn("audioExtensions", loaded)
-        self.assertNotIn("videoExtensions", loaded)
-        self.assertNotIn("audioExtensions", saved)
-        self.assertNotIn("videoExtensions", saved)
+        expected_keys = {"schemaVersion", "inputRoots", "outputRoot", "huggingfaceToken", "computeMode"}
+        self.assertEqual(expected_keys, set(loaded))
+        self.assertEqual(expected_keys, set(saved))
 
 
 if __name__ == "__main__":

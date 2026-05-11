@@ -3,7 +3,7 @@
   "productId": "audio",
   "displayName": "TimelineForAudio",
   "productKind": "media-audio",
-  "description": "Converts local audio files into speaker and acoustic-unit timeline items.",
+  "description": "Converts local audio files into speaker-separated transcript timeline items.",
   "commands": {
     "start": {
       "type": "powershell",

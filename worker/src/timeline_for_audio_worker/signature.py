@@ -3,26 +3,22 @@ from __future__ import annotations
 import hashlib
 import json
 
-from .acoustic_units import (
-    ACOUSTIC_UNIT_BACKEND,
-    ACOUSTIC_UNIT_MODEL_ID,
-    ACOUSTIC_UNIT_TYPE,
-)
 from .runtime_profile import (
     normalize_compute_mode,
 )
+from .transcription import TRANSCRIPTION_BACKEND, TRANSCRIPTION_MODEL_ID
 from .vad_profile import vad_config_for_profile
 
-PIPELINE_VERSION = "2026-05-01-v1-phone-timeline"
-ACOUSTIC_UNIT_BACKEND_NAME = ACOUSTIC_UNIT_BACKEND
+PIPELINE_VERSION = "2026-05-11-v1-whisper-transcript-timeline"
+TRANSCRIPTION_BACKEND_NAME = TRANSCRIPTION_BACKEND
 DIARIZATION_MODEL_ID = "pyannote/speaker-diarization-community-1"
 VAD_BACKEND = "ffmpeg-silencedetect"
 VAD_MODEL_ID = "ffmpeg-silencedetect-noise-35db"
 TIMELINE_SCHEMA = "timeline-v1"
 
 
-def resolve_acoustic_unit_model_id() -> str:
-    return ACOUSTIC_UNIT_MODEL_ID
+def resolve_transcription_model_id() -> str:
+    return TRANSCRIPTION_MODEL_ID
 
 
 def build_conversion_signature(
@@ -49,10 +45,10 @@ def build_generation_signature(
         "pipeline": "TimelineForAudio",
         "pipeline_version": PIPELINE_VERSION,
         "compute_mode": normalize_compute_mode(compute_mode),
-        "phone_recognition": {
-            "backend": ACOUSTIC_UNIT_BACKEND,
-            "model_id": ACOUSTIC_UNIT_MODEL_ID,
-            "unit_type": ACOUSTIC_UNIT_TYPE,
+        "speech_transcription": {
+            "backend": TRANSCRIPTION_BACKEND,
+            "model_id": TRANSCRIPTION_MODEL_ID,
+            "language": "auto",
         },
         "diarization": {
             "required": True,

@@ -26,11 +26,11 @@ It contains:
 - source file metadata
 - generation signature
 - diarization backend and model metadata
-- acoustic-unit backend and model metadata
+- transcription backend and model metadata
 - source-audio-relative timestamps
 - optional absolute timestamps when recording origin can be inferred
 - mechanical speaker labels such as `SPEAKER_00`
-- acoustic-unit tokens
+- transcript text
 - speech and non-speech timeline ranges when available
 
 Speaker labels are not real names. The product does not infer identity, gender, age, role, or attributes.

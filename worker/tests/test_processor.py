@@ -57,10 +57,10 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-05-01-v1-phone-timeline",
+                pipeline_version="2026-05-11-v1-whisper-transcript-timeline",
                 conversion_signature="sig-123",
-                acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
-                acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
+                transcription_backend="faster-whisper-large-v3-v1",
+                transcription_model_id="Systran/faster-whisper-large-v3",
                 diarization_enabled=False,
                 diarization_model_id=None,
                 vad_backend="ffmpeg-silencedetect",
@@ -118,10 +118,10 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-05-01-v1-phone-timeline",
+                pipeline_version="2026-05-11-v1-whisper-transcript-timeline",
                 conversion_signature="sig-123",
-                acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
-                acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
+                transcription_backend="faster-whisper-large-v3-v1",
+                transcription_model_id="Systran/faster-whisper-large-v3",
                 diarization_enabled=False,
                 diarization_model_id=None,
                 vad_backend="ffmpeg-silencedetect",
@@ -239,10 +239,10 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-05-01-v1-phone-timeline",
+                pipeline_version="2026-05-11-v1-whisper-transcript-timeline",
                 conversion_signature="sig-123",
-                acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
-                acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
+                transcription_backend="faster-whisper-large-v3-v1",
+                transcription_model_id="Systran/faster-whisper-large-v3",
                 diarization_enabled=False,
                 diarization_model_id=None,
                 vad_backend="ffmpeg-silencedetect",
@@ -346,10 +346,10 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-05-01-v1-phone-timeline",
+                pipeline_version="2026-05-11-v1-whisper-transcript-timeline",
                 conversion_signature="sig-123",
-                acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
-                acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
+                transcription_backend="faster-whisper-large-v3-v1",
+                transcription_model_id="Systran/faster-whisper-large-v3",
                 diarization_enabled=False,
                 diarization_model_id=None,
                 vad_backend="ffmpeg-silencedetect",
@@ -459,10 +459,10 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-05-01-v1-phone-timeline",
+                pipeline_version="2026-05-11-v1-whisper-transcript-timeline",
                 conversion_signature="sig-123",
-                acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
-                acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
+                transcription_backend="faster-whisper-large-v3-v1",
+                transcription_model_id="Systran/faster-whisper-large-v3",
                 diarization_enabled=False,
                 diarization_model_id=None,
                 vad_backend="ffmpeg-silencedetect",
@@ -582,10 +582,10 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-05-01-v1-phone-timeline",
+                pipeline_version="2026-05-11-v1-whisper-transcript-timeline",
                 conversion_signature="sig-123",
-                acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
-                acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
+                transcription_backend="faster-whisper-large-v3-v1",
+                transcription_model_id="Systran/faster-whisper-large-v3",
                 diarization_enabled=False,
                 diarization_model_id=None,
                 vad_backend="ffmpeg-silencedetect",
@@ -692,10 +692,10 @@ class ProcessorQueueTests(unittest.TestCase):
                     output_root_path=str(root),
                     profile="quality-first",
                     compute_mode="cpu",
-                    pipeline_version="2026-05-01-v1-phone-timeline",
+                    pipeline_version="2026-05-11-v1-whisper-transcript-timeline",
                     conversion_signature=f"sig-{run_id}",
-                    acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
-                    acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
+                    transcription_backend="faster-whisper-large-v3-v1",
+                    transcription_model_id="Systran/faster-whisper-large-v3",
                     diarization_enabled=False,
                     diarization_model_id=None,
                     vad_backend="ffmpeg-silencedetect",
@@ -829,10 +829,10 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-05-01-v1-phone-timeline",
+                pipeline_version="2026-05-11-v1-whisper-transcript-timeline",
                 conversion_signature="sig-123",
-                acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
-                acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
+                transcription_backend="faster-whisper-large-v3-v1",
+                transcription_model_id="Systran/faster-whisper-large-v3",
                 diarization_enabled=False,
                 diarization_model_id=None,
                 vad_backend="ffmpeg-silencedetect",
@@ -888,7 +888,7 @@ class ProcessorQueueTests(unittest.TestCase):
 
             def fake_process_one_item(**kwargs):
                 (run_dir / ".delete-requested").write_text("requested\n", encoding="utf-8")
-                kwargs["ensure_not_delete_requested"]("extract_acoustic_units")
+                kwargs["ensure_not_delete_requested"]("transcribe_audio")
                 return []
 
             with (
@@ -912,7 +912,7 @@ class ProcessorQueueTests(unittest.TestCase):
             self.assertFalse(session_dir.exists())
             self.assertFalse(catalog_path.exists())
 
-    def test_process_one_item_writes_speaker_acoustic_units_timeline(self) -> None:
+    def test_process_one_item_writes_speaker_transcript_timeline(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source_path = root / "sample.wav"
@@ -928,10 +928,10 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-05-01-v1-phone-timeline",
+                pipeline_version="2026-05-11-v1-whisper-transcript-timeline",
                 conversion_signature="sig-123",
-                acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
-                acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
+                transcription_backend="faster-whisper-large-v3-v1",
+                transcription_model_id="Systran/faster-whisper-large-v3",
                 diarization_enabled=True,
                 diarization_model_id="pyannote/speaker-diarization-community-1",
                 vad_backend="silero-vad",
@@ -960,8 +960,8 @@ class ProcessorQueueTests(unittest.TestCase):
                 conversion_signature="sig-123",
                 duplicate_status="new",
                 audio_id="sample-abc12345",
-                pipeline_version="2026-05-01-v1-phone-timeline",
-                model_id="anyspeech/zipa-large-crctc-300k",
+                pipeline_version="2026-05-11-v1-whisper-transcript-timeline",
+                model_id="Systran/faster-whisper-large-v3",
             )
 
             def fake_extract_audio(input_path: Path, output_path: Path) -> None:
@@ -1005,22 +1005,25 @@ class ProcessorQueueTests(unittest.TestCase):
                 ),
                 patch.object(
                     processor,
-                    "generate_acoustic_unit_turns",
+                    "generate_transcript_segments",
                     return_value=SimpleNamespace(
-                        backend_name="zipa-stub",
-                        model_id="zipa-model",
+                        backend_name="whisper-stub",
+                        model_id="whisper-model",
                         status="ok",
-                        unit_type="phone_like",
-                        execution_provider="CUDAExecutionProvider",
-                        available_execution_providers=("CUDAExecutionProvider", "CPUExecutionProvider"),
+                        device="cuda",
+                        compute_type="float16",
+                        language="ja",
+                        language_probability=0.99,
+                        duration=12.0,
                         warnings=[],
-                        turns=[
+                        segments=[
                             SimpleNamespace(
                                 index=1,
                                 start=2.0,
                                 end=4.0,
-                                acoustic_units="ko n ni chi wa",
-                                confidence=0.91,
+                                text="こんにちは",
+                                avg_logprob=-0.1,
+                                no_speech_probability=0.01,
                             )
                         ],
                     ),
@@ -1051,11 +1054,11 @@ class ProcessorQueueTests(unittest.TestCase):
             timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
             self.assertEqual("timeline", timeline["artifact_type"])
             self.assertEqual(
-                "CUDAExecutionProvider",
-                timeline["pipeline"]["phone_execution_provider"],
+                "cuda",
+                timeline["pipeline"]["transcription_device"],
             )
             self.assertEqual("SPEAKER_01", timeline["turns"][0]["speaker"])
-            self.assertEqual("ko n ni chi wa", timeline["turns"][0]["phone_tokens"])
+            self.assertEqual("こんにちは", timeline["turns"][0]["text"])
             conversion_info = json.loads(conversion_info_path.read_text(encoding="utf-8"))
             self.assertEqual("convert_info", conversion_info["artifact_type"])
             self.assertEqual("TimelineForAudio", conversion_info["application"])
@@ -1070,7 +1073,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 conversion_info["source"]["file_name"],
             )
 
-    def test_process_one_item_writes_zero_turn_timeline_when_models_find_no_turns(self) -> None:
+    def test_process_one_item_fails_when_speaker_diarization_has_no_turns(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source_path = root / "silence.wav"
@@ -1086,10 +1089,10 @@ class ProcessorQueueTests(unittest.TestCase):
                 output_root_path=str(root),
                 profile="quality-first",
                 compute_mode="cpu",
-                pipeline_version="2026-05-01-v1-phone-timeline",
+                pipeline_version="2026-05-11-v1-whisper-transcript-timeline",
                 conversion_signature="sig-123",
-                acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
-                acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
+                transcription_backend="faster-whisper-large-v3-v1",
+                transcription_model_id="Systran/faster-whisper-large-v3",
                 diarization_enabled=True,
                 diarization_model_id="pyannote/speaker-diarization-community-1",
                 vad_backend="silero-vad",
@@ -1118,8 +1121,8 @@ class ProcessorQueueTests(unittest.TestCase):
                 conversion_signature="sig-123",
                 duplicate_status="new",
                 audio_id="silence-abc12345",
-                pipeline_version="2026-05-01-v1-phone-timeline",
-                model_id="anyspeech/zipa-large-crctc-300k",
+                pipeline_version="2026-05-11-v1-whisper-transcript-timeline",
+                model_id="Systran/faster-whisper-large-v3",
             )
 
             def fake_extract_audio(input_path: Path, output_path: Path) -> None:
@@ -1147,42 +1150,37 @@ class ProcessorQueueTests(unittest.TestCase):
                 ),
                 patch.object(
                     processor,
-                    "generate_acoustic_unit_turns",
+                    "generate_transcript_segments",
                     return_value=SimpleNamespace(
-                        backend_name="zipa-stub",
-                        model_id="zipa-model",
-                        status="no_turns",
-                        unit_type="phone_like",
-                        execution_provider="CPUExecutionProvider",
-                        available_execution_providers=("CPUExecutionProvider",),
-                        warnings=["Acoustic unit extraction produced no turns."],
-                        turns=[],
+                        backend_name="whisper-stub",
+                        model_id="whisper-model",
+                        status="ok",
+                        device="cpu",
+                        compute_type="int8",
+                        language="ja",
+                        language_probability=0.9,
+                        duration=12.0,
+                        warnings=[],
+                        segments=[
+                            SimpleNamespace(
+                                index=1,
+                                start=1.0,
+                                end=2.0,
+                                text="テスト",
+                                avg_logprob=-0.2,
+                                no_speech_probability=0.01,
+                            )
+                        ],
                     ),
                 ),
             ):
-                warnings = processor._process_one_item(
-                    run_dir=run_dir,
-                    request=request,
-                    item=item,
-                    manifest_item=manifest_item,
-                )
-
-            media_dir = root / str(manifest_item.media_id)
-            timeline = json.loads((media_dir / "timeline.json").read_text(encoding="utf-8"))
-            conversion_info = json.loads(
-                (media_dir / "convert_info.json").read_text(encoding="utf-8")
-            )
-            self.assertEqual(0, timeline["turn_count"])
-            self.assertEqual([], timeline["turns"])
-            self.assertEqual("no_speaker_turns", conversion_info["pipeline"]["speaker_diarization"]["status"])
-            self.assertEqual("no_turns", conversion_info["pipeline"]["phone_recognition"]["status"])
-            self.assertEqual(
-                [
-                    "Speaker diarization completed, but no speaker turns were found.",
-                    "Acoustic unit extraction produced no turns.",
-                ],
-                warnings,
-            )
+                with self.assertRaisesRegex(RuntimeError, "Speaker diarization"):
+                    processor._process_one_item(
+                        run_dir=run_dir,
+                        request=request,
+                        item=item,
+                        manifest_item=manifest_item,
+                    )
 
 
 if __name__ == "__main__":

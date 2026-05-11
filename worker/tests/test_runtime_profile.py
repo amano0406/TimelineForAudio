@@ -20,8 +20,8 @@ class RuntimeProfileTests(unittest.TestCase):
             "gpu": resolve_runtime_lane("gpu"),
         }
 
-        self.assertEqual("medium", lanes["cpu"].model_id)
-        self.assertEqual("medium", lanes["gpu"].model_id)
+        self.assertEqual("large-v3", lanes["cpu"].model_id)
+        self.assertEqual("large-v3", lanes["gpu"].model_id)
         self.assertEqual(("int8",), lanes["cpu"].compute_types)
         self.assertEqual(("float16", "int8_float16"), lanes["gpu"].compute_types)
         self.assertTrue(lanes["cpu"].diarization_default_enabled)
@@ -42,33 +42,26 @@ class RuntimeProfileTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "worker container is cpu"):
                 assert_runtime_supports_compute_mode("gpu")
 
-    def test_gpu_runtime_fails_when_onnx_cuda_provider_is_missing(self) -> None:
+    def test_gpu_runtime_fails_when_torch_cuda_is_missing(self) -> None:
         fake_torch = SimpleNamespace(
-            cuda=SimpleNamespace(is_available=lambda: True),
+            cuda=SimpleNamespace(is_available=lambda: False),
         )
-        fake_ort = SimpleNamespace(get_available_providers=lambda: ["CPUExecutionProvider"])
 
         with (
             patch.dict("os.environ", {"TIMELINE_FOR_AUDIO_WORKER_FLAVOR": "gpu"}, clear=False),
-            patch.dict("sys.modules", {"torch": fake_torch, "onnxruntime": fake_ort}),
+            patch.dict("sys.modules", {"torch": fake_torch}),
         ):
-            with self.assertRaisesRegex(RuntimeError, "CUDAExecutionProvider"):
+            with self.assertRaisesRegex(RuntimeError, "torch cannot access CUDA"):
                 assert_runtime_supports_compute_mode("gpu")
 
-    def test_gpu_runtime_accepts_gpu_worker_with_cuda_providers(self) -> None:
+    def test_gpu_runtime_accepts_gpu_worker_with_torch_cuda(self) -> None:
         fake_torch = SimpleNamespace(
             cuda=SimpleNamespace(is_available=lambda: True),
-        )
-        fake_ort = SimpleNamespace(
-            get_available_providers=lambda: [
-                "CUDAExecutionProvider",
-                "CPUExecutionProvider",
-            ]
         )
 
         with (
             patch.dict("os.environ", {"TIMELINE_FOR_AUDIO_WORKER_FLAVOR": "gpu"}, clear=False),
-            patch.dict("sys.modules", {"torch": fake_torch, "onnxruntime": fake_ort}),
+            patch.dict("sys.modules", {"torch": fake_torch}),
         ):
             assert_runtime_supports_compute_mode("gpu")
 

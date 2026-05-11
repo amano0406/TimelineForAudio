@@ -26,8 +26,8 @@ class ModelInventoryTests(unittest.TestCase):
         )
         self.assertTrue(rows["speaker_diarization"]["requires_access_approval"])
         self.assertEqual(
-            "anyspeech/zipa-large-crctc-300k",
-            rows["acoustic_unit_extraction"]["model_id"],
+            "Systran/faster-whisper-large-v3",
+            rows["speech_transcription"]["model_id"],
         )
         self.assertEqual("local_tool", rows["speech_candidate_detection"]["source"])
 

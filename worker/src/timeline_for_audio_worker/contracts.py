@@ -33,8 +33,8 @@ class RunRequest:
     compute_mode: str
     pipeline_version: str
     conversion_signature: str
-    acoustic_unit_backend: str
-    acoustic_unit_model_id: str
+    transcription_backend: str
+    transcription_model_id: str
     diarization_enabled: bool
     diarization_model_id: str | None
     vad_backend: str
@@ -56,8 +56,8 @@ class RunRequest:
             "pipeline_version": self.pipeline_version,
             "generation_signature": self.conversion_signature,
             "conversion_signature": self.conversion_signature,
-            "acoustic_unit_backend": self.acoustic_unit_backend,
-            "acoustic_unit_model_id": self.acoustic_unit_model_id,
+            "transcription_backend": self.transcription_backend,
+            "transcription_model_id": self.transcription_model_id,
             "diarization_enabled": self.diarization_enabled,
             "diarization_model_id": self.diarization_model_id,
             "vad_backend": self.vad_backend,
@@ -82,8 +82,8 @@ class RunRequest:
             conversion_signature=str(
                 payload.get("generation_signature") or payload.get("conversion_signature") or ""
             ),
-            acoustic_unit_backend=str(payload.get("acoustic_unit_backend") or ""),
-            acoustic_unit_model_id=str(payload.get("acoustic_unit_model_id") or ""),
+            transcription_backend=str(payload.get("transcription_backend") or ""),
+            transcription_model_id=str(payload.get("transcription_model_id") or ""),
             diarization_enabled=bool(payload.get("diarization_enabled", False)),
             diarization_model_id=(
                 str(payload["diarization_model_id"])

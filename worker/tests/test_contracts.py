@@ -15,10 +15,10 @@ class ContractsTests(unittest.TestCase):
             output_root_path="/shared/outputs/default",
             profile="quality-first",
             compute_mode="gpu",
-            pipeline_version="2026-05-01-v1-phone-timeline",
+            pipeline_version="2026-05-11-v1-whisper-transcript-timeline",
             conversion_signature="sig-123",
-            acoustic_unit_backend="zipa-large-crctc-300k-onnx-v1",
-            acoustic_unit_model_id="anyspeech/zipa-large-crctc-300k",
+            transcription_backend="faster-whisper-large-v3-v1",
+            transcription_model_id="Systran/faster-whisper-large-v3",
             diarization_enabled=True,
             diarization_model_id="pyannote/speaker-diarization-community-1",
             vad_backend="ffmpeg-silencedetect",
@@ -47,12 +47,12 @@ class ContractsTests(unittest.TestCase):
         self.assertEqual("sig-123", restored.conversion_signature)
         self.assertEqual("sig-123", restored.generation_signature)
         self.assertEqual(
-            "zipa-large-crctc-300k-onnx-v1",
-            restored.acoustic_unit_backend,
+            "faster-whisper-large-v3-v1",
+            restored.transcription_backend,
         )
         self.assertEqual(
-            "anyspeech/zipa-large-crctc-300k",
-            restored.acoustic_unit_model_id,
+            "Systran/faster-whisper-large-v3",
+            restored.transcription_model_id,
         )
         self.assertEqual("default", payload["vad_profile"])
         self.assertEqual("default", restored.vad_profile)
@@ -70,10 +70,10 @@ class ContractsTests(unittest.TestCase):
                 "output_root_path": "/shared/outputs/default",
                 "profile": "quality-first",
                 "compute_mode": "cpu",
-                "pipeline_version": "2026-05-01-v1-phone-timeline",
+                "pipeline_version": "2026-05-11-v1-whisper-transcript-timeline",
                 "generation_signature": "sig-456",
-                "acoustic_unit_backend": "zipa-large-crctc-300k-onnx-v1",
-                "acoustic_unit_model_id": "anyspeech/zipa-large-crctc-300k",
+                "transcription_backend": "faster-whisper-large-v3-v1",
+                "transcription_model_id": "Systran/faster-whisper-large-v3",
                 "diarization_enabled": True,
                 "diarization_model_id": "pyannote/speaker-diarization-community-1",
                 "vad_backend": "ffmpeg-silencedetect",
@@ -88,8 +88,8 @@ class ContractsTests(unittest.TestCase):
         self.assertEqual("sig-456", restored.generation_signature)
         self.assertEqual("cpu", restored.compute_mode)
         self.assertEqual("loose", restored.vad_profile)
-        self.assertEqual("zipa-large-crctc-300k-onnx-v1", restored.acoustic_unit_backend)
-        self.assertEqual("anyspeech/zipa-large-crctc-300k", restored.acoustic_unit_model_id)
+        self.assertEqual("faster-whisper-large-v3-v1", restored.transcription_backend)
+        self.assertEqual("Systran/faster-whisper-large-v3", restored.transcription_model_id)
 
     def test_run_status_from_dict_ignores_legacy_fields(self) -> None:
         restored = RunStatus.from_dict(

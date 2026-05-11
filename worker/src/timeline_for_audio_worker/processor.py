@@ -13,13 +13,6 @@ from pathlib import Path
 from time import monotonic
 from typing import Any, Callable
 
-from .acoustic_units import (
-    ACOUSTIC_UNIT_BACKEND,
-    ACOUSTIC_UNIT_MODEL_ID,
-    ACOUSTIC_UNIT_TYPE,
-    best_speaker_for_interval,
-    generate_acoustic_unit_turns,
-)
 from .catalog import append_catalog_rows, catalog_key, catalog_path, load_catalog
 from .contracts import RunRequest, RunResult, RunStatus, ManifestItem
 from .diarization import generate_speaker_turns
@@ -38,6 +31,12 @@ from .fs_utils import (
 )
 from .hashing import sha256_file
 from .settings import appdata_root, configured_path, load_settings, uploads_root
+from .transcription import (
+    TRANSCRIPTION_BACKEND,
+    TRANSCRIPTION_MODEL_ID,
+    best_speaker_for_interval,
+    generate_transcript_segments,
+)
 from .runtime_profile import assert_runtime_supports_compute_mode
 from .vad_profile import vad_config_for_profile
 
@@ -45,7 +44,7 @@ _ITEM_STAGE_BOUNDS: dict[str, tuple[float, float]] = {
     "extract_audio": (0.0, 0.18),
     "detect_speech_candidates": (0.18, 0.30),
     "diarize_audio": (0.30, 0.70),
-    "extract_acoustic_units": (0.70, 0.94),
+    "transcribe_audio": (0.70, 0.94),
     "generate_artifacts": (0.96, 1.0),
 }
 
@@ -450,7 +449,7 @@ def _stage_expected_seconds(stage_name: str, media_duration_sec: float, compute_
         factor = 0.10 if compute_mode == "gpu" else 0.45
         ceiling = 120.0 if compute_mode == "gpu" else 480.0
         return max(2.0, min(ceiling, safe_duration * factor))
-    if stage_name == "extract_acoustic_units":
+    if stage_name == "transcribe_audio":
         factor = 0.18 if compute_mode == "gpu" else 0.90
         ceiling = 180.0 if compute_mode == "gpu" else 720.0
         return max(4.0, min(ceiling, safe_duration * factor))
@@ -558,9 +557,9 @@ def _write_support_docs(run_dir: Path, request: RunRequest) -> None:
             "",
             "## Processing",
             "",
-            f"- Acoustic unit backend: `{ACOUSTIC_UNIT_BACKEND}`",
-            f"- Acoustic unit model: `{ACOUSTIC_UNIT_MODEL_ID}`",
-            f"- Acoustic unit type: `{ACOUSTIC_UNIT_TYPE}`",
+            f"- Transcription backend: `{TRANSCRIPTION_BACKEND}`",
+            f"- Transcription model: `{TRANSCRIPTION_MODEL_ID}`",
+            "- Transcription language: `auto`",
             f"- Diarization required: `True`",
             f"- Diarization model: `{request.diarization_model_id or ''}`",
             f"- VAD backend: `{request.vad_backend}` / `{request.vad_model_id}`",
@@ -570,7 +569,7 @@ def _write_support_docs(run_dir: Path, request: RunRequest) -> None:
             "",
             "## Notes",
             "",
-            "- TimelineForAudio does not interpret meaning or restore readable text.",
+            "- TimelineForAudio does not interpret meaning, summarize, or rewrite transcript text.",
             "- Per-item master artifacts are `convert_info.json` and `timeline.json`.",
             "- Timestamps are mapped back to the original audio timeline.",
             "- Speaker labels are mechanical labels such as `SPEAKER_00`; identities are not inferred.",
@@ -682,6 +681,8 @@ def _process_one_item(
             for turn in speaker_payload.get("turns", [])
             if str(turn.get("speaker") or "").strip()
         }
+        if not speaker_labels:
+            raise RuntimeError("Speaker diarization produced no speaker turns.")
         manifest_item.speaker_count = len(speaker_labels) or None
         manifest_item.speaker_count_status = "confirmed" if speaker_labels else "unavailable"
         manifest_item.speaker_count_note = (
@@ -689,50 +690,50 @@ def _process_one_item(
         )
 
         if on_stage:
-            on_stage("extract_acoustic_units", "Extracting acoustic units.")
-        acoustic_result = generate_acoustic_unit_turns(
+            on_stage("transcribe_audio", "Transcribing speech with Whisper.")
+        transcription_result = generate_transcript_segments(
             audio_path=normalized_audio_path,
-            cut_map=cut_map,
             compute_mode=request.compute_mode,
-            span_time_basis="original",
         )
-        acoustic_turn_rows = [
+        transcript_segment_rows = [
             {
-                "index": turn.index,
-                "start_sec": turn.start,
-                "end_sec": turn.end,
-                "phone_tokens": turn.acoustic_units,
-                "unit_type": acoustic_result.unit_type,
-                "confidence": turn.confidence,
+                "index": segment.index,
+                "start_sec": segment.start,
+                "end_sec": segment.end,
+                "text": segment.text,
+                "avg_logprob": segment.avg_logprob,
+                "no_speech_probability": segment.no_speech_probability,
             }
-            for turn in acoustic_result.turns
+            for segment in transcription_result.segments
         ]
-        acoustic_payload = {
+        transcription_payload = {
             "schema_version": 1,
-            "backend": acoustic_result.backend_name,
-            "model_id": acoustic_result.model_id,
-            "status": acoustic_result.status,
-            "unit_type": acoustic_result.unit_type,
-            "execution_provider": acoustic_result.execution_provider,
-            "available_execution_providers": list(acoustic_result.available_execution_providers),
-            "warning_count": len(acoustic_result.warnings),
-            "warnings": acoustic_result.warnings,
-            "turn_count": len(acoustic_turn_rows),
-            "turns": acoustic_turn_rows,
+            "backend": transcription_result.backend_name,
+            "model_id": transcription_result.model_id,
+            "status": transcription_result.status,
+            "device": transcription_result.device,
+            "compute_type": transcription_result.compute_type,
+            "language": transcription_result.language,
+            "language_probability": transcription_result.language_probability,
+            "duration": transcription_result.duration,
+            "warning_count": len(transcription_result.warnings),
+            "warnings": transcription_result.warnings,
+            "segment_count": len(transcript_segment_rows),
+            "segments": transcript_segment_rows,
         }
-        if acoustic_result.status == "unavailable":
+        if transcription_result.status != "ok":
             raise RuntimeError(
-                "; ".join(acoustic_result.warnings) or "Acoustic unit extraction failed."
+                "; ".join(transcription_result.warnings) or "Speech transcription failed."
             )
         if ensure_not_delete_requested:
-            ensure_not_delete_requested("extract_acoustic_units")
+            ensure_not_delete_requested("transcribe_audio")
 
         if on_stage:
             on_stage("generate_artifacts", "Writing final timeline artifacts.")
-        timeline_payload = _build_speaker_acoustic_units_timeline(
+        timeline_payload = _build_speaker_transcript_timeline(
             source_record=source_record,
             speaker_payload=speaker_payload,
-            acoustic_payload=acoustic_payload,
+            transcription_payload=transcription_payload,
             conversion_signature=request.generation_signature,
             pipeline_version=request.pipeline_version,
         )
@@ -741,7 +742,7 @@ def _process_one_item(
             source_record=source_record,
             cut_map=cut_map,
             speaker_payload=speaker_payload,
-            acoustic_payload=acoustic_payload,
+            transcription_payload=transcription_payload,
         )
         timeline_json_path = media_dir / "timeline.json"
         conversion_info_path = media_dir / "convert_info.json"
@@ -751,7 +752,7 @@ def _process_one_item(
             ensure_not_delete_requested("generate_artifacts")
         return [
             *list(speaker_payload.get("warnings") or []),
-            *list(acoustic_result.warnings),
+            *list(transcription_result.warnings),
         ]
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
@@ -825,7 +826,7 @@ def _build_conversion_info_payload(
     source_record: dict[str, Any],
     cut_map: list[dict[str, float]],
     speaker_payload: dict[str, Any],
-    acoustic_payload: dict[str, Any],
+    transcription_payload: dict[str, Any],
 ) -> dict[str, Any]:
     vad_config = vad_config_for_profile(request.vad_profile)
     return {
@@ -852,17 +853,16 @@ def _build_conversion_info_payload(
                 "turn_count": speaker_payload.get("turn_count"),
                 "warning_count": speaker_payload.get("warning_count"),
             },
-            "phone_recognition": {
-                "backend": acoustic_payload.get("backend"),
-                "model_id": acoustic_payload.get("model_id"),
-                "status": acoustic_payload.get("status"),
-                "unit_type": acoustic_payload.get("unit_type"),
-                "execution_provider": acoustic_payload.get("execution_provider"),
-                "available_execution_providers": acoustic_payload.get(
-                    "available_execution_providers"
-                ),
-                "turn_count": acoustic_payload.get("turn_count"),
-                "warning_count": acoustic_payload.get("warning_count"),
+            "speech_transcription": {
+                "backend": transcription_payload.get("backend"),
+                "model_id": transcription_payload.get("model_id"),
+                "status": transcription_payload.get("status"),
+                "language": transcription_payload.get("language"),
+                "language_probability": transcription_payload.get("language_probability"),
+                "device": transcription_payload.get("device"),
+                "compute_type": transcription_payload.get("compute_type"),
+                "segment_count": transcription_payload.get("segment_count"),
+                "warning_count": transcription_payload.get("warning_count"),
             },
         },
         "processing_flow": [
@@ -886,21 +886,21 @@ def _build_conversion_info_payload(
             },
             {
                 "step": 4,
-                "name": "phone_recognition",
-                "description": "Extract phone-like tokens from speech candidate ranges.",
+                "name": "speech_transcription",
+                "description": "Transcribe source audio with Whisper automatic language detection.",
                 "persistent_output": False,
             },
             {
                 "step": 5,
                 "name": "timeline_merge",
-                "description": "Merge speaker labels, timestamps, and phone tokens into the final timeline JSON.",
+                "description": "Merge speaker labels, timestamps, and Whisper transcript text into the final timeline JSON without rewriting transcript text.",
                 "persistent_output": True,
             },
         ],
         "counts": {
             "speech_candidate_ranges": len(cut_map),
             "speaker_turns": len(speaker_payload.get("turns") or []),
-            "phone_turns": len(acoustic_payload.get("turns") or []),
+            "transcript_segments": len(transcription_payload.get("segments") or []),
         },
         "output_files": {
             "convert_info": "convert_info.json",
@@ -909,21 +909,21 @@ def _build_conversion_info_payload(
     }
 
 
-def _build_speaker_acoustic_units_timeline(
+def _build_speaker_transcript_timeline(
     *,
     source_record: dict[str, Any],
     speaker_payload: dict[str, Any],
-    acoustic_payload: dict[str, Any],
+    transcription_payload: dict[str, Any],
     conversion_signature: str,
     pipeline_version: str,
 ) -> dict[str, Any]:
     recorded_at = source_record.get("recorded_at")
     speaker_turns = list(speaker_payload.get("turns") or [])
-    raw_turns = list(acoustic_payload.get("turns") or [])
+    raw_segments = list(transcription_payload.get("segments") or [])
     turns: list[dict[str, Any]] = []
-    for index, turn in enumerate(raw_turns, start=1):
-        start = float(turn.get("start_sec", turn.get("start", 0.0)) or 0.0)
-        end = float(turn.get("end_sec", turn.get("end", start)) or start)
+    for index, segment in enumerate(raw_segments, start=1):
+        start = float(segment.get("start_sec", segment.get("start", 0.0)) or 0.0)
+        end = float(segment.get("end_sec", segment.get("end", start)) or start)
         speaker = best_speaker_for_interval(start, end, speaker_turns)
         turns.append(
             {
@@ -933,15 +933,16 @@ def _build_speaker_acoustic_units_timeline(
                 "absolute_start_at": _absolute_at(recorded_at, start),
                 "absolute_end_at": _absolute_at(recorded_at, end),
                 "speaker": speaker,
-                "phone_tokens": str(
-                    turn.get("phone_tokens")
-                    or turn.get("acoustic_units")
-                    or ""
-                ),
-                "unit_type": str(acoustic_payload.get("unit_type") or ACOUSTIC_UNIT_TYPE),
-                "confidence": turn.get("confidence"),
+                "text": str(segment.get("text") or ""),
+                "transcription_segment_index": segment.get("index"),
+                "avg_logprob": segment.get("avg_logprob"),
+                "no_speech_probability": segment.get("no_speech_probability"),
             }
         )
+    source_text = "".join(str(segment.get("text") or "") for segment in raw_segments)
+    timeline_text = "".join(str(turn.get("text") or "") for turn in turns)
+    if source_text != timeline_text:
+        raise RuntimeError("Transcript text was changed while assigning speakers.")
     return {
         "schema_version": 1,
         "artifact_type": "timeline",
@@ -951,10 +952,11 @@ def _build_speaker_acoustic_units_timeline(
             "generation_signature": conversion_signature,
             "speaker_backend": speaker_payload.get("backend"),
             "speaker_model_id": speaker_payload.get("model_id"),
-            "phone_backend": acoustic_payload.get("backend"),
-            "phone_model_id": acoustic_payload.get("model_id"),
-            "phone_execution_provider": acoustic_payload.get("execution_provider"),
-            "unit_type": acoustic_payload.get("unit_type"),
+            "transcription_backend": transcription_payload.get("backend"),
+            "transcription_model_id": transcription_payload.get("model_id"),
+            "transcription_language": transcription_payload.get("language"),
+            "transcription_device": transcription_payload.get("device"),
+            "transcription_compute_type": transcription_payload.get("compute_type"),
         },
         "turn_count": len(turns),
         "turns": turns,
@@ -1137,8 +1139,8 @@ def process_run(run_dir: Path | None = None) -> bool:
                         source_file_identity=input_item.source_file_identity,
                         extension=source_path.suffix.lstrip(".").lower() or None,
                         diarization_enabled=request.diarization_enabled,
-                        model_id=request.acoustic_unit_model_id,
-                        model_version=request.acoustic_unit_model_id,
+                        model_id=request.transcription_model_id,
+                        model_version=request.transcription_model_id,
                         pipeline_version=request.pipeline_version,
                     )
                 )
@@ -1177,8 +1179,8 @@ def process_run(run_dir: Path | None = None) -> bool:
                         audio_sample_rate=media_probe.get("audio_sample_rate"),
                         bitrate=media_probe.get("bitrate"),
                         diarization_enabled=request.diarization_enabled,
-                        model_id=request.acoustic_unit_model_id,
-                        model_version=request.acoustic_unit_model_id,
+                        model_id=request.transcription_model_id,
+                        model_version=request.transcription_model_id,
                         pipeline_version=request.pipeline_version,
                         captured_at=media_probe.get("captured_at"),
                     )
@@ -1239,8 +1241,8 @@ def process_run(run_dir: Path | None = None) -> bool:
                     audio_sample_rate=media_probe.get("audio_sample_rate"),
                     bitrate=media_probe.get("bitrate"),
                     diarization_enabled=request.diarization_enabled,
-                    model_id=request.acoustic_unit_model_id,
-                    model_version=request.acoustic_unit_model_id,
+                    model_id=request.transcription_model_id,
+                    model_version=request.transcription_model_id,
                     pipeline_version=request.pipeline_version,
                     captured_at=media_probe.get("captured_at"),
                 )

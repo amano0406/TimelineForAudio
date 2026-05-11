@@ -21,14 +21,14 @@ _STAGE_ORDER = [
     "extract_audio",
     "detect_speech_candidates",
     "diarize_audio",
-    "extract_acoustic_units",
+    "transcribe_audio",
     "generate_artifacts",
 ]
 _DEFAULT_STAGE_SHARES = {
     "extract_audio": 0.12,
     "detect_speech_candidates": 0.10,
     "diarize_audio": 0.30,
-    "extract_acoustic_units": 0.42,
+    "transcribe_audio": 0.42,
     "generate_artifacts": 0.06,
 }
 

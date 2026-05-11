@@ -248,7 +248,7 @@ class EtaPredictorTests(unittest.TestCase):
                             "extract_audio": 1.0,
                             "detect_speech_candidates": 1.0,
                             "diarize_audio": 3.0,
-                            "extract_acoustic_units": 4.0,
+                            "transcribe_audio": 4.0,
                             "generate_artifacts": 1.0,
                         },
                     }
@@ -282,7 +282,7 @@ class EtaPredictorTests(unittest.TestCase):
                 legacy_remaining_sec=None,
                 current_item_index=0,
                 current_item_elapsed_sec=6.0,
-                current_stage_name="extract_acoustic_units",
+                current_stage_name="transcribe_audio",
                 current_stage_elapsed_sec=1.0,
                 include_export_stage=False,
             )

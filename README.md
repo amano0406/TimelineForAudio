@@ -1,14 +1,14 @@
 # TimelineForAudio
 
-TimelineForAudio is a local Docker-first CLI product that turns audio files into reusable speaker/time/acoustic-unit timeline data.
+TimelineForAudio is a local Docker-first CLI product that turns audio files into reusable speaker/time/transcript timeline data.
 
 ## What This Product Does
 
 TimelineForAudio reads configured audio directories, detects changed audio files, and creates structured timeline artifacts for downstream Timeline products or LLM workflows.
 
-It preserves source-audio-relative time, assigns mechanical speaker labels such as `SPEAKER_00`, and stores acoustic units from the current phone-recognition backend.
+It preserves source-audio-relative time, assigns mechanical speaker labels such as `SPEAKER_00`, and stores Whisper transcript text without rewriting it.
 
-It does not create readable prose, summaries, real speaker names, or identity guesses.
+It does not create summaries, real speaker names, or identity guesses.
 
 ## Input
 
@@ -43,7 +43,7 @@ Each generated item contains:
     timeline.json
 ```
 
-`timeline.json` contains source metadata, speaker labels, time ranges, and acoustic-unit tokens.
+`timeline.json` contains source metadata, speaker labels, time ranges, and transcript text.
 
 `convert_info.json` contains source fingerprint, model/runtime metadata, processing-flow metadata, counts, and artifact names.
 

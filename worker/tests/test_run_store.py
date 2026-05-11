@@ -189,7 +189,6 @@ class RunStoreTests(unittest.TestCase):
                 "inputRoots": [str(source_dir)],
                 "outputRoot": str(runs_root),
                 "computeMode": "cpu",
-                "uiLanguage": "ja",
             }
 
             run_id, run_dir, summary = create_refresh_run(settings=settings)
@@ -201,7 +200,7 @@ class RunStoreTests(unittest.TestCase):
             self.assertEqual(0, summary["skipped_count"])
             request = json.loads((Path(str(run_dir)) / "request.json").read_text(encoding="utf-8"))
             self.assertEqual("timeline", summary["artifact"])
-            self.assertEqual("zipa-large-crctc-300k-onnx-v1", request["acoustic_unit_backend"])
+            self.assertEqual("faster-whisper-large-v3-v1", request["transcription_backend"])
 
     def test_create_refresh_run_skips_unchanged_catalog_items(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -215,7 +214,6 @@ class RunStoreTests(unittest.TestCase):
                 "inputRoots": [str(source_dir)],
                 "outputRoot": str(runs_root),
                 "computeMode": "cpu",
-                "uiLanguage": "ja",
             }
             signature = generation_signature_for_settings(
                 settings=settings,
@@ -257,7 +255,6 @@ class RunStoreTests(unittest.TestCase):
                 "inputRoots": [str(source_dir)],
                 "outputRoot": str(runs_root),
                 "computeMode": "cpu",
-                "uiLanguage": "ja",
             }
             signature = generation_signature_for_settings(
                 settings=settings,
@@ -633,7 +630,7 @@ class RunStoreTests(unittest.TestCase):
                 self.assertEqual("gpu", request["compute_mode"])
                 self.assertEqual("default", request["vad_profile"])
                 self.assertEqual(request["conversion_signature"], request["generation_signature"])
-                self.assertEqual("zipa-large-crctc-300k-onnx-v1", request["acoustic_unit_backend"])
+                self.assertEqual("faster-whisper-large-v3-v1", request["transcription_backend"])
 
     def test_list_runs_returns_created_run(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -59,7 +59,7 @@ The worker:
 4. keeps the speech candidate map in memory for the current item
 5. removes temporary processing files after the item is written
 
-The original audio file is not modified. The worker does not build one large concatenated speech-candidate audio file for normal processing. Heavy model work reads short candidate ranges from the temporary normalized WAV so long recordings do not need to be processed as one large chunk. Normalized audio and speech-candidate maps are processing intermediates, not master artifacts.
+The original audio file is not modified. The speech-candidate map is kept as processing metadata; Whisper transcription reads the normalized audio so transcript text is not lost because of an overly aggressive silence cut. Normalized audio and speech-candidate maps are processing intermediates, not master artifacts.
 
 ## 4. Speaker Diarization
 
@@ -73,23 +73,23 @@ pyannote/speaker-diarization-community-1
 
 If diarization cannot run, the media item fails. The worker does not create fallback speakers.
 
-## 5. Phone Token Extraction
+## 5. Speech Transcription
 
 Current backend:
 
 ```text
-anyspeech/zipa-large-crctc-300k via ONNX Runtime
+Systran/faster-whisper-large-v3 via faster-whisper
 ```
 
-The output field is named `phone_tokens`. TimelineForAudio stores phone-like acoustic units for downstream reconstruction, not readable text.
+Whisper runs with automatic language detection. `settings.json` does not contain a language setting.
 
-In GPU mode, ZIPA must use ONNX Runtime with `CUDAExecutionProvider`. If the GPU Docker flavor, CUDA-enabled PyTorch, or ONNX Runtime CUDA provider is unavailable, the run fails early instead of silently using CPU. The worker records the actual execution provider in the primary timeline pipeline metadata.
+Whisper transcript text is the source of what was said. Speaker diarization is used only to add speaker labels by timestamp overlap.
 
-Speech candidate ranges are processed in small chunks before being merged back into original timeline turns. This keeps long recordings from failing late because one large inference request exhausted memory.
+The worker must not summarize, rewrite, or drop Whisper transcript text while assigning speakers. If the transcript text changes during timeline assembly, processing fails.
 
 ## 6. Timeline Assembly
 
-The worker aligns phone-token spans to diarization turns by timestamp overlap.
+The worker assigns speakers to Whisper transcript segments by timestamp overlap.
 
 Primary output:
 
@@ -105,9 +105,8 @@ Each turn contains:
 - `absolute_start_at` when available
 - `absolute_end_at` when available
 - `speaker`
-- `phone_tokens`
-- `unit_type`
-- `confidence`
+- `text`
+- transcription confidence metadata when available
 
 ## 7. Item Download
 

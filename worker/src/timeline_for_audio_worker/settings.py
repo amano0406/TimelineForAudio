@@ -207,27 +207,27 @@ def load_settings() -> dict[str, Any]:
         payload = json.loads(settings_path().read_text(encoding="utf-8"))
     else:
         payload = _default_settings_payload()
-    payload["inputRoots"] = _normalize_input_root_rows(
+    schema_version = payload.get("schemaVersion", 1)
+    if not isinstance(schema_version, int):
+        schema_version = 1
+    input_roots = _normalize_input_root_rows(
         payload.get("inputRoots", default_input_roots()),
         fallback=[] if "inputRoots" in payload else default_input_roots(),
     )
-    payload["outputRoot"] = _normalize_output_root(
+    output_root = _normalize_output_root(
         payload.get("outputRoot", default_output_root()),
         fallback="" if "outputRoot" in payload else default_output_root(),
     )
-    payload["computeMode"] = str(payload.get("computeMode") or "cpu").strip().lower()
-    if payload["computeMode"] not in {"cpu", "gpu"}:
-        payload["computeMode"] = "cpu"
-    payload.pop("processingQuality", None)
-    payload.pop("secondPassEnabled", None)
-    payload.pop("contextBuilderVersion", None)
-    payload.pop("ipaBackend", None)
-    payload.pop("uiLanguage", None)
-    payload.pop("refreshBatchSize", None)
-    payload.pop("audioExtensions", None)
-    payload.pop("videoExtensions", None)
-    payload["huggingfaceToken"] = str(payload.get("huggingfaceToken") or "").strip()
-    return payload
+    compute_mode = str(payload.get("computeMode") or "cpu").strip().lower()
+    if compute_mode not in {"cpu", "gpu"}:
+        compute_mode = "cpu"
+    return {
+        "schemaVersion": schema_version,
+        "inputRoots": input_roots,
+        "outputRoot": output_root,
+        "huggingfaceToken": str(payload.get("huggingfaceToken") or "").strip(),
+        "computeMode": compute_mode,
+    }
 
 
 def load_huggingface_token() -> str | None:
@@ -236,22 +236,29 @@ def load_huggingface_token() -> str | None:
 
 
 def save_settings(payload: dict[str, Any]) -> None:
-    payload = dict(payload)
-    payload["inputRoots"] = _normalize_input_root_rows(
+    schema_version = payload.get("schemaVersion", 1)
+    if not isinstance(schema_version, int):
+        schema_version = 1
+    input_roots = _normalize_input_root_rows(
         payload.get("inputRoots", []),
         fallback=[],
     )
-    payload["outputRoot"] = _normalize_output_root(
+    output_root = _normalize_output_root(
         payload.get("outputRoot"),
         fallback="",
     )
-    payload.pop("processingQuality", None)
-    payload.pop("secondPassEnabled", None)
-    payload.pop("audioExtensions", None)
-    payload.pop("videoExtensions", None)
-    payload["huggingfaceToken"] = str(payload.get("huggingfaceToken") or "").strip()
+    compute_mode = str(payload.get("computeMode") or "cpu").strip().lower()
+    if compute_mode not in {"cpu", "gpu"}:
+        compute_mode = "cpu"
+    cleaned = {
+        "schemaVersion": schema_version,
+        "inputRoots": input_roots,
+        "outputRoot": output_root,
+        "huggingfaceToken": str(payload.get("huggingfaceToken") or "").strip(),
+        "computeMode": compute_mode,
+    }
     settings_path().parent.mkdir(parents=True, exist_ok=True)
-    settings_path().write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    settings_path().write_text(json.dumps(cleaned, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def init_settings() -> dict[str, Any]:

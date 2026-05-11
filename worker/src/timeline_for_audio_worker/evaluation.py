@@ -78,22 +78,8 @@ def _normalize_text(value: Any) -> str:
     return _SPACE_RE.sub("", str(value or "").strip())
 
 
-def _normalize_acoustic_units(value: Any) -> str:
-    text = str(value or "").strip().strip("/")
-    return _SPACE_RE.sub(" ", text).strip()
-
-
 def _row_text(row: dict[str, Any]) -> str:
     return str(row.get("text") or "")
-
-
-def _row_acoustic_units(row: dict[str, Any]) -> str:
-    return str(
-        row.get("acoustic_units")
-        or row.get("phone_tokens")
-        or row.get("units")
-        or ""
-    )
 
 
 def _row_speaker(row: dict[str, Any]) -> str:
@@ -199,15 +185,8 @@ def evaluate_turn_artifacts(prediction_path: Path, reference_path: Path) -> dict
 
     predicted_text = _normalize_text("".join(_row_text(row) for row in prediction_rows))
     reference_text = _normalize_text("".join(_row_text(row) for row in reference_rows))
-    predicted_units = _normalize_acoustic_units(
-        " ".join(_row_acoustic_units(row) for row in prediction_rows)
-    )
-    reference_units = _normalize_acoustic_units(
-        " ".join(_row_acoustic_units(row) for row in reference_rows)
-    )
 
     text_cer = _error_rate(predicted_text, reference_text)
-    acoustic_unit_error_rate = _error_rate(predicted_units, reference_units)
 
     return {
         "schema_version": EVALUATION_SCHEMA_VERSION,
@@ -221,13 +200,6 @@ def evaluate_turn_artifacts(prediction_path: Path, reference_path: Path) -> dict
             if reference_text
             else None,
             "reference_length": len(reference_text),
-        },
-        "acoustic_units": {
-            "error_rate": acoustic_unit_error_rate,
-            "edit_distance": _edit_distance(predicted_units, reference_units)
-            if reference_units
-            else None,
-            "reference_length": len(reference_units),
         },
         "speaker": {
             "label_accuracy": _speaker_label_accuracy(prediction_rows, reference_rows),
@@ -250,7 +222,6 @@ def _format_metric(value: object) -> str:
 
 def render_evaluation_markdown(payload: dict[str, Any]) -> str:
     text_metrics = payload.get("text", {})
-    acoustic_unit_metrics = payload.get("acoustic_units", {})
     speaker_metrics = payload.get("speaker", {})
     lines = [
         "# Evaluation",
@@ -265,14 +236,13 @@ def render_evaluation_markdown(payload: dict[str, Any]) -> str:
         "| Metric | Value |",
         "|---|---:|",
         f"| Text CER | `{_format_metric(text_metrics.get('cer'))}` |",
-        f"| Acoustic Unit Error Rate | `{_format_metric(acoustic_unit_metrics.get('error_rate'))}` |",
         f"| Speaker Label Accuracy | `{_format_metric(speaker_metrics.get('label_accuracy'))}` |",
         f"| Speaker Time Mismatch Proxy | `{_format_metric(speaker_metrics.get('time_mismatch_rate'))}` |",
         "",
         "## Notes",
         "",
         "- Speaker time mismatch is a lightweight turn-level proxy, not full DER.",
-        "- Missing reference text or acoustic units returns `N/A` for that metric.",
+        "- Missing reference text returns `N/A` for that metric.",
         "",
     ]
     return "\n".join(lines)
