@@ -37,12 +37,32 @@ Current shape:
     "C:\\TimelineData\\input-audio\\"
   ],
   "outputRoot": "C:\\TimelineData\\audio",
-  "huggingfaceToken": "",
-  "computeMode": "cpu"
+  "huggingFaceToken": "",
+  "computeMode": "cpu",
+  "runtime": {
+    "instanceName": "ff4e43e190",
+    "apiPort": 19100
+  }
 }
 ```
 
+`huggingFaceToken` is the canonical token key. Older local files that still contain `huggingfaceToken` are read for compatibility and saved back using `huggingFaceToken`.
+
+`runtime.instanceName` identifies this local Docker runtime. `runtime.apiPort` is used for the local health API port.
+
 Supported audio extensions are product-owned runtime defaults, not user settings.
+
+## Local Health API
+
+TimelineForAudio remains a Docker-first CLI product. For future API migration readiness, `start.ps1` also starts a minimal C#/.NET health API.
+
+The only HTTP endpoint is:
+
+```text
+GET http://127.0.0.1:<runtime.apiPort>/health
+```
+
+The response body is a JSON boolean: `true` or `false`.
 
 ## Storage
 
@@ -57,6 +77,14 @@ Supported audio extensions are product-owned runtime defaults, not user settings
 `start.ps1`, `stop.ps1`, and normal CLI use should preserve Docker volumes.
 
 `uninstall.ps1` is the cleanup entrypoint. Use its deletion options only when intentionally removing local runtime data.
+
+## Worker Restart Behavior
+
+If Docker or the worker stops while a run is `running`, that run is treated as interrupted.
+
+On the next worker startup, the interrupted run is marked as `canceled` with `current_stage: "interrupted"` and is not resumed automatically. Run `items refresh` again to queue fresh work.
+
+Runs that were still `pending` can still be picked up by the worker.
 
 ## Current Models
 

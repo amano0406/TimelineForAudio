@@ -94,12 +94,17 @@ $sourceSettingsPath = (Resolve-Path -LiteralPath $sourceSettingsPath).Path
 $settings = Get-Content -LiteralPath $sourceSettingsPath -Raw | ConvertFrom-Json
 $mappings = [System.Collections.Generic.List[object]]::new()
 $volumeLines = [System.Collections.Generic.List[string]]::new()
+$apiVolumeLines = [System.Collections.Generic.List[string]]::new()
 
 if ($usingSettingsOverride) {
     $VolumeLines.Add("      - type: bind") | Out-Null
     $VolumeLines.Add("        source: $(Convert-ToYamlSingleQuoted -Value $sourceSettingsPath)") | Out-Null
     $VolumeLines.Add("        target: /host/settings/settings.json") | Out-Null
     $VolumeLines.Add("        read_only: true") | Out-Null
+    $apiVolumeLines.Add("      - type: bind") | Out-Null
+    $apiVolumeLines.Add("        source: $(Convert-ToYamlSingleQuoted -Value $sourceSettingsPath)") | Out-Null
+    $apiVolumeLines.Add("        target: /host/settings/settings.json") | Out-Null
+    $apiVolumeLines.Add("        read_only: true") | Out-Null
 }
 
 $inputIndex = 0
@@ -154,6 +159,17 @@ if ($volumeLines.Count -gt 0) {
     $lines.Add("    volumes:") | Out-Null
     foreach ($line in $volumeLines) {
         $lines.Add($line) | Out-Null
+    }
+}
+if ($usingSettingsOverride) {
+    $lines.Add("  api:") | Out-Null
+    $lines.Add("    environment:") | Out-Null
+    $lines.Add("      TIMELINE_FOR_AUDIO_SETTINGS_PATH: /host/settings/settings.json") | Out-Null
+    if ($apiVolumeLines.Count -gt 0) {
+        $lines.Add("    volumes:") | Out-Null
+        foreach ($line in $apiVolumeLines) {
+            $lines.Add($line) | Out-Null
+        }
     }
 }
 

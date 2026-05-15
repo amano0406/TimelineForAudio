@@ -1,6 +1,7 @@
 Set-StrictMode -Version Latest
 
 $script:TfaDockerCommand = $null
+$script:TfaDefaultApiPort = 19100
 
 function Get-TfaLastExitCode {
     $variable = Get-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue
@@ -90,12 +91,16 @@ function Invoke-TfaHiddenProcess {
     foreach ($name in @(
         "COMPOSE_PROJECT_NAME",
         "TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH",
-        "TIMELINE_FOR_AUDIO_PATHS_OVERRIDE_PATH"
+        "TIMELINE_FOR_AUDIO_PATHS_OVERRIDE_PATH",
+        "TIMELINE_FOR_AUDIO_INSTANCE_NAME",
+        "TIMELINE_FOR_AUDIO_API_PORT"
     )) {
         $value = switch ($name) {
             "COMPOSE_PROJECT_NAME" { $env:COMPOSE_PROJECT_NAME }
             "TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH" { $env:TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH }
             "TIMELINE_FOR_AUDIO_PATHS_OVERRIDE_PATH" { $env:TIMELINE_FOR_AUDIO_PATHS_OVERRIDE_PATH }
+            "TIMELINE_FOR_AUDIO_INSTANCE_NAME" { $env:TIMELINE_FOR_AUDIO_INSTANCE_NAME }
+            "TIMELINE_FOR_AUDIO_API_PORT" { $env:TIMELINE_FOR_AUDIO_API_PORT }
         }
         if ($null -ne $value) {
             $startInfo.EnvironmentVariables[$name] = $value
@@ -255,6 +260,8 @@ function Initialize-TfaLocalFiles {
         [string]$RepoRoot
     )
 
+    Initialize-TfaRuntimeSettings -RepoRoot $RepoRoot | Out-Null
+
     $pathScript = Join-Path $RepoRoot "scripts\prepare-docker-paths.ps1"
     $settingsOverridePath = [string]$env:TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH
     if ($settingsOverridePath) {
@@ -262,6 +269,186 @@ function Initialize-TfaLocalFiles {
         return
     }
     & $pathScript -RepoRoot $RepoRoot | Out-Null
+}
+
+function ConvertTo-TfaInstanceName {
+    param([object]$Value)
+
+    $text = ([string]$Value).Trim().ToLowerInvariant()
+    if ($text.StartsWith("local-")) {
+        $text = $text.Substring("local-".Length)
+    }
+    $text = $text -replace '[^a-z0-9-]+', '-'
+    $text = $text -replace '-+', '-'
+    return $text.Trim("-")
+}
+
+function New-TfaRuntimeInstanceName {
+    return ([guid]::NewGuid().ToString("N")).Substring(0, 10)
+}
+
+function ConvertTo-TfaApiPort {
+    param(
+        [object]$Value,
+        [int]$Fallback = $script:TfaDefaultApiPort
+    )
+
+    $port = 0
+    if (-not [int]::TryParse(([string]$Value).Trim(), [ref]$port)) {
+        return $Fallback
+    }
+    if ($port -lt 1 -or $port -gt 65535) {
+        return $Fallback
+    }
+    return $port
+}
+
+function Test-TfaJsonProperty {
+    param(
+        [object]$Payload,
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+
+    if ($null -eq $Payload) {
+        return $false
+    }
+    return $Payload.PSObject.Properties.Name -contains $Name
+}
+
+function Get-TfaJsonPropertyValue {
+    param(
+        [object]$Payload,
+        [Parameter(Mandatory = $true)][string]$Name,
+        [object]$Fallback = $null
+    )
+
+    if (Test-TfaJsonProperty -Payload $Payload -Name $Name) {
+        return $Payload.PSObject.Properties[$Name].Value
+    }
+    return $Fallback
+}
+
+function Get-TfaSettingsPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot
+    )
+
+    $settingsPath = [string]$env:TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH
+    if ([string]::IsNullOrWhiteSpace($settingsPath)) {
+        $settingsPath = Join-Path $RepoRoot "settings.json"
+    }
+    return [System.IO.Path]::GetFullPath($settingsPath)
+}
+
+function Read-TfaJsonPayload {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return $null
+    }
+    return Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+}
+
+function ConvertTo-TfaSettingsPayload {
+    param(
+        [object]$Payload,
+        [string]$InstanceName,
+        [int]$ApiPort
+    )
+
+    $schemaVersion = Get-TfaJsonPropertyValue -Payload $Payload -Name "schemaVersion" -Fallback 1
+    if ($schemaVersion -isnot [int]) {
+        $schemaVersion = 1
+    }
+
+    $inputRoots = @()
+    foreach ($root in @(Get-TfaJsonPropertyValue -Payload $Payload -Name "inputRoots" -Fallback @())) {
+        $rootText = ([string]$root).Trim()
+        if ($rootText) {
+            $inputRoots += $rootText
+        }
+    }
+
+    $outputRoot = ([string](Get-TfaJsonPropertyValue -Payload $Payload -Name "outputRoot" -Fallback "")).Trim()
+
+    $token = ""
+    if (Test-TfaJsonProperty -Payload $Payload -Name "huggingFaceToken") {
+        $token = ([string]$Payload.huggingFaceToken).Trim()
+    }
+    elseif (Test-TfaJsonProperty -Payload $Payload -Name "huggingfaceToken") {
+        $token = ([string]$Payload.huggingfaceToken).Trim()
+    }
+
+    $computeMode = ([string](Get-TfaJsonPropertyValue -Payload $Payload -Name "computeMode" -Fallback "cpu")).Trim().ToLowerInvariant()
+    if ($computeMode -notin @("cpu", "gpu")) {
+        $computeMode = "cpu"
+    }
+
+    return [ordered]@{
+        schemaVersion = $schemaVersion
+        inputRoots = @($inputRoots)
+        outputRoot = $outputRoot
+        huggingFaceToken = $token
+        computeMode = $computeMode
+        runtime = [ordered]@{
+            instanceName = $InstanceName
+            apiPort = $ApiPort
+        }
+    }
+}
+
+function Initialize-TfaRuntimeSettings {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot
+    )
+
+    $settingsPath = Get-TfaSettingsPath -RepoRoot $RepoRoot
+    $settingsExamplePath = Join-Path $RepoRoot "settings.example.json"
+    $sourcePath = if (Test-Path -LiteralPath $settingsPath) {
+        $settingsPath
+    }
+    elseif (Test-Path -LiteralPath $settingsExamplePath) {
+        $settingsExamplePath
+    }
+    else {
+        $settingsPath
+    }
+
+    $payload = Read-TfaJsonPayload -Path $sourcePath
+    $runtimePayload = Get-TfaJsonPropertyValue -Payload $payload -Name "runtime" -Fallback $null
+    $instanceName = ConvertTo-TfaInstanceName -Value (Get-TfaJsonPropertyValue -Payload $runtimePayload -Name "instanceName" -Fallback "")
+    if ([string]::IsNullOrWhiteSpace($instanceName)) {
+        $instanceName = New-TfaRuntimeInstanceName
+    }
+    $apiPort = ConvertTo-TfaApiPort -Value (Get-TfaJsonPropertyValue -Payload $runtimePayload -Name "apiPort" -Fallback $script:TfaDefaultApiPort)
+
+    $cleaned = ConvertTo-TfaSettingsPayload -Payload $payload -InstanceName $instanceName -ApiPort $apiPort
+    $settingsDirectory = Split-Path -Parent $settingsPath
+    if ($settingsDirectory) {
+        New-Item -ItemType Directory -Path $settingsDirectory -Force | Out-Null
+    }
+    [System.IO.File]::WriteAllText(
+        $settingsPath,
+        (ConvertTo-Json -InputObject $cleaned -Depth 8),
+        [System.Text.UTF8Encoding]::new($false)
+    )
+
+    $composeProject = [string]$env:COMPOSE_PROJECT_NAME
+    if ([string]::IsNullOrWhiteSpace($composeProject)) {
+        $composeProject = "timeline-for-audio-$instanceName"
+    }
+
+    $env:TIMELINE_FOR_AUDIO_INSTANCE_NAME = $instanceName
+    $env:TIMELINE_FOR_AUDIO_API_PORT = [string]$apiPort
+
+    return [pscustomobject]@{
+        InstanceName = $instanceName
+        ApiPort = $apiPort
+        ComposeProject = $composeProject
+        SettingsPath = $settingsPath
+    }
 }
 
 function Get-TfaNvidiaSmiPath {
@@ -381,12 +568,10 @@ function Get-TfaComposeArgs {
         [switch]$IncludeGpu
     )
 
+    $runtime = Initialize-TfaRuntimeSettings -RepoRoot $RepoRoot
     $args = [System.Collections.Generic.List[string]]::new()
-    $projectName = [string]$env:COMPOSE_PROJECT_NAME
-    if (-not [string]::IsNullOrWhiteSpace($projectName)) {
-        $args.Add("-p")
-        $args.Add($projectName)
-    }
+    $args.Add("-p")
+    $args.Add([string]$runtime.ComposeProject)
     $args.Add("-f")
     $args.Add((Join-Path $RepoRoot "docker-compose.yml"))
 

@@ -400,7 +400,7 @@ def cmd_settings_save(
 ) -> int:
     settings = load_settings()
     if token is not None:
-        settings["huggingfaceToken"] = token.strip() if token and token.strip() else ""
+        settings["huggingFaceToken"] = token.strip() if token and token.strip() else ""
     if compute_mode is not None:
         settings["computeMode"] = compute_mode
     save_settings(settings)

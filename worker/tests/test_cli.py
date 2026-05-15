@@ -139,7 +139,7 @@ class CliTests(unittest.TestCase):
         payload = json.loads(stdout.getvalue())
         self.assertEqual("pending", payload["state"])
         self.assertEqual("run-1", payload["run_id"])
-        self.assertEqual("/tmp/run-1", payload["run_dir"])
+        self.assertEqual(str(Path("/tmp/run-1")), payload["run_dir"])
         self.assertEqual("timeline", payload["artifact"])
         self.assertTrue(payload["queue_only"])
         self.assertEqual(1, payload["total_discovered"])

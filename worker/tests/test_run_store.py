@@ -683,7 +683,7 @@ class RunStoreTests(unittest.TestCase):
                 settings = {
                     "inputRoots": [str(source_dir)],
                     "outputRoot": str(root / "runs"),
-                    "huggingfaceToken": "hf_test_value",
+                    "huggingFaceToken": "hf_test_value",
                 }
                 save_settings(settings)
 

@@ -16,6 +16,8 @@ worker/.pytest_cache
 worker/__pycache__
 worker/tests/__pycache__
 src
+api/bin
+api/obj
 web/bin
 web/obj
 web/node_modules

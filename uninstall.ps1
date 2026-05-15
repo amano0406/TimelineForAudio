@@ -38,13 +38,9 @@ function Remove-TfaVolumeIfExists {
 
 Initialize-TfaDocker -RepoRoot $repoRoot
 $docker = Get-TfaDockerCommand
-$composeArgs = @("-f", (Join-Path $repoRoot "docker-compose.yml"))
-$gpuCompose = Join-Path $repoRoot "docker-compose.gpu.yml"
-if (Test-Path -LiteralPath $gpuCompose) {
-    $composeArgs += @("-f", $gpuCompose)
-}
-
-$composeProject = "timeline-for-audio"
+$runtime = Initialize-TfaRuntimeSettings -RepoRoot $repoRoot
+$composeArgs = Get-TfaComposeArgs -RepoRoot $repoRoot -IncludeGpu
+$composeProject = [string]$runtime.ComposeProject
 $appDataVolume = "${composeProject}_app-data"
 $cacheVolume = "${composeProject}_cache-data"
 

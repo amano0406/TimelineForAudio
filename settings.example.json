@@ -1,9 +1,13 @@
 {
   "schemaVersion": 1,
+  "runtime": {
+    "instanceName": "",
+    "apiPort": 19100
+  },
   "inputRoots": [
     "C:\\TimelineData\\input-audio\\"
   ],
   "outputRoot": "C:\\TimelineData\\audio",
-  "huggingfaceToken": "",
+  "huggingFaceToken": "",
   "computeMode": "cpu"
 }

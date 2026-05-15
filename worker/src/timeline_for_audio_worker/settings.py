@@ -5,10 +5,15 @@ import os
 from pathlib import Path
 import re
 from typing import Any
+from uuid import uuid4
 
 _WINDOWS_DRIVE_RE = re.compile(r"^(?P<drive>[A-Za-z]):[\\/](?P<rest>.*)$")
 _PATH_MAPPINGS_ENV = "TIMELINE_FOR_AUDIO_PATH_MAPPINGS"
 _DEFAULT_AUDIO_EXTENSIONS = [".mp3", ".wav", ".m4a", ".aac", ".flac"]
+_INSTANCE_NAME_RE = re.compile(r"[^a-z0-9-]+")
+_DEFAULT_API_PORT = 19100
+_TOKEN_KEY = "huggingFaceToken"
+_LEGACY_TOKEN_KEY = "huggingfaceToken"
 
 
 def project_root() -> Path:
@@ -143,8 +148,53 @@ def _default_settings_payload() -> dict[str, Any]:
         "schemaVersion": 1,
         "inputRoots": default_input_roots(),
         "outputRoot": default_output_root(),
-        "huggingfaceToken": "",
+        _TOKEN_KEY: "",
         "computeMode": "cpu",
+        "runtime": default_runtime_settings(),
+    }
+
+
+def normalize_instance_name(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if text.startswith("local-"):
+        text = text[len("local-") :]
+    text = _INSTANCE_NAME_RE.sub("-", text)
+    text = re.sub(r"-+", "-", text).strip("-")
+    return text
+
+
+def generate_instance_name() -> str:
+    return uuid4().hex[:10]
+
+
+def settings_token(payload: dict[str, Any]) -> str:
+    return str(payload.get(_TOKEN_KEY) or payload.get(_LEGACY_TOKEN_KEY) or "").strip()
+
+
+def _normalize_api_port(value: Any, *, fallback: int = _DEFAULT_API_PORT) -> int:
+    try:
+        port = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    if port < 1 or port > 65535:
+        return fallback
+    return port
+
+
+def default_runtime_settings() -> dict[str, Any]:
+    return {
+        "instanceName": "",
+        "apiPort": _DEFAULT_API_PORT,
+    }
+
+
+def normalize_runtime_settings(value: Any) -> dict[str, Any]:
+    runtime = value if isinstance(value, dict) else {}
+    instance_name = normalize_instance_name(runtime.get("instanceName"))
+    api_port = _normalize_api_port(runtime.get("apiPort"))
+    return {
+        "instanceName": instance_name,
+        "apiPort": api_port,
     }
 
 
@@ -223,15 +273,26 @@ def load_settings() -> dict[str, Any]:
         compute_mode = "cpu"
     return {
         "schemaVersion": schema_version,
+        "runtime": normalize_runtime_settings(payload.get("runtime")),
         "inputRoots": input_roots,
         "outputRoot": output_root,
-        "huggingfaceToken": str(payload.get("huggingfaceToken") or "").strip(),
+        _TOKEN_KEY: settings_token(payload),
         "computeMode": compute_mode,
     }
 
 
+def ensure_runtime_settings() -> dict[str, Any]:
+    settings = load_settings()
+    runtime = normalize_runtime_settings(settings.get("runtime"))
+    if not runtime["instanceName"]:
+        runtime["instanceName"] = generate_instance_name()
+    settings["runtime"] = runtime
+    save_settings(settings)
+    return runtime
+
+
 def load_huggingface_token() -> str | None:
-    value = str(load_settings().get("huggingfaceToken") or "").strip()
+    value = settings_token(load_settings())
     return value or None
 
 
@@ -250,11 +311,13 @@ def save_settings(payload: dict[str, Any]) -> None:
     compute_mode = str(payload.get("computeMode") or "cpu").strip().lower()
     if compute_mode not in {"cpu", "gpu"}:
         compute_mode = "cpu"
+    runtime = normalize_runtime_settings(payload.get("runtime"))
     cleaned = {
         "schemaVersion": schema_version,
+        "runtime": runtime,
         "inputRoots": input_roots,
         "outputRoot": output_root,
-        "huggingfaceToken": str(payload.get("huggingfaceToken") or "").strip(),
+        _TOKEN_KEY: settings_token(payload),
         "computeMode": compute_mode,
     }
     settings_path().parent.mkdir(parents=True, exist_ok=True)
@@ -278,7 +341,7 @@ def init_settings() -> dict[str, Any]:
 
 def save_huggingface_token(token: str | None) -> None:
     settings = load_settings()
-    settings["huggingfaceToken"] = token.strip() if token and token.strip() else ""
+    settings[_TOKEN_KEY] = token.strip() if token and token.strip() else ""
     save_settings(settings)
 
 

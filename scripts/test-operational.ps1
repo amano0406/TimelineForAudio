@@ -254,8 +254,12 @@ function Get-TfaOriginalSettings {
         schemaVersion = 1
         inputRoots = @()
         outputRoot = ""
-        huggingfaceToken = ""
+        huggingFaceToken = ""
         computeMode = "cpu"
+        runtime = [pscustomobject]@{
+            instanceName = ""
+            apiPort = 19100
+        }
     }
 }
 
@@ -368,11 +372,14 @@ $originalSettings = Get-TfaOriginalSettings
 $computeMode = "cpu"
 if ($UseRealModels) {
     $token = ""
-    if ($originalSettings.PSObject.Properties.Name -contains "huggingfaceToken") {
+    if ($originalSettings.PSObject.Properties.Name -contains "huggingFaceToken") {
+        $token = [string]$originalSettings.huggingFaceToken
+    }
+    elseif ($originalSettings.PSObject.Properties.Name -contains "huggingfaceToken") {
         $token = [string]$originalSettings.huggingfaceToken
     }
     if ([string]::IsNullOrWhiteSpace($token)) {
-        throw "UseRealModels requires huggingfaceToken in the current settings.json."
+        throw "UseRealModels requires huggingFaceToken in the current settings.json."
     }
     if ($originalSettings.PSObject.Properties.Name -contains "computeMode") {
         $settingsComputeMode = [string]$originalSettings.computeMode
@@ -400,8 +407,12 @@ $testSettings = [ordered]@{
     schemaVersion = 1
     inputRoots = @($inputRoot)
     outputRoot = $outputRoot
-    huggingfaceToken = $token
+    huggingFaceToken = $token
     computeMode = $computeMode
+    runtime = [ordered]@{
+        instanceName = ""
+        apiPort = 19100
+    }
 }
 
 try {

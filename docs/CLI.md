@@ -53,7 +53,9 @@ Unknown JSON fields may be added later. Callers should ignore fields they do not
 .\cli.ps1 settings master set "C:\TimelineData\audio" --json
 ```
 
-`settings.json` stores input roots, output root, Hugging Face token, and compute mode.
+`settings.json` stores input roots, output root, Hugging Face token, compute mode, and local runtime settings.
+
+The canonical token key is `huggingFaceToken`. Older local files with `huggingfaceToken` are read and saved back using the canonical key.
 
 ## File Commands
 

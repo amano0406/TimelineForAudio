@@ -71,6 +71,15 @@ Write-Host "Running Python tests..."
 $env:PYTHONPATH = "worker/src"
 Invoke-CheckedCommand $python -m unittest discover -s worker/tests -p "test_*.py"
 
+$dotnetCommand = Get-Command dotnet -ErrorAction SilentlyContinue
+if ($dotnetCommand) {
+    Write-Host "Building health API..."
+    Invoke-CheckedCommand $dotnetCommand.Source build api/TimelineForAudio.Api.csproj
+}
+else {
+    Write-Host "dotnet is not installed; skipping health API build."
+}
+
 if ($IncludeLocalCliDownload) {
     & (Join-Path $repoRoot "scripts\test-local-cli-download.ps1")
     if ($LASTEXITCODE -ne 0) {

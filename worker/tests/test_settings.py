@@ -9,7 +9,13 @@ from io import StringIO
 from pathlib import Path
 
 from timeline_for_audio_worker.cli import cmd_settings_inputs_add, cmd_settings_inputs_remove
-from timeline_for_audio_worker.settings import configured_path, init_settings, load_settings
+from timeline_for_audio_worker.settings import (
+    configured_path,
+    ensure_runtime_settings,
+    init_settings,
+    load_settings,
+    save_settings,
+)
 
 
 class SettingsTests(unittest.TestCase):
@@ -26,8 +32,12 @@ class SettingsTests(unittest.TestCase):
                             "C:\\Users\\amano\\Videos\\"
                         ],
                         "outputRoot": "C:\\Users\\amano\\video\\",
-                        "huggingfaceToken": "",
+                        "huggingFaceToken": "",
                         "computeMode": "cpu",
+                        "runtime": {
+                            "instanceName": "",
+                            "apiPort": 19100,
+                        },
                     }
                 ),
                 encoding="utf-8",
@@ -55,10 +65,18 @@ class SettingsTests(unittest.TestCase):
         self.assertFalse(second["created"])
         self.assertTrue(settings_exists)
         self.assertEqual(
-            {"schemaVersion", "inputRoots", "outputRoot", "huggingfaceToken", "computeMode"},
+            {
+                "schemaVersion",
+                "inputRoots",
+                "outputRoot",
+                "huggingFaceToken",
+                "computeMode",
+                "runtime",
+            },
             set(loaded),
         )
         self.assertEqual("C:\\Users\\amano\\Videos\\", loaded["inputRoots"][0])
+        self.assertEqual(19100, loaded["runtime"]["apiPort"])
 
     def test_configured_path_maps_windows_drive_on_unix(self) -> None:
         path = configured_path("C:\\Users\\amano\\Videos\\")
@@ -143,8 +161,6 @@ class SettingsTests(unittest.TestCase):
             os.environ["TIMELINE_FOR_AUDIO_SETTINGS_PATH"] = str(settings_path)
             try:
                 loaded = load_settings()
-                from timeline_for_audio_worker.settings import save_settings
-
                 save_settings(loaded)
                 saved = json.loads(settings_path.read_text(encoding="utf-8"))
             finally:
@@ -153,9 +169,84 @@ class SettingsTests(unittest.TestCase):
                 else:
                     os.environ["TIMELINE_FOR_AUDIO_SETTINGS_PATH"] = previous_settings
 
-        expected_keys = {"schemaVersion", "inputRoots", "outputRoot", "huggingfaceToken", "computeMode"}
+        expected_keys = {
+            "schemaVersion",
+            "inputRoots",
+            "outputRoot",
+            "huggingFaceToken",
+            "computeMode",
+            "runtime",
+        }
         self.assertEqual(expected_keys, set(loaded))
         self.assertEqual(expected_keys, set(saved))
+        self.assertEqual(19100, saved["runtime"]["apiPort"])
+
+    def test_legacy_huggingface_token_is_read_and_saved_as_canonical_key(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            settings_path = root / "settings.json"
+            settings_path.write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "inputRoots": [],
+                        "outputRoot": "",
+                        "huggingfaceToken": "hf_legacy_value",
+                        "computeMode": "cpu",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            previous_settings = os.environ.get("TIMELINE_FOR_AUDIO_SETTINGS_PATH")
+            os.environ["TIMELINE_FOR_AUDIO_SETTINGS_PATH"] = str(settings_path)
+            try:
+                loaded = load_settings()
+                save_settings(loaded)
+                saved = json.loads(settings_path.read_text(encoding="utf-8"))
+            finally:
+                if previous_settings is None:
+                    os.environ.pop("TIMELINE_FOR_AUDIO_SETTINGS_PATH", None)
+                else:
+                    os.environ["TIMELINE_FOR_AUDIO_SETTINGS_PATH"] = previous_settings
+
+        self.assertEqual("hf_legacy_value", loaded["huggingFaceToken"])
+        self.assertEqual("hf_legacy_value", saved["huggingFaceToken"])
+        self.assertNotIn("huggingfaceToken", saved)
+
+    def test_ensure_runtime_settings_persists_instance_name(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            settings_path = root / "settings.json"
+            settings_path.write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "inputRoots": [],
+                        "outputRoot": "",
+                        "huggingFaceToken": "",
+                        "computeMode": "cpu",
+                        "runtime": {
+                            "instanceName": "local-FF4E43E190",
+                            "apiPort": 19100,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            previous_settings = os.environ.get("TIMELINE_FOR_AUDIO_SETTINGS_PATH")
+            os.environ["TIMELINE_FOR_AUDIO_SETTINGS_PATH"] = str(settings_path)
+            try:
+                runtime = ensure_runtime_settings()
+                saved = json.loads(settings_path.read_text(encoding="utf-8"))
+            finally:
+                if previous_settings is None:
+                    os.environ.pop("TIMELINE_FOR_AUDIO_SETTINGS_PATH", None)
+                else:
+                    os.environ["TIMELINE_FOR_AUDIO_SETTINGS_PATH"] = previous_settings
+
+        self.assertEqual("ff4e43e190", runtime["instanceName"])
+        self.assertEqual("ff4e43e190", saved["runtime"]["instanceName"])
+        self.assertEqual(19100, saved["runtime"]["apiPort"])
 
 
 if __name__ == "__main__":

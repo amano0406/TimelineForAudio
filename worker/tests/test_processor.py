@@ -102,7 +102,7 @@ class ProcessorQueueTests(unittest.TestCase):
 
             write_support_docs.assert_not_called()
 
-    def test_process_run_reclaims_stale_run_lock(self) -> None:
+    def test_process_run_cancels_interrupted_running_run(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             run_dir = root / "run-1"
@@ -158,35 +158,16 @@ class ProcessorQueueTests(unittest.TestCase):
             )
             (run_dir / ".run.lock").write_text("{}", encoding="utf-8")
 
-            def fake_probe_audio(path: Path) -> dict[str, object]:
-                return {
-                    "size_bytes": good_path.stat().st_size,
-                    "duration_seconds": 5.0,
-                    "container_name": "wav",
-                    "extension": "wav",
-                    "audio_codec": "pcm_s16le",
-                    "audio_channels": 1,
-                    "audio_sample_rate": 16000,
-                    "bitrate": 256000,
-                    "captured_at": None,
-                }
+            with patch.object(processor, "_write_support_docs") as write_support_docs:
+                self.assertFalse(processor.process_run(run_dir))
 
-            with (
-                patch.object(processor, "_write_support_docs"),
-                patch.object(processor, "load_catalog", return_value={}),
-                patch.object(processor, "probe_audio", side_effect=fake_probe_audio),
-                patch.object(processor, "sha256_file", return_value="good-hash"),
-                patch.object(
-                    processor,
-                    "build_eta_predictor",
-                    return_value=type("Predictor", (), {"sample_count": 0})(),
-                ),
-                patch.object(processor, "_estimate_remaining_with_history", return_value=None),
-                patch.object(processor, "_process_one_item", return_value=[]),
-                patch.object(processor, "append_catalog_rows"),
-            ):
-                self.assertTrue(processor.process_run(run_dir))
-
+            write_support_docs.assert_not_called()
+            status_payload = json.loads((run_dir / "status.json").read_text(encoding="utf-8"))
+            result_payload = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
+            self.assertEqual("canceled", status_payload["state"])
+            self.assertEqual("interrupted", status_payload["current_stage"])
+            self.assertIn("will not be resumed automatically", status_payload["message"])
+            self.assertEqual("canceled", result_payload["state"])
             self.assertFalse((run_dir / ".run.lock").exists())
 
     def test_resolve_duplicate_artifact_path_returns_none_for_stale_catalog_entry(self) -> None:
@@ -221,7 +202,7 @@ class ProcessorQueueTests(unittest.TestCase):
 
             self.assertEqual(timeline_path, processor._resolve_duplicate_artifact_path(duplicate))
 
-    def test_process_run_reclaims_stale_running_run_before_pending_queue(self) -> None:
+    def test_process_run_cancels_interrupted_running_run_before_pending_queue(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             running_run_dir = root / "run-running"
@@ -278,7 +259,40 @@ class ProcessorQueueTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (running_run_dir / ".run.lock").write_text("{}", encoding="utf-8")
-            (pending_run_dir / "request.json").write_text("{}", encoding="utf-8")
+            pending_request = RunRequest(
+                schema_version=1,
+                run_id="run-pending",
+                created_at="2026-04-11T12:01:00+09:00",
+                output_root_id="runs",
+                output_root_path=str(root),
+                profile="quality-first",
+                compute_mode="cpu",
+                pipeline_version="2026-05-11-v1-whisper-transcript-timeline",
+                conversion_signature="sig-123",
+                transcription_backend="faster-whisper-large-v3-v1",
+                transcription_model_id="Systran/faster-whisper-large-v3",
+                diarization_enabled=False,
+                diarization_model_id=None,
+                vad_backend="ffmpeg-silencedetect",
+                vad_model_id="ffmpeg-silencedetect-noise-35db",
+                reprocess_duplicates=False,
+                token_enabled=False,
+                input_items=[
+                    InputItem(
+                        input_id="item-1",
+                        source_kind="upload",
+                        source_id="uploads",
+                        original_path=str(source_path),
+                        display_name="sample.wav",
+                        size_bytes=source_path.stat().st_size,
+                        uploaded_path=str(source_path),
+                    )
+                ],
+            )
+            (pending_run_dir / "request.json").write_text(
+                json.dumps(pending_request.to_dict(), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
             (pending_run_dir / "status.json").write_text(
                 json.dumps({"state": "pending"}, ensure_ascii=False, indent=2),
                 encoding="utf-8",
@@ -315,14 +329,19 @@ class ProcessorQueueTests(unittest.TestCase):
             ):
                 self.assertTrue(processor.process_run())
 
-            running_status = json.loads((running_run_dir / "status.json").read_text(encoding="utf-8"))
-            pending_status = json.loads((pending_run_dir / "status.json").read_text(encoding="utf-8"))
-            self.assertEqual("completed", running_status["state"])
-            self.assertEqual("pending", pending_status["state"])
+            running_status = json.loads(
+                (running_run_dir / "status.json").read_text(encoding="utf-8")
+            )
+            pending_status = json.loads(
+                (pending_run_dir / "status.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual("canceled", running_status["state"])
+            self.assertEqual("interrupted", running_status["current_stage"])
+            self.assertEqual("completed", pending_status["state"])
 
     def test_process_run_waits_for_running_run_before_picking_pending(self) -> None:
         with (
-            patch.object(processor, "_collect_running_runs", return_value=[Path("/tmp/run-1")]),
+            patch.object(processor, "_retire_interrupted_running_runs", return_value=True),
             patch.object(processor, "_collect_pending_runs") as collect_pending,
         ):
             self.assertFalse(processor.process_run())

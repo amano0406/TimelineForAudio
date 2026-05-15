@@ -50,6 +50,10 @@ _RUN_LOCK_STALE_AFTER = timedelta(seconds=30)
 _MIN_PREPROCESS_DURATION_SEC = 2.0
 _PREFLIGHT_SKIPPED_STATUSES = {"skipped_invalid", "skipped_too_short"}
 _DELETE_REQUEST_MARKER = ".delete-requested"
+_INTERRUPTED_RUN_MESSAGE = (
+    "Run was interrupted while the worker was stopped. It will not be resumed "
+    "automatically; queue a new refresh to retry."
+)
 
 
 class RunDeletionRequested(RuntimeError):
@@ -243,6 +247,13 @@ def _write_status(run_dir: Path, status: RunStatus) -> None:
 
 def _write_result(run_dir: Path, result: RunResult) -> None:
     write_json_atomic(_result_path(run_dir), result.to_dict())
+
+
+def _load_result(run_dir: Path) -> RunResult:
+    path = _result_path(run_dir)
+    if path.exists():
+        return RunResult.from_dict(read_json(path))
+    return RunResult(run_id=run_dir.name, run_dir=str(run_dir))
 
 
 def _write_manifest(run_dir: Path, run_id: str, items: list[ManifestItem]) -> None:
@@ -882,17 +893,47 @@ def _collect_running_runs() -> list[Path]:
     return _collect_runs_by_state("running")
 
 
-def _claim_recoverable_running_run() -> tuple[Path | None, bool]:
-    running_runs = _collect_running_runs()
-    for candidate in running_runs:
-        if not _run_lock_is_stale(candidate):
+def _running_run_is_active(run_dir: Path) -> bool:
+    return _lock_path(run_dir).exists() and not _run_lock_is_stale(run_dir)
+
+
+def _mark_interrupted_running_run(run_dir: Path) -> bool:
+    status = _load_status(run_dir)
+    if str(status.state or "").lower() != "running":
+        return False
+    if _running_run_is_active(run_dir):
+        return False
+
+    status.state = "canceled"
+    status.current_stage = "interrupted"
+    status.message = _INTERRUPTED_RUN_MESSAGE
+    status.estimated_remaining_sec = None
+    status.completed_at = now_iso()
+    if _INTERRUPTED_RUN_MESSAGE not in status.warnings:
+        status.warnings.append(_INTERRUPTED_RUN_MESSAGE)
+    _write_status(run_dir, status)
+
+    result = _load_result(run_dir)
+    result.run_id = result.run_id or status.run_id or run_dir.name
+    result.state = "canceled"
+    result.run_dir = result.run_dir or str(run_dir)
+    if _INTERRUPTED_RUN_MESSAGE not in result.warnings:
+        result.warnings.append(_INTERRUPTED_RUN_MESSAGE)
+    _write_result(run_dir, result)
+
+    append_log(_run_log_path(run_dir), f"[{now_iso()}] {_INTERRUPTED_RUN_MESSAGE}")
+    _release_run_lock(run_dir)
+    return True
+
+
+def _retire_interrupted_running_runs() -> bool:
+    has_active_running_run = False
+    for candidate in _collect_running_runs():
+        if _running_run_is_active(candidate):
+            has_active_running_run = True
             continue
-        if not _run_sources_accessible(candidate):
-            continue
-        if not _acquire_run_lock(candidate):
-            continue
-        return candidate, True
-    return None, bool(running_runs)
+        _mark_interrupted_running_run(candidate)
+    return has_active_running_run
 
 
 def _collect_runs_by_state(*states: str) -> list[Path]:
@@ -924,30 +965,29 @@ def process_run(run_dir: Path | None = None) -> bool:
     lock_acquired = False
     delete_requested = False
     if run_dir is None:
-        running_run_dir, has_running_runs = _claim_recoverable_running_run()
-        if running_run_dir is not None:
-            run_dir = running_run_dir
+        if _retire_interrupted_running_runs():
+            return False
+        pending = _collect_pending_runs()
+        if not pending:
+            return False
+        run_dir = None
+        for candidate in pending:
+            if not _run_sources_accessible(candidate):
+                continue
+            if not _acquire_run_lock(candidate):
+                continue
+            run_dir = candidate
             lock_acquired = True
-        else:
-            if has_running_runs:
-                return False
-            pending = _collect_pending_runs()
-            if not pending:
-                return False
-            run_dir = None
-            for candidate in pending:
-                if not _run_sources_accessible(candidate):
-                    continue
-                if not _acquire_run_lock(candidate):
-                    continue
-                run_dir = candidate
-                lock_acquired = True
-                break
-            if run_dir is None:
-                return False
+            break
+        if run_dir is None:
+            return False
 
     run_dir = run_dir.resolve()
     if not _request_path(run_dir).exists():
+        return False
+    status_before_lock = _load_status(run_dir)
+    if str(status_before_lock.state or "").lower() == "running":
+        _mark_interrupted_running_run(run_dir)
         return False
     if not lock_acquired and not _acquire_run_lock(run_dir):
         return False

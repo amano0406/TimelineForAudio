@@ -33,6 +33,7 @@ from .settings import (
     configured_path,
     load_huggingface_token,
     load_settings,
+    settings_token,
     supported_audio_extensions,
 )
 
@@ -1193,7 +1194,7 @@ def _iter_run_dirs(output_path: Path) -> list[Path]:
 
 def settings_snapshot(settings: dict[str, Any] | None = None) -> dict[str, Any]:
     settings = settings or load_settings()
-    token = str(settings.get("huggingfaceToken") or "").strip() or None
+    token = settings_token(settings) or None
     inputs = _enabled_input_roots(settings)
     output_roots = _enabled_output_root_list(settings)
     blocking_reasons: list[str] = []
@@ -1218,6 +1219,7 @@ def settings_snapshot(settings: dict[str, Any] | None = None) -> dict[str, Any]:
         "compute": {
             "mode": str(settings.get("computeMode") or "cpu"),
         },
+        "runtime": settings.get("runtime", {}),
         "inputs": [str(root.get("path") or "") for root in inputs],
         "master": str(output_roots[0]["path"]) if output_roots else None,
     }

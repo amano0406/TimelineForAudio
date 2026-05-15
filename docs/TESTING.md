@@ -2,7 +2,7 @@
 
 [Back to README](../README.md)
 
-This document lists validation commands for the current CLI-only product.
+This document lists validation commands for the current CLI-first product.
 
 ## Lightweight Checks
 
@@ -15,6 +15,7 @@ Run from Windows PowerShell:
 This checks:
 
 - Python unit tests
+- C# health API build
 - CLI wrapper behavior
 - Docker-facing JSON error envelopes
 - settings and list commands

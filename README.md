@@ -1,8 +1,10 @@
 # TimelineForAudio
 
-TimelineForAudio is a local Docker-first CLI product that turns audio files into reusable speaker/time/transcript timeline data.
+TimelineForAudio is a local Docker-first CLI product that converts local audio files into speaker/time/transcript timeline data.
 
-## What This Product Does
+The product is currently CLI-first. A minimal C#/.NET health API is available only for runtime readiness checks and future API migration preparation.
+
+## Role
 
 TimelineForAudio reads configured audio directories, detects changed audio files, and creates structured timeline artifacts for downstream Timeline products or LLM workflows.
 
@@ -10,31 +12,67 @@ It preserves source-audio-relative time, assigns mechanical speaker labels such 
 
 It does not create summaries, real speaker names, or identity guesses.
 
-## Input
+## Settings
 
-The user provides fixed input directories in:
+Local settings live at:
 
 ```text
 C:\apps\TimelineForAudio\settings.json
 ```
 
-Each input directory is scanned for supported audio files. Source audio files are read only and are not modified.
+Current shape:
 
-The Git-managed template is:
-
-```text
-C:\apps\TimelineForAudio\settings.example.json
+```json
+{
+  "schemaVersion": 1,
+  "runtime": {
+    "instanceName": "ff4e43e190",
+    "apiPort": 19100
+  },
+  "inputRoots": [
+    "C:\\apps\\Timeline\\data\\input\\audio"
+  ],
+  "outputRoot": "C:\\apps\\Timeline\\data\\to_text\\audio",
+  "huggingFaceToken": "***REDACTED***",
+  "computeMode": "gpu"
+}
 ```
+
+`huggingFaceToken` is the canonical token key. Older local files that still contain `huggingfaceToken` are read for compatibility and saved back using `huggingFaceToken`.
+
+`runtime.instanceName` identifies this local Docker runtime. `runtime.apiPort` is used by the local health API.
+
+## Runtime
+
+Run from Windows PowerShell:
+
+```powershell
+cd C:\apps\TimelineForAudio
+.\start.ps1
+```
+
+`start.ps1` starts:
+
+- Docker worker
+- local health API
+
+Health check:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:19100/health
+```
+
+The response body is a JSON boolean:
+
+```json
+true
+```
+
+No other API routes are part of the current contract. Product operations still go through `cli.ps1`.
 
 ## Output
 
-The primary output is:
-
-```text
-<outputRoot>/<item-id>/timeline.json
-```
-
-Each generated item contains:
+Generated item output is written under `outputRoot`:
 
 ```text
 <outputRoot>/
@@ -59,57 +97,52 @@ items/
 
 Source audio files are not included in master output or download ZIPs.
 
-## Quick Start
-
-Run from Windows PowerShell:
-
-```powershell
-cd C:\apps\TimelineForAudio
-.\start.ps1
-.\cli.ps1 settings init --json
-.\cli.ps1 settings save --token <HUGGING_FACE_TOKEN> --compute-mode gpu --json
-.\cli.ps1 items refresh --json
-.\cli.ps1 items list --json
-.\cli.ps1 items download --json
-```
-
-Use CPU mode when GPU is unavailable:
-
-```powershell
-.\cli.ps1 settings save --compute-mode cpu --json
-```
-
-## Sample
-
-Committed sample audio is not included yet.
-
-For a local smoke test, put a short audio file in one configured input directory, then run:
-
-```powershell
-.\cli.ps1 files list --json
-.\cli.ps1 items refresh --max-items 1 --json
-.\cli.ps1 items download --json
-```
+For concrete JSON structures and field meanings, see [docs/OUTPUTS.md](docs/OUTPUTS.md).
 
 ## Common Commands
 
 | Purpose | Command |
 |---|---|
-| Start Docker worker | `.\start.ps1` |
-| Stop Docker worker | `.\stop.ps1` |
+| Start Docker worker and health API | `.\start.ps1` |
+| Stop Docker worker and health API | `.\stop.ps1` |
+| Check local health API | `Invoke-RestMethod http://127.0.0.1:19100/health` |
 | Create settings if missing | `.\cli.ps1 settings init --json` |
+| Show settings status | `.\cli.ps1 settings status --json` |
 | Save token / compute mode | `.\cli.ps1 settings save --token <HUGGING_FACE_TOKEN> --compute-mode gpu --json` |
-| Add input directory | `.\cli.ps1 settings inputs add "C:\TimelineData\input-audio\" --json` |
+| Add input directory | `.\cli.ps1 settings inputs add "C:\apps\Timeline\data\input\audio" --json` |
 | Show master output path | `.\cli.ps1 settings master show --json` |
-| Set master output path | `.\cli.ps1 settings master set "C:\TimelineData\audio" --json` |
+| Set master output path | `.\cli.ps1 settings master set "C:\apps\Timeline\data\to_text\audio" --json` |
 | List source audio | `.\cli.ps1 files list --json` |
 | Process changed files | `.\cli.ps1 items refresh --json` |
 | Process a small batch | `.\cli.ps1 items refresh --max-items 3 --json` |
 | List generated items | `.\cli.ps1 items list --json` |
-| Remove generated items | `.\cli.ps1 items remove --item-id item-a,item-b --dry-run --json` |
+| Remove generated items dry-run | `.\cli.ps1 items remove --item-id item-a,item-b --dry-run --json` |
+| Remove generated items | `.\cli.ps1 items remove --item-id item-a,item-b --json` |
 | Create download ZIP | `.\cli.ps1 items download --json` |
 | Show model inventory | `.\cli.ps1 models list --json` |
 | Uninstall local containers | `.\uninstall.ps1` |
+
+## Validation
+
+Lightweight validation:
+
+```powershell
+.\scripts\lint.ps1
+```
+
+Operational validation with isolated generated data:
+
+```powershell
+.\scripts\lint.ps1 -IncludeOperationalSmoke
+```
+
+Real-model operational validation:
+
+```powershell
+.\scripts\test-operational.ps1 -UseRealModels
+```
+
+The operational tests use isolated settings, isolated Docker project names, and temporary input/output roots.
 
 ## Detailed Docs
 
