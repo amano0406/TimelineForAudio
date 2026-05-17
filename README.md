@@ -2,7 +2,7 @@
 
 TimelineForAudio is a local Docker-first product that converts local audio files into speaker/time/transcript timeline data.
 
-The product integration surface is the small local C#/.NET API. Host CLI launchers have been removed and are not part of normal Timeline operation.
+The product integration surface is the small local C#/.NET API.
 
 ## Role
 
