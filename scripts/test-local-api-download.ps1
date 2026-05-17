@@ -182,7 +182,7 @@ $rawOutput = [string]$result.Stdout
 if ($exitCode -ne 0) {
     Write-Host $rawOutput
     Write-Host $result.Stderr
-    throw "API items download failed with status $exitCode."
+    throw "API download endpoint failed with status $exitCode."
 }
 
 $payload = $null
@@ -191,17 +191,17 @@ try {
 }
 catch {
     Write-Host $rawOutput
-    throw "API items download did not return a JSON payload."
+    throw "API download endpoint did not return a JSON payload."
 }
 
 $itemIds = @($payload.item_ids)
 if ($itemIds.Count -le 0) {
-    throw "API items download returned no item ids."
+    throw "API download endpoint returned no item ids."
 }
 
 $archivePathText = [string]$payload.archive_path
 if ([string]::IsNullOrWhiteSpace($archivePathText)) {
-    throw "API items download did not return archive_path."
+    throw "API download endpoint did not return archive_path."
 }
 
 $hostArchivePath = Convert-TfaContainerPathToHostPath -PathText $archivePathText
@@ -235,16 +235,16 @@ $explicitResult = Invoke-TfaApi -Path "items/download" -Body @{
 if ($explicitResult.ExitCode -ne 0) {
     Write-Host $explicitResult.Stdout
     Write-Host $explicitResult.Stderr
-    throw "API items download with outputPath failed with status $($explicitResult.ExitCode)."
+    throw "API download endpoint with outputPath failed with status $($explicitResult.ExitCode)."
 }
 $explicitPayload = ConvertFrom-TfaJsonPayload -Text ([string]$explicitResult.Stdout)
 $explicitArchivePath = [string]$explicitPayload.archive_path
 $expectedArchivePath = [System.IO.Path]::GetFullPath($explicitOutputPath)
 if (-not ([System.String]::Equals($explicitArchivePath, $expectedArchivePath, [System.StringComparison]::OrdinalIgnoreCase))) {
-    throw "API items download returned the wrong archive_path. Expected $expectedArchivePath but got $explicitArchivePath"
+    throw "API download endpoint returned the wrong archive_path. Expected $expectedArchivePath but got $explicitArchivePath"
 }
 if (-not (Test-Path -LiteralPath $expectedArchivePath)) {
-    throw "API items download did not create the requested host archive: $expectedArchivePath"
+    throw "API download endpoint did not create the requested host archive: $expectedArchivePath"
 }
 $explicitArchive = Get-Item -LiteralPath $expectedArchivePath
 if ($explicitArchive.Length -le 0) {
@@ -265,7 +265,7 @@ $errorResult = Invoke-TfaApi -Path "items/download" -Body @{
     itemIds = @("item-does-not-exist")
 }
 if ($errorResult.ExitCode -eq 0) {
-    throw "API invalid items download unexpectedly succeeded."
+    throw "API invalid download request unexpectedly succeeded."
 }
 if (-not [string]::IsNullOrWhiteSpace([string]$errorResult.Stderr)) {
     Write-Host $errorResult.Stderr
