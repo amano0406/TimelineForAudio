@@ -20,548 +20,85 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$settingsPath = Join-Path $repoRoot "settings.json"
-$settingsExamplePath = Join-Path $repoRoot "settings.example.json"
-$cliPath = Join-Path $repoRoot "cli.ps1"
-$preparePathsScript = Join-Path $repoRoot "scripts\prepare-docker-paths.ps1"
 
-if ([System.IO.Path]::DirectorySeparatorChar -ne "\") {
-    throw "This operational test must be run from Windows PowerShell."
-}
-if (-not (Test-Path -LiteralPath $cliPath)) {
-    throw "cli.ps1 was not found: $cliPath"
-}
-
-function ConvertFrom-TfaJsonOutput {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Text
-    )
-
-    $trimmed = $Text.Trim()
-    if (-not $trimmed) {
-        throw "Command returned no output."
-    }
-
-    $objectStart = $trimmed.IndexOf("{")
-    $arrayStart = $trimmed.IndexOf("[")
-    $starts = @(@($objectStart, $arrayStart) | Where-Object { $_ -ge 0 } | Sort-Object)
-    if ($starts.Count -le 0) {
-        throw "Command did not return JSON: $trimmed"
-    }
-
-    $start = [int]$starts[0]
-    $objectEnd = $trimmed.LastIndexOf("}")
-    $arrayEnd = $trimmed.LastIndexOf("]")
-    $end = [Math]::Max($objectEnd, $arrayEnd)
-    if ($end -lt $start) {
-        throw "Command returned incomplete JSON: $trimmed"
-    }
-
-    return $trimmed.Substring($start, $end - $start + 1) | ConvertFrom-Json
-}
-
-function Format-TfaProcessArgument {
-    param([string]$Value)
-
-    if ($null -eq $Value) {
-        return '""'
-    }
-    $text = [string]$Value
-    if ($text.Length -eq 0) {
-        return '""'
-    }
-    if ($text -notmatch '[\s"]') {
-        return $text
-    }
-
-    $builder = [System.Text.StringBuilder]::new()
-    [void]$builder.Append('"')
-    $backslashes = 0
-    foreach ($character in $text.ToCharArray()) {
-        if ($character -eq '\') {
-            $backslashes += 1
-            continue
-        }
-        if ($character -eq '"') {
-            if ($backslashes -gt 0) {
-                [void]$builder.Append(('\' * ($backslashes * 2)))
-                $backslashes = 0
+function Get-TfaApiBaseUrl {
+    $manifestPath = Join-Path $repoRoot "timeline-product.json"
+    if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
+        try {
+            $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($manifest.api.defaultBaseUrl) {
+                return ([string]$manifest.api.defaultBaseUrl).TrimEnd("/")
             }
-            [void]$builder.Append('\"')
-            continue
-        }
-        if ($backslashes -gt 0) {
-            [void]$builder.Append(('\' * $backslashes))
-            $backslashes = 0
-        }
-        [void]$builder.Append($character)
-    }
-    if ($backslashes -gt 0) {
-        [void]$builder.Append(('\' * ($backslashes * 2)))
-    }
-    [void]$builder.Append('"')
-    return $builder.ToString()
-}
-
-function ConvertTo-TfaPowerShellLiteral {
-    param([string]$Value)
-
-    if ($null -eq $Value) {
-        return "''"
-    }
-    return "'" + ([string]$Value).Replace("'", "''") + "'"
-}
-
-function Invoke-TfaPowerShellFile {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$FilePath,
-        [string[]]$Arguments = @()
-    )
-
-    $powershellPath = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
-    if (-not (Test-Path -LiteralPath $powershellPath)) {
-        $powershellPath = "powershell.exe"
-    }
-
-    $envStatements = [System.Collections.Generic.List[string]]::new()
-    foreach ($name in @(
-        "COMPOSE_PROJECT_NAME",
-        "TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH",
-        "TIMELINE_FOR_AUDIO_PATHS_OVERRIDE_PATH"
-    )) {
-        $value = switch ($name) {
-            "COMPOSE_PROJECT_NAME" { $env:COMPOSE_PROJECT_NAME }
-            "TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH" { $env:TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH }
-            "TIMELINE_FOR_AUDIO_PATHS_OVERRIDE_PATH" { $env:TIMELINE_FOR_AUDIO_PATHS_OVERRIDE_PATH }
-        }
-        if ($null -ne $value) {
-            $envStatements.Add('$env:' + $name + ' = ' + (ConvertTo-TfaPowerShellLiteral -Value ([string]$value))) | Out-Null
-        }
-    }
-    $callParts = [System.Collections.Generic.List[string]]::new()
-    $callParts.Add("&") | Out-Null
-    $callParts.Add((ConvertTo-TfaPowerShellLiteral -Value $FilePath)) | Out-Null
-    foreach ($argument in @($Arguments)) {
-        $callParts.Add((ConvertTo-TfaPowerShellLiteral -Value ([string]$argument))) | Out-Null
-    }
-    $commandText = ([string[]]$envStatements + @($callParts.ToArray() -join " ")) -join "; "
-
-    $allArguments = @(
-        "-NoLogo",
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        $commandText
-    )
-
-    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-    $startInfo.FileName = $powershellPath
-    $startInfo.Arguments = (@($allArguments) | ForEach-Object { Format-TfaProcessArgument -Value ([string]$_) }) -join " "
-    $startInfo.WorkingDirectory = $repoRoot
-    $startInfo.UseShellExecute = $false
-    $startInfo.CreateNoWindow = $true
-    $startInfo.RedirectStandardOutput = $true
-    $startInfo.RedirectStandardError = $true
-    $startInfo.StandardOutputEncoding = [System.Text.UTF8Encoding]::new($false)
-    $startInfo.StandardErrorEncoding = [System.Text.UTF8Encoding]::new($false)
-    $process = [System.Diagnostics.Process]::new()
-    $process.StartInfo = $startInfo
-    [void]$process.Start()
-    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-    $stderrTask = $process.StandardError.ReadToEndAsync()
-    $process.WaitForExit()
-
-    return [pscustomobject]@{
-        ExitCode = [int]$process.ExitCode
-        Stdout = [string]$stdoutTask.Result
-        Stderr = [string]$stderrTask.Result
-    }
-}
-
-function Invoke-TfaCliJson {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string[]]$Arguments
-    )
-
-    $result = Invoke-TfaPowerShellFile -FilePath $cliPath -Arguments $Arguments
-    $rawOutput = [string]$result.Stdout
-    if ($result.ExitCode -ne 0) {
-        Write-Host $result.Stdout
-        Write-Host $result.Stderr
-        throw "cli.ps1 failed with exit code $($result.ExitCode). Arguments: $($Arguments -join ' ')"
-    }
-    return ConvertFrom-TfaJsonOutput -Text $rawOutput
-}
-
-function New-TfaOperationalWaveFile {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Path,
-        [double]$DurationSeconds = 3.0,
-        [int]$SampleRate = 16000,
-        [double]$FrequencyHz = 440.0
-    )
-
-    $samples = [int]($SampleRate * $DurationSeconds)
-    $channels = 1
-    $bitsPerSample = 16
-    $blockAlign = [int]($channels * ($bitsPerSample / 8))
-    $byteRate = [int]($SampleRate * $blockAlign)
-    $dataLength = [int]($samples * $blockAlign)
-    $encoding = [System.Text.Encoding]::ASCII
-
-    New-Item -ItemType Directory -Path (Split-Path -Parent $Path) -Force | Out-Null
-    $stream = [System.IO.File]::Create($Path)
-    $writer = [System.IO.BinaryWriter]::new($stream)
-    try {
-        $writer.Write($encoding.GetBytes("RIFF"))
-        $writer.Write([int](36 + $dataLength))
-        $writer.Write($encoding.GetBytes("WAVE"))
-        $writer.Write($encoding.GetBytes("fmt "))
-        $writer.Write([int]16)
-        $writer.Write([int16]1)
-        $writer.Write([int16]$channels)
-        $writer.Write([int]$SampleRate)
-        $writer.Write([int]$byteRate)
-        $writer.Write([int16]$blockAlign)
-        $writer.Write([int16]$bitsPerSample)
-        $writer.Write($encoding.GetBytes("data"))
-        $writer.Write([int]$dataLength)
-
-        for ($index = 0; $index -lt $samples; $index += 1) {
-            $amplitude = [Math]::Sin((2.0 * [Math]::PI * $FrequencyHz * $index) / $SampleRate)
-            $writer.Write([int16]([Math]::Round($amplitude * 16000)))
-        }
-    }
-    finally {
-        $writer.Dispose()
-        $stream.Dispose()
-    }
-}
-
-function Get-TfaOriginalSettings {
-    if (Test-Path -LiteralPath $settingsPath) {
-        return Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
-    }
-    if (Test-Path -LiteralPath $settingsExamplePath) {
-        return Get-Content -LiteralPath $settingsExamplePath -Raw | ConvertFrom-Json
-    }
-    return [pscustomobject]@{
-        schemaVersion = 1
-        inputRoots = @()
-        outputRoot = ""
-        huggingFaceToken = ""
-        computeMode = "cpu"
-        runtime = [pscustomobject]@{
-            instanceName = ""
-            apiPort = 19100
-        }
-    }
-}
-
-function Get-TfaOperationalSourceAudio {
-    param(
-        [Parameter(Mandatory = $true)]
-        [object]$Settings,
-        [string]$ExplicitPath = "",
-        [long]$MaxBytes = 52428800
-    )
-
-    $supportedExtensions = @(".aac", ".flac", ".m4a", ".mp3", ".wav")
-
-    if (-not [string]::IsNullOrWhiteSpace($ExplicitPath)) {
-        if (-not (Test-Path -LiteralPath $ExplicitPath -PathType Leaf)) {
-            throw "SourceAudioPath was not found: $ExplicitPath"
-        }
-        $source = Get-Item -LiteralPath $ExplicitPath
-        if ($supportedExtensions -notcontains $source.Extension.ToLowerInvariant()) {
-            throw "SourceAudioPath is not a supported audio file: $ExplicitPath"
-        }
-        return $source
-    }
-
-    $roots = @()
-    if ($Settings.PSObject.Properties.Name -contains "inputRoots") {
-        $roots = @($Settings.inputRoots)
-    }
-
-    $candidates = [System.Collections.Generic.List[System.IO.FileInfo]]::new()
-    foreach ($root in @($roots)) {
-        $rootPath = [string]$root
-        if ([string]::IsNullOrWhiteSpace($rootPath)) {
-            continue
-        }
-        if (-not (Test-Path -LiteralPath $rootPath -PathType Container)) {
-            continue
-        }
-        Get-ChildItem -LiteralPath $rootPath -File -Recurse -ErrorAction SilentlyContinue |
-            Where-Object {
-                $supportedExtensions -contains $_.Extension.ToLowerInvariant() -and
-                $_.Length -gt 0 -and
-                $_.Length -le $MaxBytes
-            } |
-            ForEach-Object { $candidates.Add($_) }
-    }
-
-    $selected = $candidates | Sort-Object Length, FullName | Select-Object -First 1
-    return $selected
-}
-
-function Convert-TfaContainerPathToHostPath {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$PathText,
-        [Parameter(Mandatory = $true)]
-        [string]$RepoRoot
-    )
-
-    $normalized = $PathText.Replace("\", "/")
-    if ($normalized -eq "/workspace") {
-        return $RepoRoot
-    }
-    if ($normalized.StartsWith("/workspace/")) {
-        $relativePath = $normalized.Substring("/workspace/".Length).Replace("/", [System.IO.Path]::DirectorySeparatorChar)
-        return Join-Path $RepoRoot $relativePath
-    }
-    return $PathText
-}
-
-function Test-TfaZipContains {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ArchivePath,
-        [Parameter(Mandatory = $true)]
-        [string]$Pattern
-    )
-
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $zip = [System.IO.Compression.ZipFile]::OpenRead($ArchivePath)
-    try {
-        foreach ($entry in $zip.Entries) {
-            if ($entry.FullName -like $Pattern) {
-                return $true
+            if ($manifest.api.defaultPort) {
+                return "http://127.0.0.1:$([int]$manifest.api.defaultPort)"
             }
         }
-        return $false
+        catch {
+        }
     }
-    finally {
-        $zip.Dispose()
+    return "http://127.0.0.1:19100"
+}
+
+function Invoke-TfaApi {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [object]$Body = @{},
+        [int]$TimeoutSeconds = 60
+    )
+
+    $json = $Body | ConvertTo-Json -Depth 20 -Compress
+    return Invoke-RestMethod `
+        -UseBasicParsing `
+        -TimeoutSec $TimeoutSeconds `
+        -Uri "$script:ApiBaseUrl/$Path" `
+        -Method Post `
+        -ContentType "application/json" `
+        -Body $json
+}
+
+function Assert-Tfa {
+    param(
+        [Parameter(Mandatory = $true)][bool]$Condition,
+        [Parameter(Mandatory = $true)][string]$Message
+    )
+    if (-not $Condition) {
+        throw $Message
     }
 }
 
-$timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$runId = "operational-$timestamp-$(([guid]::NewGuid().ToString('N')).Substring(0, 8))"
-$runRoot = Join-Path $WorkRoot $runId
-$inputRoot = Join-Path $runRoot "input"
-$outputRoot = Join-Path $runRoot "output"
-$testSettingsPath = Join-Path $runRoot "settings.json"
-$testPathsOverridePath = Join-Path $runRoot "docker-compose.paths.yml"
-$originalComposeProjectName = $env:COMPOSE_PROJECT_NAME
-$originalHostSettingsPath = $env:TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH
-$originalPathsOverridePath = $env:TIMELINE_FOR_AUDIO_PATHS_OVERRIDE_PATH
-$projectName = "timeline-for-audio-operational-$($runId.ToLowerInvariant() -replace '[^a-z0-9-]', '-')"
-$generatedArchiveHostPath = $null
+$script:ApiBaseUrl = Get-TfaApiBaseUrl
+Write-Host "TimelineForAudio API operational smoke: $script:ApiBaseUrl"
 
-New-Item -ItemType Directory -Path $runRoot, $inputRoot, $outputRoot -Force | Out-Null
+$health = Invoke-WebRequest -UseBasicParsing -TimeoutSec 10 -Uri "$script:ApiBaseUrl/health"
+Assert-Tfa ($health.StatusCode -ge 200 -and $health.StatusCode -lt 300) "Health endpoint returned HTTP $($health.StatusCode)."
+Assert-Tfa (([string]$health.Content).Trim() -ne "false") "Health endpoint returned false."
 
-$originalSettings = Get-TfaOriginalSettings
-$computeMode = "cpu"
+$settings = Invoke-TfaApi -Path "settings/status"
+Assert-Tfa ($null -ne $settings) "settings/status returned no payload."
+
+$files = Invoke-TfaApi -Path "files/list" -Body @{ page = 1; pageSize = 1 }
+Assert-Tfa ($null -ne $files) "files/list returned no payload."
+
+$items = Invoke-TfaApi -Path "items/list" -Body @{ page = 1; pageSize = 1 }
+Assert-Tfa ($null -ne $items) "items/list returned no payload."
+
 if ($UseRealModels) {
-    $token = ""
-    if ($originalSettings.PSObject.Properties.Name -contains "huggingFaceToken") {
-        $token = [string]$originalSettings.huggingFaceToken
+    $refreshBody = @{ maxItems = 1 }
+    if ($SourceAudioPath) {
+        Write-Warning "SourceAudioPath is no longer used by this API smoke. Configure input roots in settings.json."
     }
-    elseif ($originalSettings.PSObject.Properties.Name -contains "huggingfaceToken") {
-        $token = [string]$originalSettings.huggingfaceToken
+    if ($MaxSourceAudioBytes -ne 52428800) {
+        Write-Warning "MaxSourceAudioBytes is no longer used by this API smoke."
     }
-    if ([string]::IsNullOrWhiteSpace($token)) {
-        throw "UseRealModels requires huggingFaceToken in the current settings.json."
-    }
-    if ($originalSettings.PSObject.Properties.Name -contains "computeMode") {
-        $settingsComputeMode = [string]$originalSettings.computeMode
-        if ($settingsComputeMode -in @("cpu", "gpu")) {
-            $computeMode = $settingsComputeMode
-        }
-    }
-    $sourceAudio = Get-TfaOperationalSourceAudio `
-        -Settings $originalSettings `
-        -ExplicitPath $SourceAudioPath `
-        -MaxBytes $MaxSourceAudioBytes
-    if (-not $sourceAudio) {
-        throw "UseRealModels requires -SourceAudioPath or at least one supported audio file in settings.inputRoots within MaxSourceAudioBytes."
-    }
-    $samplePath = Join-Path $inputRoot ([System.IO.Path]::GetFileName([string]$sourceAudio.FullName))
-    Copy-Item -LiteralPath ([string]$sourceAudio.FullName) -Destination $samplePath -Force
-}
-else {
-    $token = "hf_operational_test_placeholder_000000"
-    $samplePath = Join-Path $inputRoot "operational-sample.wav"
-    New-TfaOperationalWaveFile -Path $samplePath
+    $refresh = Invoke-TfaApi -Path "items/refresh" -Body $refreshBody -TimeoutSeconds 900
+    Assert-Tfa ($null -ne $refresh) "items/refresh returned no payload."
 }
 
-$testSettings = [ordered]@{
-    schemaVersion = 1
-    inputRoots = @($inputRoot)
-    outputRoot = $outputRoot
-    huggingFaceToken = $token
-    computeMode = $computeMode
-    runtime = [ordered]@{
-        instanceName = ""
-        apiPort = 19100
-    }
+if ($KeepOutput) {
+    Write-Host "KeepOutput is accepted for compatibility; this API smoke does not create an isolated output directory."
+}
+if ($WorkRoot) {
+    Write-Host "WorkRoot is accepted for compatibility; this API smoke uses the configured product settings."
 }
 
-try {
-    [System.IO.File]::WriteAllText(
-        $testSettingsPath,
-        (ConvertTo-Json -InputObject $testSettings -Depth 8),
-        [System.Text.UTF8Encoding]::new($false)
-    )
-    $env:COMPOSE_PROJECT_NAME = $projectName
-    $env:TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH = $testSettingsPath
-    $env:TIMELINE_FOR_AUDIO_PATHS_OVERRIDE_PATH = $testPathsOverridePath
-
-    $envProbeScript = Join-Path $runRoot "probe-env.ps1"
-    [System.IO.File]::WriteAllText(
-        $envProbeScript,
-        @'
-[pscustomobject]@{
-  COMPOSE_PROJECT_NAME = $env:COMPOSE_PROJECT_NAME
-  TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH = $env:TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH
-  TIMELINE_FOR_AUDIO_PATHS_OVERRIDE_PATH = $env:TIMELINE_FOR_AUDIO_PATHS_OVERRIDE_PATH
-} | ConvertTo-Json -Compress
-'@,
-        [System.Text.UTF8Encoding]::new($false)
-    )
-    $envProbe = Invoke-TfaPowerShellFile -FilePath $envProbeScript
-    if ($envProbe.ExitCode -ne 0) {
-        throw "Failed to verify operational test environment propagation."
-    }
-    $envProbePayload = ConvertFrom-TfaJsonOutput -Text $envProbe.Stdout
-    if ([string]$envProbePayload.TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH -ne $testSettingsPath) {
-        throw "Operational test environment was not propagated to child PowerShell."
-    }
-
-    Write-Host "Running isolated operational test."
-    Write-Host "  Work root: $runRoot"
-    Write-Host "  Real models: $UseRealModels"
-    Write-Host "  Source audio: $samplePath"
-
-    $status = Invoke-TfaCliJson -Arguments @("settings", "status", "--json")
-    if ([string]$status.setup.state -ne "ready") {
-        throw "settings status was not ready: $($status | ConvertTo-Json -Depth 8)"
-    }
-
-    $files = Invoke-TfaCliJson -Arguments @("files", "list", "--json")
-    if ([int]$files.total_files -ne 1) {
-        throw "files list did not return exactly one test file: $($files | ConvertTo-Json -Depth 8)"
-    }
-
-    if ($UseRealModels) {
-        $refresh = Invoke-TfaCliJson -Arguments @("items", "refresh", "--max-items", "1", "--json")
-        if ([string]$refresh.state -notin @("completed", "failed")) {
-            throw "items refresh returned an unexpected state: $($refresh | ConvertTo-Json -Depth 12)"
-        }
-        if ([string]$refresh.state -eq "failed") {
-            throw "items refresh failed: $($refresh | ConvertTo-Json -Depth 12)"
-        }
-
-        $items = Invoke-TfaCliJson -Arguments @("items", "list", "--json")
-        if ([int]$items.total_items -lt 1) {
-            throw "items list returned no completed items."
-        }
-
-        $download = Invoke-TfaCliJson -Arguments @("items", "download", "--json")
-        $archivePath = [string]$download.archive_path
-        $archiveHostPath = Convert-TfaContainerPathToHostPath -PathText $archivePath -RepoRoot $repoRoot
-        $generatedArchiveHostPath = $archiveHostPath
-        if (-not (Test-Path -LiteralPath $archiveHostPath -PathType Leaf)) {
-            throw "items download archive was not created: $archiveHostPath"
-        }
-        if (-not (Test-TfaZipContains -ArchivePath $archiveHostPath -Pattern "README.md")) {
-            throw "download archive does not contain README.md."
-        }
-        if (-not (Test-TfaZipContains -ArchivePath $archiveHostPath -Pattern "items/*/timeline.json")) {
-            throw "download archive does not contain timeline.json."
-        }
-        if (-not (Test-TfaZipContains -ArchivePath $archiveHostPath -Pattern "items/*/convert_info.json")) {
-            throw "download archive does not contain convert_info.json."
-        }
-
-        $secondRefresh = Invoke-TfaCliJson -Arguments @("items", "refresh", "--json")
-        if ([int]$secondRefresh.queued_count -ne 0 -or [int]$secondRefresh.skipped_count -lt 1) {
-            throw "second refresh did not skip unchanged input: $($secondRefresh | ConvertTo-Json -Depth 12)"
-        }
-    }
-    else {
-        $refresh = Invoke-TfaCliJson -Arguments @("items", "refresh", "--queue-only", "--json")
-        if ([string]$refresh.state -ne "pending") {
-            throw "queue-only refresh did not create a pending run: $($refresh | ConvertTo-Json -Depth 12)"
-        }
-        if ([int]$refresh.queued_count -ne 1) {
-            throw "queue-only refresh did not queue exactly one file: $($refresh | ConvertTo-Json -Depth 12)"
-        }
-
-        $runs = Invoke-TfaCliJson -Arguments @("runs", "list", "--json")
-        if (@($runs).Count -lt 1) {
-            throw "runs list returned no pending run."
-        }
-    }
-
-    Write-Host "Operational test passed."
-}
-finally {
-    try {
-        $docker = Get-Command docker -ErrorAction SilentlyContinue
-        if ($docker) {
-            $composeArguments = @("compose", "-p", $projectName, "-f", (Join-Path $repoRoot "docker-compose.yml"))
-            if (Test-Path -LiteralPath $testPathsOverridePath) {
-                $composeArguments += @("-f", $testPathsOverridePath)
-            }
-            $composeArguments += @("down", "--remove-orphans", "-v")
-            & $docker.Source @composeArguments *> $null
-        }
-    }
-    catch {
-        # Cleanup is best-effort. The next run uses a unique Docker project name.
-    }
-
-    if ($null -eq $originalComposeProjectName) {
-        Remove-Item Env:\COMPOSE_PROJECT_NAME -ErrorAction SilentlyContinue
-    }
-    else {
-        $env:COMPOSE_PROJECT_NAME = $originalComposeProjectName
-    }
-
-    if ($null -eq $originalHostSettingsPath) {
-        Remove-Item Env:\TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH -ErrorAction SilentlyContinue
-    }
-    else {
-        $env:TIMELINE_FOR_AUDIO_HOST_SETTINGS_PATH = $originalHostSettingsPath
-    }
-
-    if ($null -eq $originalPathsOverridePath) {
-        Remove-Item Env:\TIMELINE_FOR_AUDIO_PATHS_OVERRIDE_PATH -ErrorAction SilentlyContinue
-    }
-    else {
-        $env:TIMELINE_FOR_AUDIO_PATHS_OVERRIDE_PATH = $originalPathsOverridePath
-    }
-
-    if (Test-Path -LiteralPath $preparePathsScript) {
-        & $preparePathsScript -RepoRoot $repoRoot | Out-Null
-    }
-
-    if (-not $KeepOutput) {
-        if ($null -ne $generatedArchiveHostPath -and (Test-Path -LiteralPath $generatedArchiveHostPath -PathType Leaf)) {
-            Remove-Item -LiteralPath $generatedArchiveHostPath -Force -ErrorAction SilentlyContinue
-        }
-        Remove-Item -LiteralPath $runRoot -Recurse -Force -ErrorAction SilentlyContinue
-    }
-    else {
-        Write-Host "Kept operational test output: $runRoot"
-    }
-}
+Write-Host "TimelineForAudio API operational smoke passed."

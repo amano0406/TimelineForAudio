@@ -7,6 +7,27 @@ $ErrorActionPreference = "Stop"
 $repoRoot = $PSScriptRoot
 . (Join-Path $repoRoot "scripts\docker-runtime.ps1")
 
+$apiPidFile = Join-Path $repoRoot ".runtime\api.pid"
+
+function Stop-TfaNativeApi {
+    if (-not (Test-Path -LiteralPath $apiPidFile)) {
+        return
+    }
+
+    $pidText = (Get-Content -LiteralPath $apiPidFile -Raw).Trim()
+    $pidValue = 0
+    if ([int]::TryParse($pidText, [ref]$pidValue)) {
+        $process = Get-Process -Id $pidValue -ErrorAction SilentlyContinue
+        if ($null -ne $process) {
+            Stop-Process -Id $pidValue -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    Remove-Item -LiteralPath $apiPidFile -Force -ErrorAction SilentlyContinue
+}
+
+Stop-TfaNativeApi
+
 Initialize-TfaDocker -RepoRoot $repoRoot
 $composeArgs = Get-TfaComposeArgs -RepoRoot $repoRoot
 $docker = Get-TfaDockerCommand

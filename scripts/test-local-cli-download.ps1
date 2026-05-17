@@ -6,6 +6,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+Add-Type -AssemblyName System.Net.Http
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
@@ -117,12 +118,7 @@ function Invoke-TfaPowerShellFile {
 }
 
 if ([System.IO.Path]::DirectorySeparatorChar -ne "\") {
-    throw "This smoke test must be run from Windows PowerShell because it verifies local cli.ps1 execution."
-}
-
-$cliPath = Join-Path $repoRoot "cli.ps1"
-if (-not (Test-Path -LiteralPath $cliPath)) {
-    throw "cli.ps1 was not found: $cliPath"
+    throw "This smoke test must be run from Windows PowerShell because it verifies local API access."
 }
 
 function ConvertFrom-TfaJsonPayload {
@@ -140,14 +136,53 @@ function ConvertFrom-TfaJsonPayload {
     return $trimmed.Substring($jsonStart, $jsonEnd - $jsonStart + 1) | ConvertFrom-Json
 }
 
-Write-Host "Running local cli.ps1 download smoke test..."
-$result = Invoke-TfaPowerShellFile -FilePath $cliPath -Arguments @("items", "download", "--json")
+function Get-TfaApiBaseUrl {
+    $settingsPath = Join-Path $repoRoot "settings.json"
+    $apiPort = 19100
+    if (Test-Path -LiteralPath $settingsPath) {
+        $settings = Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($settings.PSObject.Properties["runtime"] -and $settings.runtime.PSObject.Properties["apiPort"]) {
+            [void][int]::TryParse(([string]$settings.runtime.apiPort), [ref]$apiPort)
+        }
+    }
+    if ($apiPort -lt 1 -or $apiPort -gt 65535) {
+        $apiPort = 19100
+    }
+    return "http://127.0.0.1:$apiPort"
+}
+
+function Invoke-TfaApi {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [hashtable]$Body = @{}
+    )
+
+    $client = [System.Net.Http.HttpClient]::new()
+    try {
+        $url = (Get-TfaApiBaseUrl).TrimEnd("/") + "/" + $Path.TrimStart("/")
+        $json = $Body | ConvertTo-Json -Depth 20 -Compress
+        $content = [System.Net.Http.StringContent]::new($json, [System.Text.Encoding]::UTF8, "application/json")
+        $response = $client.PostAsync($url, $content).GetAwaiter().GetResult()
+        $text = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        return [pscustomobject]@{
+            ExitCode = if ($response.IsSuccessStatusCode) { 0 } else { [int]$response.StatusCode }
+            Stdout = $text
+            Stderr = ""
+        }
+    }
+    finally {
+        $client.Dispose()
+    }
+}
+
+Write-Host "Running local API download smoke test..."
+$result = Invoke-TfaApi -Path "items/download"
 $exitCode = $result.ExitCode
 $rawOutput = [string]$result.Stdout
 if ($exitCode -ne 0) {
     Write-Host $rawOutput
     Write-Host $result.Stderr
-    throw "cli.ps1 items download failed with exit code $exitCode."
+    throw "API items download failed with status $exitCode."
 }
 
 $payload = $null
@@ -156,17 +191,17 @@ try {
 }
 catch {
     Write-Host $rawOutput
-    throw "cli.ps1 items download did not return a JSON payload."
+    throw "API items download did not return a JSON payload."
 }
 
 $itemIds = @($payload.item_ids)
 if ($itemIds.Count -le 0) {
-    throw "cli.ps1 items download returned no item ids."
+    throw "API items download returned no item ids."
 }
 
 $archivePathText = [string]$payload.archive_path
 if ([string]::IsNullOrWhiteSpace($archivePathText)) {
-    throw "cli.ps1 items download did not return archive_path."
+    throw "API items download did not return archive_path."
 }
 
 $hostArchivePath = Convert-TfaContainerPathToHostPath -PathText $archivePathText
@@ -179,7 +214,7 @@ if ($archive.Length -le 0) {
     throw "Download archive is empty: $hostArchivePath"
 }
 
-Write-Host "Local cli.ps1 download smoke test passed."
+Write-Host "Local API download smoke test passed."
 Write-Host "  Items:   $($itemIds.Count)"
 Write-Host "  Archive: $hostArchivePath"
 
@@ -188,32 +223,34 @@ if (-not $KeepOutput) {
     Write-Host "  Cleanup: removed generated archive"
 }
 
-Write-Host "Running local cli.ps1 explicit --output download smoke test..."
-$explicitOutputDir = Join-Path $repoRoot "output\local-cli-download-smoke"
+Write-Host "Running local API explicit output download smoke test..."
+$explicitOutputDir = Join-Path $repoRoot "output\local-api-download-smoke"
 $explicitOutputPath = Join-Path $explicitOutputDir "requested-items.zip"
 if (Test-Path -LiteralPath $explicitOutputPath) {
     Remove-Item -LiteralPath $explicitOutputPath -Force
 }
-$explicitResult = Invoke-TfaPowerShellFile -FilePath $cliPath -Arguments @("items", "download", "--output", $explicitOutputPath, "--json")
+$explicitResult = Invoke-TfaApi -Path "items/download" -Body @{
+    outputPath = $explicitOutputPath
+}
 if ($explicitResult.ExitCode -ne 0) {
     Write-Host $explicitResult.Stdout
     Write-Host $explicitResult.Stderr
-    throw "cli.ps1 items download --output failed with exit code $($explicitResult.ExitCode)."
+    throw "API items download with outputPath failed with status $($explicitResult.ExitCode)."
 }
 $explicitPayload = ConvertFrom-TfaJsonPayload -Text ([string]$explicitResult.Stdout)
 $explicitArchivePath = [string]$explicitPayload.archive_path
 $expectedArchivePath = [System.IO.Path]::GetFullPath($explicitOutputPath)
 if (-not ([System.String]::Equals($explicitArchivePath, $expectedArchivePath, [System.StringComparison]::OrdinalIgnoreCase))) {
-    throw "cli.ps1 items download --output returned the wrong archive_path. Expected $expectedArchivePath but got $explicitArchivePath"
+    throw "API items download returned the wrong archive_path. Expected $expectedArchivePath but got $explicitArchivePath"
 }
 if (-not (Test-Path -LiteralPath $expectedArchivePath)) {
-    throw "cli.ps1 items download --output did not create the requested host archive: $expectedArchivePath"
+    throw "API items download did not create the requested host archive: $expectedArchivePath"
 }
 $explicitArchive = Get-Item -LiteralPath $expectedArchivePath
 if ($explicitArchive.Length -le 0) {
     throw "Explicit output archive is empty: $expectedArchivePath"
 }
-Write-Host "Local cli.ps1 explicit --output download smoke test passed."
+Write-Host "Local API explicit output download smoke test passed."
 Write-Host "  Archive: $expectedArchivePath"
 if (-not $KeepOutput) {
     Remove-Item -LiteralPath $expectedArchivePath -Force
@@ -223,20 +260,22 @@ if (-not $KeepOutput) {
     Write-Host "  Cleanup: removed explicit output archive"
 }
 
-Write-Host "Running local cli.ps1 JSON error smoke test..."
-$errorResult = Invoke-TfaPowerShellFile -FilePath $cliPath -Arguments @("items", "download", "--item-id", "item-does-not-exist", "--json")
+Write-Host "Running local API JSON error smoke test..."
+$errorResult = Invoke-TfaApi -Path "items/download" -Body @{
+    itemIds = @("item-does-not-exist")
+}
 if ($errorResult.ExitCode -eq 0) {
-    throw "cli.ps1 invalid items download unexpectedly succeeded."
+    throw "API invalid items download unexpectedly succeeded."
 }
 if (-not [string]::IsNullOrWhiteSpace([string]$errorResult.Stderr)) {
     Write-Host $errorResult.Stderr
-    throw "cli.ps1 JSON error wrote to stderr."
+    throw "API JSON error wrote to stderr."
 }
 $errorPayload = ConvertFrom-TfaJsonPayload -Text ([string]$errorResult.Stdout)
 if ($true -eq $errorPayload.ok) {
-    throw "cli.ps1 JSON error payload did not report ok=false."
+    throw "API JSON error payload did not report ok=false."
 }
 if ([string]$errorPayload.error.message -notmatch "Item not found") {
-    throw "cli.ps1 JSON error payload did not include the expected message."
+    throw "API JSON error payload did not include the expected message."
 }
-Write-Host "Local cli.ps1 JSON error smoke test passed."
+Write-Host "Local API JSON error smoke test passed."

@@ -60,11 +60,11 @@ run_compose_locked "${compose_args[@]}" up -d --remove-orphans worker
 echo
 echo "TimelineForAudio worker is running."
 echo
-echo "CLI examples:"
-echo "  ./cli.command settings init"
-echo "  ./cli.command settings status"
-echo "  ./cli.command items refresh"
-echo "  ./cli.command runs list"
+echo "Timeline integration uses the local API started by start.ps1 on Windows."
+echo "API examples:"
+echo "  POST http://localhost:19100/settings/status"
+echo "  POST http://localhost:19100/items/list"
+echo "  POST http://localhost:19100/items/refresh"
 echo
 echo "Docker status:"
 docker compose "${compose_args[@]}" ps

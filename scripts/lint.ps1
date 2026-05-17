@@ -1,6 +1,7 @@
 param(
     [Parameter()]
-    [switch] $IncludeLocalCliDownload,
+    [Alias("IncludeLocalCliDownload")]
+    [switch] $IncludeLocalApiDownload,
 
     [Parameter()]
     [switch] $IncludeOperationalSmoke
@@ -80,10 +81,10 @@ else {
     Write-Host "dotnet is not installed; skipping health API build."
 }
 
-if ($IncludeLocalCliDownload) {
+if ($IncludeLocalApiDownload) {
     & (Join-Path $repoRoot "scripts\test-local-cli-download.ps1")
     if ($LASTEXITCODE -ne 0) {
-        throw "Local cli.ps1 download smoke test failed."
+        throw "Local API download smoke test failed."
     }
 }
 

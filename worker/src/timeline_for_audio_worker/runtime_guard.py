@@ -33,13 +33,11 @@ def assert_cli_runtime_allowed() -> None:
         return
     message = "\n".join(
         [
-            "TimelineForAudio CLI is Docker-only in normal use.",
+            "TimelineForAudio worker direct execution is Docker-only in normal use.",
             "",
-            "Use the Docker wrapper from the repository root:",
-            "  Windows: .\\cli.ps1 settings status",
-            "  WSL/Unix backdoor: ./cli.command settings status",
+            "Start the product with start.ps1 and call the local API.",
             "",
-            f"For tests only, set {ALLOW_HOST_CLI_ENV}=1 before running the CLI directly.",
+            f"For tests only, set {ALLOW_HOST_CLI_ENV}=1 before running the worker command directly.",
         ]
     )
     print(message, file=sys.stderr)

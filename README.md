@@ -1,8 +1,8 @@
 # TimelineForAudio
 
-TimelineForAudio is a local Docker-first CLI product that converts local audio files into speaker/time/transcript timeline data.
+TimelineForAudio is a local Docker-first product that converts local audio files into speaker/time/transcript timeline data.
 
-The product is currently CLI-first. A minimal C#/.NET health API is available only for runtime readiness checks and future API migration preparation.
+The product integration surface is the small local C#/.NET API. Host CLI launchers are legacy maintenance tools and are not required by Timeline.
 
 ## Role
 
@@ -40,7 +40,7 @@ Current shape:
 
 `huggingFaceToken` is the canonical token key. Older local files that still contain `huggingfaceToken` are read for compatibility and saved back using `huggingFaceToken`.
 
-`runtime.instanceName` identifies this local Docker runtime. `runtime.apiPort` is used by the local health API.
+`runtime.instanceName` identifies this local Docker runtime. `runtime.apiPort` is used by the local API.
 
 ## Runtime
 
@@ -54,7 +54,7 @@ cd C:\apps\TimelineForAudio
 `start.ps1` starts:
 
 - Docker worker
-- local health API
+- local API
 
 Health check:
 
@@ -68,7 +68,22 @@ The response body is a JSON boolean:
 true
 ```
 
-No other API routes are part of the current contract. Product operations still go through `cli.ps1`.
+Operation API:
+
+| Purpose | Route |
+|---|---|
+| Settings status | `POST /settings/status` |
+| Save token / compute mode | `POST /settings/save` |
+| List source audio | `POST /files/list` |
+| List generated items | `POST /items/list` |
+| Queue or run refresh | `POST /items/refresh` |
+| Remove generated items | `POST /items/remove` |
+| Create download ZIP | `POST /items/download` |
+| Show model inventory | `POST /models/list` |
+
+The API invokes the Docker worker directly from C# and does not call host CLI launchers.
+If the Docker worker is not already running, operation routes return an error
+instead of starting it implicitly.
 
 ## Output
 
@@ -103,23 +118,19 @@ For concrete JSON structures and field meanings, see [docs/OUTPUTS.md](docs/OUTP
 
 | Purpose | Command |
 |---|---|
-| Start Docker worker and health API | `.\start.ps1` |
-| Stop Docker worker and health API | `.\stop.ps1` |
-| Check local health API | `Invoke-RestMethod http://127.0.0.1:19100/health` |
-| Create settings if missing | `.\cli.ps1 settings init --json` |
-| Show settings status | `.\cli.ps1 settings status --json` |
-| Save token / compute mode | `.\cli.ps1 settings save --token <HUGGING_FACE_TOKEN> --compute-mode gpu --json` |
-| Add input directory | `.\cli.ps1 settings inputs add "C:\apps\Timeline\data\input\audio" --json` |
-| Show master output path | `.\cli.ps1 settings master show --json` |
-| Set master output path | `.\cli.ps1 settings master set "C:\apps\Timeline\data\to_text\audio" --json` |
-| List source audio | `.\cli.ps1 files list --json` |
-| Process changed files | `.\cli.ps1 items refresh --json` |
-| Process a small batch | `.\cli.ps1 items refresh --max-items 3 --json` |
-| List generated items | `.\cli.ps1 items list --json` |
-| Remove generated items dry-run | `.\cli.ps1 items remove --item-id item-a,item-b --dry-run --json` |
-| Remove generated items | `.\cli.ps1 items remove --item-id item-a,item-b --json` |
-| Create download ZIP | `.\cli.ps1 items download --json` |
-| Show model inventory | `.\cli.ps1 models list --json` |
+| Start Docker worker and local API | `.\start.ps1` |
+| Stop Docker worker and local API | `.\stop.ps1` |
+| Check local API health | `Invoke-RestMethod http://127.0.0.1:19100/health` |
+| Show settings status | `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19100/settings/status -Body '{}' -ContentType 'application/json'` |
+| Save token / compute mode | `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19100/settings/save -Body '{"token":"<HUGGING_FACE_TOKEN>","computeMode":"gpu"}' -ContentType 'application/json'` |
+| List source audio | `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19100/files/list -Body '{}' -ContentType 'application/json'` |
+| Process changed files | `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19100/items/refresh -Body '{}' -ContentType 'application/json'` |
+| Process a small batch | `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19100/items/refresh -Body '{"maxItems":3}' -ContentType 'application/json'` |
+| List generated items | `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19100/items/list -Body '{}' -ContentType 'application/json'` |
+| Remove generated items dry-run | `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19100/items/remove -Body '{"itemIds":["item-a","item-b"],"dryRun":true}' -ContentType 'application/json'` |
+| Remove generated items | `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19100/items/remove -Body '{"itemIds":["item-a","item-b"]}' -ContentType 'application/json'` |
+| Create download ZIP | `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19100/items/download -Body '{}' -ContentType 'application/json'` |
+| Show model inventory | `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19100/models/list -Body '{}' -ContentType 'application/json'` |
 | Uninstall local containers | `.\uninstall.ps1` |
 
 ## Validation
@@ -148,7 +159,6 @@ The operational tests use isolated settings, isolated Docker project names, and 
 
 | Document | When to read it |
 |---|---|
-| [docs/CLI.md](docs/CLI.md) | Calling the CLI from another product or management UI |
 | [docs/OUTPUTS.md](docs/OUTPUTS.md) | Reading master artifacts and download ZIPs |
 | [docs/PIPELINE.md](docs/PIPELINE.md) | Understanding the processing pipeline |
 | [docs/RUNTIME.md](docs/RUNTIME.md) | Docker, storage, model, GPU, token, and local-file boundaries |
