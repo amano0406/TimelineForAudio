@@ -72,7 +72,7 @@ Operation API:
 
 | Purpose | Route |
 |---|---|
-| Settings status | `POST /settings/status` |
+| Read settings | `POST /settings/status` |
 | Save token / compute mode | `POST /settings/save` |
 | List source audio | `POST /files/list` |
 | List generated items | `POST /items/list` |
@@ -120,7 +120,7 @@ For concrete JSON structures and field meanings, see [docs/OUTPUTS.md](docs/OUTP
 | Start Docker worker and local API | `.\start.ps1` |
 | Stop Docker worker and local API | `.\stop.ps1` |
 | Check local API health | `Invoke-RestMethod http://127.0.0.1:19100/health` |
-| Show settings status | `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19100/settings/status -Body '{}' -ContentType 'application/json'` |
+| Read settings through API | `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19100/settings/status -Body '{}' -ContentType 'application/json'` |
 | Save token / compute mode | `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19100/settings/save -Body '{"token":"<HUGGING_FACE_TOKEN>","computeMode":"gpu"}' -ContentType 'application/json'` |
 | List source audio | `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19100/files/list -Body '{}' -ContentType 'application/json'` |
 | Process changed files | `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19100/items/refresh -Body '{}' -ContentType 'application/json'` |
