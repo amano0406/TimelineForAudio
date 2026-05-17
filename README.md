@@ -82,7 +82,7 @@ Operation API:
 | Show model inventory | `POST /models/list` |
 
 The API is served by the resident worker container. Starting the product is still
-explicit; operation routes do not start Docker implicitly.
+explicit; API routes do not start Docker implicitly.
 
 ## Output
 

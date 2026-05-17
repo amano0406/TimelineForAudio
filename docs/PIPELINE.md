@@ -18,11 +18,11 @@ The request contains:
 
 Language hints and supplemental text are not used by this product.
 
-For licensing and usage-condition checks, the worker can list the current model inventory:
+For licensing and usage-condition checks, the local API can list the current model inventory:
 
 ```text
-models list --json
-models list --include-remote --json
+POST /models/list
+POST /models/list {"includeRemote": true}
 ```
 
 Remote metadata comes from the Hugging Face model API when requested.
@@ -45,7 +45,7 @@ source hash + generation signature + source file identity
 
 `source file identity` includes the configured input root path and relative path. A renamed file is therefore treated as a different source.
 
-`items refresh` queues changed files by default. `items refresh --max-items <N>` limits one invocation when a smaller test or retry batch is safer.
+`POST /items/refresh` queues changed files by default. The `maxItems` request field limits one invocation when a smaller test or retry batch is safer.
 
 The master directory is not used as a run-log store. It contains only completed item artifact directories. Runtime catalogs, logs, and locks are temporary and can be rebuilt or discarded.
 
@@ -110,7 +110,7 @@ Each turn contains:
 
 ## 7. Item Download
 
-`items download` exports timeline JSON packages for selected managed items.
+`POST /items/download` exports timeline JSON packages for selected managed items.
 
 The audio file itself is not embedded in the archive.
 

@@ -15,9 +15,9 @@ def list_payload(
     sort_fields: list[str],
 ) -> dict[str, Any]:
     if page is not None and page < 1:
-        raise ValueError("--page must be 1 or greater.")
+        raise ValueError("page must be 1 or greater.")
     if page_size is not None and page_size < 1:
-        raise ValueError("--page-size must be 1 or greater.")
+        raise ValueError("page_size must be 1 or greater.")
 
     total = len(rows)
     use_all = page is None and page_size is None

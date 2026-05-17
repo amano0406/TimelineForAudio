@@ -18,7 +18,7 @@ This checks:
 - worker HTTP API behavior
 - local API behavior
 - Docker-facing JSON error envelopes
-- settings and list operations
+- settings and list API actions
 - download ZIP creation path
 
 ## Real-Model Smoke Test

@@ -265,7 +265,7 @@ Important fields:
 
 ## Download ZIP
 
-`items download` creates a handoff ZIP:
+`POST /items/download` creates a handoff ZIP:
 
 ```text
 README.md

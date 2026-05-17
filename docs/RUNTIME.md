@@ -82,7 +82,7 @@ The response body is a JSON boolean: `true` or `false`.
 
 If Docker or the worker stops while a run is `running`, that run is treated as interrupted.
 
-On the next worker startup, the interrupted run is marked as `canceled` with `current_stage: "interrupted"` and is not resumed automatically. Run `items refresh` again to queue fresh work.
+On the next worker startup, the interrupted run is marked as `canceled` with `current_stage: "interrupted"` and is not resumed automatically. Call `POST /items/refresh` again to queue fresh work.
 
 Runs that were still `pending` can still be picked up by the worker.
 
@@ -119,9 +119,9 @@ TimelineForAudio is a local Docker worker plus API, not a hosted service or OS s
 - source audio files are not deleted by item cleanup
 - generated item cleanup removes selected master item directories
 - run logs, locks, scratch files, and model caches are internal runtime data
-- output ZIPs are written under the project `output` directory unless `--output` is specified
+- output ZIPs are written under the project `output` directory unless an explicit API output path is specified
 - Hugging Face tokens are stored in local-only `settings.json`, which is not tracked by Git
 
-`items remove` deletes generated artifacts only. Use `--dry-run` first when selecting item IDs from another UI.
+`POST /items/remove` deletes generated artifacts only. Use `dryRun` first when selecting item IDs from another UI.
 
 `uninstall.ps1` is broader and can remove Docker runtime data if requested. Use it only when cleaning the local installation.

@@ -37,7 +37,7 @@ def assert_worker_runtime_allowed() -> None:
             "",
             "Start the product with start.ps1 and call the local API.",
             "",
-            f"For tests only, set {ALLOW_HOST_RUN_ENV}=1 before running the worker operation directly.",
+            f"For tests only, set {ALLOW_HOST_RUN_ENV}=1 before running worker code directly.",
         ]
     )
     print(message, file=sys.stderr)
