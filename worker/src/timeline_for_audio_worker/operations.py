@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     settings_parser = subparsers.add_parser("settings", help="Show or update local settings.")
-    settings_subparsers = settings_parser.add_subparsers(dest="settings_command", required=True)
+    settings_subparsers = settings_parser.add_subparsers(dest="settings_operation", required=True)
     settings_init = settings_subparsers.add_parser(
         "init", help="Create settings.json from settings.example.json if it does not exist."
     )
@@ -52,7 +52,7 @@ def parse_args() -> argparse.Namespace:
     inputs = settings_subparsers.add_parser(
         "inputs", help="Manage configured input directories."
     )
-    inputs_subparsers = inputs.add_subparsers(dest="inputs_command", required=True)
+    inputs_subparsers = inputs.add_subparsers(dest="inputs_operation", required=True)
     inputs_list = inputs_subparsers.add_parser("list", help="List input directories.")
     inputs_list.add_argument("--json", action="store_true")
     inputs_add = inputs_subparsers.add_parser("add", help="Add an input directory.")
@@ -66,7 +66,7 @@ def parse_args() -> argparse.Namespace:
     master = settings_subparsers.add_parser(
         "master", help="Manage the single master output directory."
     )
-    master_subparsers = master.add_subparsers(dest="master_command", required=True)
+    master_subparsers = master.add_subparsers(dest="master_operation", required=True)
     master_show = master_subparsers.add_parser("show", help="Show the master output directory.")
     master_show.add_argument("--json", action="store_true")
     master_set = master_subparsers.add_parser("set", help="Set the master output directory.")
@@ -74,7 +74,7 @@ def parse_args() -> argparse.Namespace:
     master_set.add_argument("--json", action="store_true")
 
     runs_parser = subparsers.add_parser("runs", help="Inspect past item refresh runs.")
-    runs_subparsers = runs_parser.add_subparsers(dest="runs_command", required=True)
+    runs_subparsers = runs_parser.add_subparsers(dest="runs_operation", required=True)
     runs_list = runs_subparsers.add_parser("list", help="List runs in the configured output root.")
     runs_list.add_argument("--json", action="store_true")
     runs_show = runs_subparsers.add_parser("show", help="Show one run request/status/result.")
@@ -84,7 +84,7 @@ def parse_args() -> argparse.Namespace:
     files_parser = subparsers.add_parser(
         "files", help="Inspect source audio files in configured input directories."
     )
-    files_subparsers = files_parser.add_subparsers(dest="files_command", required=True)
+    files_subparsers = files_parser.add_subparsers(dest="files_operation", required=True)
     files_list = files_subparsers.add_parser("list", help="List configured audio files.")
     files_list.add_argument("--probe", action="store_true")
     files_list.add_argument("--page", type=int, required=False)
@@ -100,7 +100,7 @@ def parse_args() -> argparse.Namespace:
     items_parser = subparsers.add_parser(
         "items", help="Manage TimelineForAudio analysis items and generated data."
     )
-    items_subparsers = items_parser.add_subparsers(dest="items_command", required=True)
+    items_subparsers = items_parser.add_subparsers(dest="items_operation", required=True)
     items_list = items_subparsers.add_parser("list", help="List managed analysis items.")
     items_list.add_argument("--page", type=int, required=False)
     items_list.add_argument("--page-size", type=int, required=False)
@@ -129,7 +129,7 @@ def parse_args() -> argparse.Namespace:
     models_parser = subparsers.add_parser(
         "models", help="List models and model-like components used by the current pipeline."
     )
-    models_subparsers = models_parser.add_subparsers(dest="models_command", required=True)
+    models_subparsers = models_parser.add_subparsers(dest="models_operation", required=True)
     models_list = models_subparsers.add_parser("list", help="List configured model inventory.")
     models_list.add_argument(
         "--include-remote",
@@ -166,7 +166,7 @@ def _load_app_config(config_path: Path | None) -> AppConfig:
     return _runtime_config()
 
 
-def cmd_scan(config_path: Path | None, output: Path | None, as_json: bool) -> int:
+def operation_scan(config_path: Path | None, output: Path | None, as_json: bool) -> int:
     payload = discover_audio(_load_app_config(config_path))
     if output:
         write_json(output, payload)
@@ -174,7 +174,7 @@ def cmd_scan(config_path: Path | None, output: Path | None, as_json: bool) -> in
     return 0
 
 
-def cmd_files_list(
+def operation_files_list(
     *,
     include_probe: bool,
     page: int | None,
@@ -199,7 +199,7 @@ def _split_cli_ids(value: str) -> list[str]:
     return rows
 
 
-def cmd_items_list(
+def operation_items_list(
     *,
     page: int | None,
     page_size: int | None,
@@ -210,7 +210,7 @@ def cmd_items_list(
     return 0
 
 
-def cmd_items_remove(
+def operation_items_remove(
     *,
     item_id_value: str,
     dry_run: bool,
@@ -224,7 +224,7 @@ def cmd_items_remove(
     return 0
 
 
-def cmd_items_download(
+def operation_items_download(
     *,
     item_id_value: str | None,
     output: Path | None,
@@ -253,7 +253,7 @@ def cmd_items_download(
     return 0
 
 
-def cmd_models_list(*, include_remote: bool, output: Path | None, as_json: bool) -> int:
+def operation_models_list(*, include_remote: bool, output: Path | None, as_json: bool) -> int:
     payload = build_model_inventory(
         settings=load_settings(),
         include_remote=include_remote,
@@ -281,14 +281,14 @@ def cmd_models_list(*, include_remote: bool, output: Path | None, as_json: bool)
     return 0
 
 
-def cmd_process_run(run_dir: Path) -> int:
+def operation_process_run(run_dir: Path) -> int:
     from .processor import process_run
 
     process_run(run_dir)
     return 0
 
 
-def cmd_daemon(poll_interval: int) -> int:
+def operation_daemon(poll_interval: int) -> int:
     from .processor import process_run
 
     write_worker_capabilities()
@@ -388,12 +388,12 @@ def _print_error(exc: Exception, as_json: bool) -> None:
     print(f"error: {exc}", file=sys.stderr)
 
 
-def cmd_settings_status(as_json: bool) -> int:
+def operation_settings_status(as_json: bool) -> int:
     _print_payload(settings_snapshot(), as_json)
     return 0
 
 
-def cmd_settings_save(
+def operation_settings_save(
     token: str | None,
     compute_mode: str | None,
     as_json: bool,
@@ -422,13 +422,13 @@ def _settings_path_key(value: object) -> str:
     return str(value or "").strip().replace("\\", "/").rstrip("/").lower()
 
 
-def cmd_settings_inputs_list(as_json: bool) -> int:
+def operation_settings_inputs_list(as_json: bool) -> int:
     settings = load_settings()
     _print_payload(_root_list_payload(settings, "inputRoots"), as_json)
     return 0
 
 
-def cmd_settings_inputs_add(*, path: Path, as_json: bool) -> int:
+def operation_settings_inputs_add(*, path: Path, as_json: bool) -> int:
     settings = load_settings()
     rows = _root_list_payload(settings, "inputRoots")
     normalized_path = str(path)
@@ -444,7 +444,7 @@ def cmd_settings_inputs_add(*, path: Path, as_json: bool) -> int:
     return 0
 
 
-def cmd_settings_inputs_remove(path: str, as_json: bool) -> int:
+def operation_settings_inputs_remove(path: str, as_json: bool) -> int:
     settings = load_settings()
     normalized_key = _settings_path_key(path)
     rows = [
@@ -458,7 +458,7 @@ def cmd_settings_inputs_remove(path: str, as_json: bool) -> int:
     return 0
 
 
-def cmd_settings_inputs_clear(as_json: bool) -> int:
+def operation_settings_inputs_clear(as_json: bool) -> int:
     settings = load_settings()
     settings["inputRoots"] = []
     save_settings(settings)
@@ -466,13 +466,13 @@ def cmd_settings_inputs_clear(as_json: bool) -> int:
     return 0
 
 
-def cmd_settings_master_show(as_json: bool) -> int:
+def operation_settings_master_show(as_json: bool) -> int:
     settings = load_settings()
     _print_payload(_master_payload(settings) or {}, as_json)
     return 0
 
 
-def cmd_settings_master_set(*, path: Path, as_json: bool) -> int:
+def operation_settings_master_set(*, path: Path, as_json: bool) -> int:
     settings = load_settings()
     settings["outputRoot"] = str(path)
     save_settings(settings)
@@ -480,13 +480,13 @@ def cmd_settings_master_set(*, path: Path, as_json: bool) -> int:
     return 0
 
 
-def cmd_runs_list(as_json: bool) -> int:
+def operation_runs_list(as_json: bool) -> int:
     rows = list_runs()
     _print_payload(rows, as_json)
     return 0
 
 
-def cmd_runs_show(run_id: str, as_json: bool) -> int:
+def operation_runs_show(run_id: str, as_json: bool) -> int:
     run_dir = find_run_dir(run_id)
     payload = {
         "run_id": run_id,
@@ -510,7 +510,7 @@ def cmd_runs_show(run_id: str, as_json: bool) -> int:
     return 0
 
 
-def cmd_items_refresh(
+def operation_items_refresh(
     *,
     source_ids: list[str],
     output_root_id: str,
@@ -556,55 +556,55 @@ def main() -> int:
     assert_worker_runtime_allowed()
     args = parse_args()
     if args.command == "settings":
-        if args.settings_command == "init":
+        if args.settings_operation == "init":
             _print_payload(init_settings(), args.json)
             return 0
-        if args.settings_command == "status":
-            return cmd_settings_status(args.json)
-        if args.settings_command == "save":
-            return cmd_settings_save(
+        if args.settings_operation == "status":
+            return operation_settings_status(args.json)
+        if args.settings_operation == "save":
+            return operation_settings_save(
                 args.token,
                 args.compute_mode,
                 args.json,
             )
-        if args.settings_command == "inputs":
-            if args.inputs_command == "list":
-                return cmd_settings_inputs_list(args.json)
-            if args.inputs_command == "add":
-                return cmd_settings_inputs_add(path=args.path, as_json=args.json)
-            if args.inputs_command == "remove":
-                return cmd_settings_inputs_remove(args.path, args.json)
-            if args.inputs_command == "clear":
-                return cmd_settings_inputs_clear(args.json)
-        if args.settings_command == "master":
-            if args.master_command == "show":
-                return cmd_settings_master_show(args.json)
-            if args.master_command == "set":
-                return cmd_settings_master_set(path=args.path, as_json=args.json)
+        if args.settings_operation == "inputs":
+            if args.inputs_operation == "list":
+                return operation_settings_inputs_list(args.json)
+            if args.inputs_operation == "add":
+                return operation_settings_inputs_add(path=args.path, as_json=args.json)
+            if args.inputs_operation == "remove":
+                return operation_settings_inputs_remove(args.path, args.json)
+            if args.inputs_operation == "clear":
+                return operation_settings_inputs_clear(args.json)
+        if args.settings_operation == "master":
+            if args.master_operation == "show":
+                return operation_settings_master_show(args.json)
+            if args.master_operation == "set":
+                return operation_settings_master_set(path=args.path, as_json=args.json)
     if args.command == "runs":
-        if args.runs_command == "list":
-            return cmd_runs_list(args.json)
-        if args.runs_command == "show":
-            return cmd_runs_show(args.run_id, args.json)
+        if args.runs_operation == "list":
+            return operation_runs_list(args.json)
+        if args.runs_operation == "show":
+            return operation_runs_show(args.run_id, args.json)
     if args.command == "files":
-        if args.files_command == "list":
-            return cmd_files_list(
+        if args.files_operation == "list":
+            return operation_files_list(
                 include_probe=args.probe,
                 page=args.page,
                 page_size=args.page_size,
                 as_json=args.json,
             )
-        if args.files_command == "scan":
-            return cmd_scan(args.config, args.output, args.json)
+        if args.files_operation == "scan":
+            return operation_scan(args.config, args.output, args.json)
     if args.command == "items":
-        if args.items_command == "list":
-            return cmd_items_list(
+        if args.items_operation == "list":
+            return operation_items_list(
                 page=args.page,
                 page_size=args.page_size,
                 as_json=args.json,
             )
-        if args.items_command == "refresh":
-            return cmd_items_refresh(
+        if args.items_operation == "refresh":
+            return operation_items_refresh(
                 source_ids=args.source_ids,
                 output_root_id="master",
                 reprocess_duplicates=args.reprocess_duplicates,
@@ -612,29 +612,29 @@ def main() -> int:
                 queue_only=args.queue_only,
                 as_json=args.json,
             )
-        if args.items_command == "remove":
-            return cmd_items_remove(
+        if args.items_operation == "remove":
+            return operation_items_remove(
                 item_id_value=args.item_id,
                 dry_run=args.dry_run,
                 as_json=args.json,
             )
-        if args.items_command == "download":
-            return cmd_items_download(
+        if args.items_operation == "download":
+            return operation_items_download(
                 item_id_value=args.item_id,
                 output=args.output,
                 as_json=args.json,
             )
     if args.command == "models":
-        if args.models_command == "list":
-            return cmd_models_list(
+        if args.models_operation == "list":
+            return operation_models_list(
                 include_remote=args.include_remote,
                 output=args.output,
                 as_json=args.json,
             )
     if args.command == "process-run":
-        return cmd_process_run(args.run_dir)
+        return operation_process_run(args.run_dir)
     if args.command == "daemon":
-        return cmd_daemon(args.poll_interval)
+        return operation_daemon(args.poll_interval)
     raise ValueError(f"Unsupported command: {args.command}")
 
 

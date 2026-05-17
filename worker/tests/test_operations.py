@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from contextlib import redirect_stderr
 from contextlib import redirect_stdout
@@ -9,7 +9,7 @@ import sys
 import unittest
 from unittest.mock import patch
 
-from timeline_for_audio_worker import operations as command_module
+from timeline_for_audio_worker import operations as operation_module
 
 
 class OperationTests(unittest.TestCase):
@@ -23,10 +23,10 @@ class OperationTests(unittest.TestCase):
         }
         stdout = StringIO()
         with (
-            patch.object(command_module, "settings_snapshot", return_value=payload),
+            patch.object(operation_module, "settings_snapshot", return_value=payload),
             redirect_stdout(stdout),
         ):
-            exit_code = command_module.cmd_settings_status(as_json=True)
+            exit_code = operation_module.operation_settings_status(as_json=True)
 
         self.assertEqual(0, exit_code)
         self.assertEqual(payload, json.loads(stdout.getvalue()))
@@ -53,10 +53,10 @@ class OperationTests(unittest.TestCase):
         }
         stdout = StringIO()
         with (
-            patch.object(command_module, "list_audio_file_page", return_value=payload) as list_page,
+            patch.object(operation_module, "list_audio_file_page", return_value=payload) as list_page,
             redirect_stdout(stdout),
         ):
-            exit_code = command_module.cmd_files_list(
+            exit_code = operation_module.operation_files_list(
                 include_probe=False,
                 page=None,
                 page_size=None,
@@ -89,10 +89,10 @@ class OperationTests(unittest.TestCase):
         }
         stdout = StringIO()
         with (
-            patch.object(command_module, "list_items_page", return_value=payload) as list_page,
+            patch.object(operation_module, "list_items_page", return_value=payload) as list_page,
             redirect_stdout(stdout),
         ):
-            exit_code = command_module.cmd_items_list(page=None, page_size=None, as_json=True)
+            exit_code = operation_module.operation_items_list(page=None, page_size=None, as_json=True)
 
         self.assertEqual(0, exit_code)
         list_page.assert_called_once_with(page=None, page_size=None)
@@ -111,15 +111,15 @@ class OperationTests(unittest.TestCase):
         }
         stdout = StringIO()
         with (
-            patch.object(command_module, "load_settings", return_value={"computeMode": "cpu"}),
+            patch.object(operation_module, "load_settings", return_value={"computeMode": "cpu"}),
             patch.object(
-                command_module,
+                operation_module,
                 "create_refresh_run",
                 return_value=("run-1", Path("/tmp/run-1"), summary),
             ) as create_run,
             redirect_stdout(stdout),
         ):
-            exit_code = command_module.cmd_items_refresh(
+            exit_code = operation_module.operation_items_refresh(
                 source_ids=[],
                 output_root_id=None,
                 reprocess_duplicates=False,
@@ -144,16 +144,16 @@ class OperationTests(unittest.TestCase):
         self.assertTrue(payload["queue_only"])
         self.assertEqual(1, payload["total_discovered"])
 
-    def test_settings_validate_token_is_not_public_command(self) -> None:
+    def test_settings_validate_token_is_not_public_operation(self) -> None:
         with patch.object(sys, "argv", ["timeline-for-audio", "settings", "validate-token"]):
             with redirect_stderr(StringIO()):
                 with self.assertRaises(SystemExit):
-                    command_module.parse_args()
+                    operation_module.parse_args()
 
     def test_items_download_defaults_to_available_item_ids(self) -> None:
         with (
             patch.object(
-                command_module,
+                operation_module,
                 "list_items",
                 return_value=[
                     {"item_id": "item-a", "status": "available"},
@@ -161,10 +161,10 @@ class OperationTests(unittest.TestCase):
                     {"item_id": "item-c", "status": "available"},
                 ],
             ),
-            patch.object(command_module, "build_items_archive", return_value=Path("all-items.zip")) as build_archive,
-            patch.object(command_module, "_print_payload"),
+            patch.object(operation_module, "build_items_archive", return_value=Path("all-items.zip")) as build_archive,
+            patch.object(operation_module, "_print_payload"),
         ):
-            exit_code = command_module.cmd_items_download(
+            exit_code = operation_module.operation_items_download(
                 item_id_value=None,
                 output=None,
                 as_json=True,
@@ -180,17 +180,17 @@ class OperationTests(unittest.TestCase):
         stdout = StringIO()
         with (
             patch.object(
-                command_module,
+                operation_module,
                 "list_items",
                 return_value=[
                     {"item_id": "item-a", "status": "available"},
                     {"item_id": "item-b", "status": "available"},
                 ],
             ),
-            patch.object(command_module, "build_items_archive", return_value=Path("all-items.zip")) as build_archive,
+            patch.object(operation_module, "build_items_archive", return_value=Path("all-items.zip")) as build_archive,
             redirect_stdout(stdout),
         ):
-            exit_code = command_module.cmd_items_download(
+            exit_code = operation_module.operation_items_download(
                 item_id_value=None,
                 output=None,
                 as_json=True,
@@ -207,9 +207,9 @@ class OperationTests(unittest.TestCase):
         )
 
     def test_items_download_requires_at_least_one_available_item(self) -> None:
-        with patch.object(command_module, "list_items", return_value=[]):
+        with patch.object(operation_module, "list_items", return_value=[]):
             with self.assertRaisesRegex(ValueError, "At least one available item id"):
-                command_module.cmd_items_download(
+                operation_module.operation_items_download(
                     item_id_value=None,
                     output=None,
                     as_json=True,
@@ -217,13 +217,13 @@ class OperationTests(unittest.TestCase):
 
     def test_items_download_rejects_empty_explicit_item_id(self) -> None:
         with self.assertRaisesRegex(ValueError, "At least one available item id"):
-            command_module.cmd_items_download(
+            operation_module.operation_items_download(
                 item_id_value=",",
                 output=None,
                 as_json=True,
             )
 
-    def test_json_command_errors_are_machine_readable(self) -> None:
+    def test_json_operation_errors_are_machine_readable(self) -> None:
         stdout = StringIO()
         with (
             patch.object(
@@ -231,11 +231,11 @@ class OperationTests(unittest.TestCase):
                 "argv",
                 ["timeline-for-audio", "items", "download", "--json"],
             ),
-            patch.object(command_module, "assert_worker_runtime_allowed"),
-            patch.object(command_module, "list_items", return_value=[]),
+            patch.object(operation_module, "assert_worker_runtime_allowed"),
+            patch.object(operation_module, "list_items", return_value=[]),
             redirect_stdout(stdout),
         ):
-            exit_code = command_module.run()
+            exit_code = operation_module.run()
 
         self.assertEqual(1, exit_code)
         payload = json.loads(stdout.getvalue())
@@ -243,17 +243,17 @@ class OperationTests(unittest.TestCase):
         self.assertEqual("ValueError", payload["error"]["type"])
         self.assertIn("At least one available item id", payload["error"]["message"])
 
-    def test_text_command_errors_do_not_print_traceback(self) -> None:
+    def test_text_operation_errors_do_not_print_traceback(self) -> None:
         stdout = StringIO()
         stderr = StringIO()
         with (
             patch.object(sys, "argv", ["timeline-for-audio", "items", "download"]),
-            patch.object(command_module, "assert_worker_runtime_allowed"),
-            patch.object(command_module, "list_items", return_value=[]),
+            patch.object(operation_module, "assert_worker_runtime_allowed"),
+            patch.object(operation_module, "list_items", return_value=[]),
             redirect_stdout(stdout),
             redirect_stderr(stderr),
         ):
-            exit_code = command_module.run()
+            exit_code = operation_module.run()
 
         self.assertEqual(1, exit_code)
         self.assertEqual("", stdout.getvalue())

@@ -8,7 +8,7 @@ from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
 
-from timeline_for_audio_worker.operations import cmd_settings_inputs_add, cmd_settings_inputs_remove
+from timeline_for_audio_worker.operations import operation_settings_inputs_add, operation_settings_inputs_remove
 from timeline_for_audio_worker.settings import (
     configured_path,
     ensure_runtime_settings,
@@ -128,10 +128,10 @@ class SettingsTests(unittest.TestCase):
             os.environ["TIMELINE_FOR_AUDIO_SETTINGS_PATH"] = str(settings_path)
             try:
                 with redirect_stdout(StringIO()):
-                    cmd_settings_inputs_add(path=Path("C:\\TimelineData\\Audio\\"), as_json=True)
+                    operation_settings_inputs_add(path=Path("C:\\TimelineData\\Audio\\"), as_json=True)
                 rows_after_add = load_settings()["inputRoots"]
                 with redirect_stdout(StringIO()):
-                    cmd_settings_inputs_remove("C:\\TimelineData\\Audio\\", as_json=True)
+                    operation_settings_inputs_remove("C:\\TimelineData\\Audio\\", as_json=True)
                 rows_after_remove = load_settings()["inputRoots"]
             finally:
                 if previous_settings is None:
