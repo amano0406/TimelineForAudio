@@ -30,11 +30,11 @@ public sealed class ProductCommandException : Exception
     public string Stderr { get; }
 }
 
-public sealed class ProductCommandRunner
+public sealed class ProductOperationRunner
 {
     private readonly ProductPaths _paths;
 
-    public ProductCommandRunner(ProductPaths paths)
+    public ProductOperationRunner(ProductPaths paths)
     {
         _paths = paths;
     }
@@ -96,7 +96,7 @@ public sealed class ProductCommandRunner
 
         if (payload is null)
         {
-            throw new InvalidOperationException("TimelineForAudio worker did not return JSON.");
+            throw new InvalidOperationException("TimelineForAudio worker operation did not return JSON.");
         }
 
         return CompleteHostDownloadPayload(arguments, payload);
@@ -391,7 +391,7 @@ public sealed class ProductCommandRunner
         return string.Empty;
     }
 
-    private static async Task<CommandResult> RunProcessAsync(
+    private static async Task<OperationResult> RunProcessAsync(
         string fileName,
         IReadOnlyList<string> arguments,
         string workingDirectory,
@@ -445,7 +445,7 @@ public sealed class ProductCommandRunner
 
         var stdout = await stdoutTask;
         var stderr = await stderrTask;
-        return new CommandResult(process.ExitCode, stdout, stderr);
+        return new OperationResult(process.ExitCode, stdout, stderr);
     }
 
     private static void KillProcessTree(Process process)
@@ -573,7 +573,7 @@ public sealed class ProductCommandRunner
     }
 }
 
-internal sealed record CommandResult(int ExitCode, string Stdout, string Stderr);
+internal sealed record OperationResult(int ExitCode, string Stdout, string Stderr);
 
 internal sealed record WorkerState(bool IsRunning, string Message);
 

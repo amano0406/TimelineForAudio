@@ -11,7 +11,7 @@ var bindPort = string.IsNullOrWhiteSpace(bindPortArg)
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton(productPaths);
-builder.Services.AddSingleton<ProductCommandRunner>();
+builder.Services.AddSingleton<ProductOperationRunner>();
 builder.WebHost.UseUrls($"http://127.0.0.1:{bindPort}");
 
 var app = builder.Build();
@@ -33,7 +33,7 @@ var settings = app.MapGroup("/settings");
 
 settings.MapPost("/init", async (
     HttpContext context,
-    ProductCommandRunner runner,
+    ProductOperationRunner runner,
     CancellationToken cancellationToken) =>
 {
     return await ExecuteJsonEndpointAsync(async () =>
@@ -48,7 +48,7 @@ settings.MapPost("/init", async (
 
 settings.MapPost("/status", async (
     HttpContext context,
-    ProductCommandRunner runner,
+    ProductOperationRunner runner,
     CancellationToken cancellationToken) =>
 {
     return await ExecuteJsonEndpointAsync(async () =>
@@ -63,7 +63,7 @@ settings.MapPost("/status", async (
 
 settings.MapPost("/save", async (
     HttpContext context,
-    ProductCommandRunner runner,
+    ProductOperationRunner runner,
     CancellationToken cancellationToken) =>
 {
     return await ExecuteJsonEndpointAsync(async () =>
@@ -80,7 +80,7 @@ var files = app.MapGroup("/files");
 
 files.MapPost("/list", async (
     HttpContext context,
-    ProductCommandRunner runner,
+    ProductOperationRunner runner,
     CancellationToken cancellationToken) =>
 {
     return await ExecuteJsonEndpointAsync(async () =>
@@ -97,7 +97,7 @@ var items = app.MapGroup("/items");
 
 items.MapPost("/list", async (
     HttpContext context,
-    ProductCommandRunner runner,
+    ProductOperationRunner runner,
     CancellationToken cancellationToken) =>
 {
     return await ExecuteJsonEndpointAsync(async () =>
@@ -112,7 +112,7 @@ items.MapPost("/list", async (
 
 items.MapPost("/refresh", async (
     HttpContext context,
-    ProductCommandRunner runner,
+    ProductOperationRunner runner,
     CancellationToken cancellationToken) =>
 {
     return await ExecuteJsonEndpointAsync(async () =>
@@ -127,7 +127,7 @@ items.MapPost("/refresh", async (
 
 items.MapPost("/remove", async (
     HttpContext context,
-    ProductCommandRunner runner,
+    ProductOperationRunner runner,
     CancellationToken cancellationToken) =>
 {
     return await ExecuteJsonEndpointAsync(async () =>
@@ -142,7 +142,7 @@ items.MapPost("/remove", async (
 
 items.MapPost("/download", async (
     HttpContext context,
-    ProductCommandRunner runner,
+    ProductOperationRunner runner,
     CancellationToken cancellationToken) =>
 {
     return await ExecuteJsonEndpointAsync(async () =>
@@ -159,7 +159,7 @@ var models = app.MapGroup("/models");
 
 models.MapPost("/list", async (
     HttpContext context,
-    ProductCommandRunner runner,
+    ProductOperationRunner runner,
     CancellationToken cancellationToken) =>
 {
     return await ExecuteJsonEndpointAsync(async () =>
