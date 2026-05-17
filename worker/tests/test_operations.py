@@ -9,10 +9,10 @@ import sys
 import unittest
 from unittest.mock import patch
 
-from timeline_for_audio_worker import commands as command_module
+from timeline_for_audio_worker import operations as command_module
 
 
-class CommandTests(unittest.TestCase):
+class OperationTests(unittest.TestCase):
     def test_settings_status_json_contract(self) -> None:
         payload = {
             "setup": {"state": "ready", "blocking_reasons": []},
