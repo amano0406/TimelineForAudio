@@ -4,7 +4,7 @@
 
 ## 1. Request Creation
 
-The CLI creates an internal temporary run directory under the worker runtime area.
+The API asks the Docker worker to create an internal temporary run directory under the worker runtime area.
 
 The request contains:
 
@@ -18,7 +18,7 @@ The request contains:
 
 Language hints and supplemental text are not used by this product.
 
-For licensing and usage-condition checks, the CLI can list the current model inventory:
+For licensing and usage-condition checks, the worker can list the current model inventory:
 
 ```text
 models list --json

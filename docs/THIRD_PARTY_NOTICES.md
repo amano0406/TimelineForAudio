@@ -2,7 +2,7 @@
 
 [Back to README](../README.md)
 
-This repository includes or depends on third-party software. This file lists the main runtime dependencies that matter for local CLI and worker use.
+This repository includes or depends on third-party software. This file lists the main runtime dependencies that matter for local API and worker use.
 
 It is not a substitute for each dependency's original license text. If you redistribute binaries, Docker images, or bundled assets, review upstream license terms again for the exact versions you ship.
 

@@ -2,21 +2,21 @@
 
 [Back to README](../README.md)
 
-This document lists validation commands for the current CLI-first product.
+This document lists validation commands for the current API-first product.
 
 ## Lightweight Checks
 
 Run from Windows PowerShell:
 
 ```powershell
-.\scripts\lint.ps1 -IncludeLocalCliDownload -IncludeOperationalSmoke
+.\scripts\lint.ps1 -IncludeLocalApiDownload -IncludeOperationalSmoke
 ```
 
 This checks:
 
 - Python unit tests
 - C# health API build
-- CLI wrapper behavior
+- local API behavior
 - Docker-facing JSON error envelopes
 - settings and list commands
 - download ZIP creation path
@@ -40,14 +40,14 @@ It verifies:
 - download ZIP creation
 - second refresh skip behavior
 
-## Host CLI Guard
+## Host Worker Guard
 
 Normal product use goes through Docker.
 
-Host Python CLI execution is blocked unless the test environment explicitly opts in with:
+Host Python worker command execution is blocked unless the test environment explicitly opts in with:
 
 ```text
-TIMELINE_FOR_AUDIO_ALLOW_HOST_CLI=1
+TIMELINE_FOR_AUDIO_ALLOW_HOST_RUN=1
 ```
 
 ## Release-Level Checks
@@ -55,7 +55,7 @@ TIMELINE_FOR_AUDIO_ALLOW_HOST_CLI=1
 Before a release, run:
 
 ```powershell
-.\scripts\lint.ps1 -IncludeLocalCliDownload -IncludeOperationalSmoke
+.\scripts\lint.ps1 -IncludeLocalApiDownload -IncludeOperationalSmoke
 ```
 
 Run the real-model smoke test when model, Docker, GPU, pipeline, or artifact behavior changed.

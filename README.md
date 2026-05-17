@@ -2,7 +2,7 @@
 
 TimelineForAudio is a local Docker-first product that converts local audio files into speaker/time/transcript timeline data.
 
-The product integration surface is the small local C#/.NET API. Host CLI launchers are legacy maintenance tools and are not required by Timeline.
+The product integration surface is the small local C#/.NET API. Host CLI launchers have been removed and are not part of normal Timeline operation.
 
 ## Role
 
@@ -81,7 +81,7 @@ Operation API:
 | Create download ZIP | `POST /items/download` |
 | Show model inventory | `POST /models/list` |
 
-The API invokes the Docker worker directly from C# and does not call host CLI launchers.
+The API invokes the Docker worker directly from C#.
 If the Docker worker is not already running, operation routes return an error
 instead of starting it implicitly.
 

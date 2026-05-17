@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-ALLOW_HOST_CLI_ENV = "TIMELINE_FOR_AUDIO_ALLOW_HOST_CLI"
+ALLOW_HOST_RUN_ENV = "TIMELINE_FOR_AUDIO_ALLOW_HOST_RUN"
 WORKER_FLAVOR_ENV = "TIMELINE_FOR_AUDIO_WORKER_FLAVOR"
 
 
@@ -24,12 +24,12 @@ def is_running_in_container() -> bool:
     return str(os.getenv("container") or "").strip().lower() in {"docker", "podman"}
 
 
-def is_host_cli_allowed_for_tests() -> bool:
-    return _env_flag_enabled(ALLOW_HOST_CLI_ENV)
+def is_host_worker_run_allowed_for_tests() -> bool:
+    return _env_flag_enabled(ALLOW_HOST_RUN_ENV)
 
 
-def assert_cli_runtime_allowed() -> None:
-    if is_running_in_container() or is_host_cli_allowed_for_tests():
+def assert_worker_runtime_allowed() -> None:
+    if is_running_in_container() or is_host_worker_run_allowed_for_tests():
         return
     message = "\n".join(
         [
@@ -37,7 +37,7 @@ def assert_cli_runtime_allowed() -> None:
             "",
             "Start the product with start.ps1 and call the local API.",
             "",
-            f"For tests only, set {ALLOW_HOST_CLI_ENV}=1 before running the worker command directly.",
+            f"For tests only, set {ALLOW_HOST_RUN_ENV}=1 before running the worker command directly.",
         ]
     )
     print(message, file=sys.stderr)

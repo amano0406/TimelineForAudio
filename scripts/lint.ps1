@@ -1,6 +1,5 @@
 param(
     [Parameter()]
-    [Alias("IncludeLocalCliDownload")]
     [switch] $IncludeLocalApiDownload,
 
     [Parameter()]
@@ -82,7 +81,7 @@ else {
 }
 
 if ($IncludeLocalApiDownload) {
-    & (Join-Path $repoRoot "scripts\test-local-cli-download.ps1")
+    & (Join-Path $repoRoot "scripts\test-local-api-download.ps1")
     if ($LASTEXITCODE -ne 0) {
         throw "Local API download smoke test failed."
     }

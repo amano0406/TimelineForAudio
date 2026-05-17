@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from contextlib import redirect_stderr
 from contextlib import redirect_stdout
@@ -9,24 +9,24 @@ import sys
 import unittest
 from unittest.mock import patch
 
-from timeline_for_audio_worker import cli
+from timeline_for_audio_worker import commands as command_module
 
 
-class CliTests(unittest.TestCase):
+class CommandTests(unittest.TestCase):
     def test_settings_status_json_contract(self) -> None:
         payload = {
             "setup": {"state": "ready", "blocking_reasons": []},
-            "token": {"configured": True, "preview": "hf_t••••alue"},
+            "token": {"configured": True, "preview": "hf_t窶｢窶｢窶｢窶｢alue"},
             "compute": {"mode": "gpu"},
             "inputs": [r"C:\TimelineData\audio"],
             "master": r"C:\TimelineData\audio",
         }
         stdout = StringIO()
         with (
-            patch.object(cli, "settings_snapshot", return_value=payload),
+            patch.object(command_module, "settings_snapshot", return_value=payload),
             redirect_stdout(stdout),
         ):
-            exit_code = cli.cmd_settings_status(as_json=True)
+            exit_code = command_module.cmd_settings_status(as_json=True)
 
         self.assertEqual(0, exit_code)
         self.assertEqual(payload, json.loads(stdout.getvalue()))
@@ -53,10 +53,10 @@ class CliTests(unittest.TestCase):
         }
         stdout = StringIO()
         with (
-            patch.object(cli, "list_audio_file_page", return_value=payload) as list_page,
+            patch.object(command_module, "list_audio_file_page", return_value=payload) as list_page,
             redirect_stdout(stdout),
         ):
-            exit_code = cli.cmd_files_list(
+            exit_code = command_module.cmd_files_list(
                 include_probe=False,
                 page=None,
                 page_size=None,
@@ -89,10 +89,10 @@ class CliTests(unittest.TestCase):
         }
         stdout = StringIO()
         with (
-            patch.object(cli, "list_items_page", return_value=payload) as list_page,
+            patch.object(command_module, "list_items_page", return_value=payload) as list_page,
             redirect_stdout(stdout),
         ):
-            exit_code = cli.cmd_items_list(page=None, page_size=None, as_json=True)
+            exit_code = command_module.cmd_items_list(page=None, page_size=None, as_json=True)
 
         self.assertEqual(0, exit_code)
         list_page.assert_called_once_with(page=None, page_size=None)
@@ -111,15 +111,15 @@ class CliTests(unittest.TestCase):
         }
         stdout = StringIO()
         with (
-            patch.object(cli, "load_settings", return_value={"computeMode": "cpu"}),
+            patch.object(command_module, "load_settings", return_value={"computeMode": "cpu"}),
             patch.object(
-                cli,
+                command_module,
                 "create_refresh_run",
                 return_value=("run-1", Path("/tmp/run-1"), summary),
             ) as create_run,
             redirect_stdout(stdout),
         ):
-            exit_code = cli.cmd_items_refresh(
+            exit_code = command_module.cmd_items_refresh(
                 source_ids=[],
                 output_root_id=None,
                 reprocess_duplicates=False,
@@ -144,16 +144,16 @@ class CliTests(unittest.TestCase):
         self.assertTrue(payload["queue_only"])
         self.assertEqual(1, payload["total_discovered"])
 
-    def test_settings_validate_token_is_not_public_cli(self) -> None:
+    def test_settings_validate_token_is_not_public_command(self) -> None:
         with patch.object(sys, "argv", ["timeline-for-audio", "settings", "validate-token"]):
             with redirect_stderr(StringIO()):
                 with self.assertRaises(SystemExit):
-                    cli.parse_args()
+                    command_module.parse_args()
 
     def test_items_download_defaults_to_available_item_ids(self) -> None:
         with (
             patch.object(
-                cli,
+                command_module,
                 "list_items",
                 return_value=[
                     {"item_id": "item-a", "status": "available"},
@@ -161,10 +161,10 @@ class CliTests(unittest.TestCase):
                     {"item_id": "item-c", "status": "available"},
                 ],
             ),
-            patch.object(cli, "build_items_archive", return_value=Path("all-items.zip")) as build_archive,
-            patch.object(cli, "_print_payload"),
+            patch.object(command_module, "build_items_archive", return_value=Path("all-items.zip")) as build_archive,
+            patch.object(command_module, "_print_payload"),
         ):
-            exit_code = cli.cmd_items_download(
+            exit_code = command_module.cmd_items_download(
                 item_id_value=None,
                 output=None,
                 as_json=True,
@@ -180,17 +180,17 @@ class CliTests(unittest.TestCase):
         stdout = StringIO()
         with (
             patch.object(
-                cli,
+                command_module,
                 "list_items",
                 return_value=[
                     {"item_id": "item-a", "status": "available"},
                     {"item_id": "item-b", "status": "available"},
                 ],
             ),
-            patch.object(cli, "build_items_archive", return_value=Path("all-items.zip")) as build_archive,
+            patch.object(command_module, "build_items_archive", return_value=Path("all-items.zip")) as build_archive,
             redirect_stdout(stdout),
         ):
-            exit_code = cli.cmd_items_download(
+            exit_code = command_module.cmd_items_download(
                 item_id_value=None,
                 output=None,
                 as_json=True,
@@ -207,9 +207,9 @@ class CliTests(unittest.TestCase):
         )
 
     def test_items_download_requires_at_least_one_available_item(self) -> None:
-        with patch.object(cli, "list_items", return_value=[]):
+        with patch.object(command_module, "list_items", return_value=[]):
             with self.assertRaisesRegex(ValueError, "At least one available item id"):
-                cli.cmd_items_download(
+                command_module.cmd_items_download(
                     item_id_value=None,
                     output=None,
                     as_json=True,
@@ -217,7 +217,7 @@ class CliTests(unittest.TestCase):
 
     def test_items_download_rejects_empty_explicit_item_id(self) -> None:
         with self.assertRaisesRegex(ValueError, "At least one available item id"):
-            cli.cmd_items_download(
+            command_module.cmd_items_download(
                 item_id_value=",",
                 output=None,
                 as_json=True,
@@ -231,11 +231,11 @@ class CliTests(unittest.TestCase):
                 "argv",
                 ["timeline-for-audio", "items", "download", "--json"],
             ),
-            patch.object(cli, "assert_cli_runtime_allowed"),
-            patch.object(cli, "list_items", return_value=[]),
+            patch.object(command_module, "assert_worker_runtime_allowed"),
+            patch.object(command_module, "list_items", return_value=[]),
             redirect_stdout(stdout),
         ):
-            exit_code = cli.run()
+            exit_code = command_module.run()
 
         self.assertEqual(1, exit_code)
         payload = json.loads(stdout.getvalue())
@@ -248,12 +248,12 @@ class CliTests(unittest.TestCase):
         stderr = StringIO()
         with (
             patch.object(sys, "argv", ["timeline-for-audio", "items", "download"]),
-            patch.object(cli, "assert_cli_runtime_allowed"),
-            patch.object(cli, "list_items", return_value=[]),
+            patch.object(command_module, "assert_worker_runtime_allowed"),
+            patch.object(command_module, "list_items", return_value=[]),
             redirect_stdout(stdout),
             redirect_stderr(stderr),
         ):
-            exit_code = cli.run()
+            exit_code = command_module.run()
 
         self.assertEqual(1, exit_code)
         self.assertEqual("", stdout.getvalue())
@@ -263,3 +263,4 @@ class CliTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

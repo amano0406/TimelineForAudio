@@ -8,7 +8,7 @@ from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
 
-from timeline_for_audio_worker.cli import cmd_settings_inputs_add, cmd_settings_inputs_remove
+from timeline_for_audio_worker.commands import cmd_settings_inputs_add, cmd_settings_inputs_remove
 from timeline_for_audio_worker.settings import (
     configured_path,
     ensure_runtime_settings,

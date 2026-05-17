@@ -2,7 +2,7 @@
 
 [Back to README](../README.md)
 
-TimelineForAudio is a Docker-first local CLI product.
+TimelineForAudio is a Docker-first local API product.
 
 ## Required Environment
 
@@ -52,11 +52,11 @@ Current shape:
 
 Supported audio extensions are product-owned runtime defaults, not user settings.
 
-## Local Health API
+## Local API
 
-TimelineForAudio remains a Docker-first CLI product. For future API migration readiness, `start.ps1` also starts a minimal C#/.NET health API.
+`start.ps1` starts the Docker worker and the small C#/.NET API used by Timeline.
 
-The only HTTP endpoint is:
+The health endpoint is:
 
 ```text
 GET http://127.0.0.1:<runtime.apiPort>/health
@@ -74,7 +74,7 @@ The response body is a JSON boolean: `true` or `false`.
 | `cache-data` Docker volume | No | Hugging Face, Transformers, Torch, and model cache |
 | container temp paths | No | scratch work for current processing |
 
-`start.ps1`, `stop.ps1`, and normal CLI use should preserve Docker volumes.
+`start.ps1`, `stop.ps1`, and normal API use should preserve Docker volumes.
 
 `uninstall.ps1` is the cleanup entrypoint. Use its deletion options only when intentionally removing local runtime data.
 
@@ -113,7 +113,7 @@ The first run may download Docker image layers, Python dependencies, and model w
 
 ## Local File Boundaries
 
-TimelineForAudio is a local CLI tool, not a hosted service or OS sandbox.
+TimelineForAudio is a local Docker worker plus API, not a hosted service or OS sandbox.
 
 - source audio files are read from configured input directories
 - source audio files are not deleted by item cleanup

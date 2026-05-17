@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .config import AppConfig, load_config
 from .discovery import discover_audio
-from .runtime_guard import assert_cli_runtime_allowed
+from .runtime_guard import assert_worker_runtime_allowed
 from .run_store import (
     app_config_from_settings,
     build_items_archive,
@@ -553,7 +553,7 @@ def cmd_items_refresh(
 
 
 def main() -> int:
-    assert_cli_runtime_allowed()
+    assert_worker_runtime_allowed()
     args = parse_args()
     if args.command == "settings":
         if args.settings_command == "init":

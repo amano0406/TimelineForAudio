@@ -481,7 +481,7 @@ def _write_support_docs(run_dir: Path, request: RunRequest) -> None:
             "- Timestamps are mapped back to the original audio timeline.",
             "- Speaker labels are mechanical labels such as `SPEAKER_00`; identities are not inferred.",
             "",
-            "This run uses file-based coordination between CLI-created run files and the Python worker.",
+            "This run uses file-based coordination between command-created run files and the Python worker.",
             "",
         ]
     )
