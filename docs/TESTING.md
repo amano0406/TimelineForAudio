@@ -18,7 +18,7 @@ This checks:
 - C# health API build
 - local API behavior
 - Docker-facing JSON error envelopes
-- settings and list commands
+- settings and list operations
 - download ZIP creation path
 
 ## Real-Model Smoke Test
@@ -44,7 +44,7 @@ It verifies:
 
 Normal product use goes through Docker.
 
-Host Python worker command execution is blocked unless the test environment explicitly opts in with:
+Direct host Python worker execution is blocked unless the test environment explicitly opts in with:
 
 ```text
 TIMELINE_FOR_AUDIO_ALLOW_HOST_RUN=1
