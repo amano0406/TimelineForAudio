@@ -69,16 +69,7 @@ Invoke-CheckedCommand $python -m compileall -q worker/src worker/tests
 
 Write-Host "Running Python tests..."
 $env:PYTHONPATH = "worker/src"
-Invoke-CheckedCommand $python -m unittest discover -s worker/tests -p "test_*.py"
-
-$dotnetCommand = Get-Command dotnet -ErrorAction SilentlyContinue
-if ($dotnetCommand) {
-    Write-Host "Building health API..."
-    Invoke-CheckedCommand $dotnetCommand.Source build api/TimelineForAudio.Api.csproj
-}
-else {
-    Write-Host "dotnet is not installed; skipping health API build."
-}
+Invoke-CheckedCommand $python -m pytest worker/tests
 
 if ($IncludeLocalApiDownload) {
     & (Join-Path $repoRoot "scripts\test-local-api-download.ps1")

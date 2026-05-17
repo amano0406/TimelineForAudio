@@ -48,13 +48,13 @@ Current shape:
 
 `huggingFaceToken` is the canonical token key. Older local files that still contain `huggingfaceToken` are read for compatibility and saved back using `huggingFaceToken`.
 
-`runtime.instanceName` identifies this local Docker runtime. `runtime.apiPort` is used for the local health API port.
+`runtime.instanceName` identifies this local Docker runtime. `runtime.apiPort` is used for the local worker API port.
 
 Supported audio extensions are product-owned runtime defaults, not user settings.
 
 ## Local API
 
-`start.ps1` starts the Docker worker and the small C#/.NET API used by Timeline.
+`start.ps1` starts the Docker worker. The worker exposes the local HTTP API used by Timeline.
 
 The health endpoint is:
 

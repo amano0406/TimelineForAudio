@@ -542,25 +542,6 @@ function Assert-TfaGpuAvailableIfRequested {
     throw "settings.json computeMode is gpu, but NVIDIA GPU is not available from this shell. Set computeMode to cpu or fix NVIDIA/Docker GPU support."
 }
 
-function Test-TfaCliRequiresConfiguredWorker {
-    param(
-        [string[]]$CliArgs
-    )
-
-    if (-not $CliArgs -or $CliArgs.Count -eq 0) {
-        return $false
-    }
-
-    $command = [string]$CliArgs[0]
-    if ($command -in @("process-run", "daemon")) {
-        return $true
-    }
-    if ($command -in @("files", "items")) {
-        return $true
-    }
-    return $false
-}
-
 function Get-TfaComposeArgs {
     param(
         [Parameter(Mandatory = $true)]

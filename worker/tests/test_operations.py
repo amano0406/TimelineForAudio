@@ -9,6 +9,7 @@ import sys
 import unittest
 from unittest.mock import patch
 
+from timeline_for_audio_worker import api_server
 from timeline_for_audio_worker import operations as operation_module
 
 
@@ -259,6 +260,57 @@ class OperationTests(unittest.TestCase):
         self.assertEqual("", stdout.getvalue())
         self.assertIn("At least one available item id", stderr.getvalue())
         self.assertNotIn("Traceback", stderr.getvalue())
+
+    def test_api_server_dispatches_items_refresh_without_process_spawn(self) -> None:
+        summary = {
+            "total_discovered": 1,
+            "queued_count": 1,
+            "skipped_count": 0,
+            "deferred_count": 0,
+            "queued_limit": None,
+            "queued": [{"file_name": "sample.wav"}],
+            "skipped": [],
+            "deferred": [],
+        }
+        with (
+            patch.object(api_server, "load_settings", return_value={"computeMode": "cpu"}),
+            patch.object(
+                api_server,
+                "create_refresh_run",
+                return_value=("run-1", Path("/tmp/run-1"), summary),
+            ) as create_run,
+        ):
+            status, payload = api_server.handle_request("POST", "/items/refresh", {"queueOnly": True})
+
+        self.assertEqual(200, status)
+        create_run.assert_called_once_with(
+            settings={"computeMode": "cpu"},
+            source_ids=[],
+            output_root_id="master",
+            reprocess_duplicates=False,
+            max_items=None,
+        )
+        self.assertEqual("pending", payload["state"])
+        self.assertEqual("run-1", payload["run_id"])
+        self.assertTrue(payload["queue_only"])
+
+    def test_api_server_dispatches_item_download_without_process_spawn(self) -> None:
+        with (
+            patch.object(
+                api_server,
+                "list_items",
+                return_value=[
+                    {"item_id": "item-a", "status": "available"},
+                    {"item_id": "item-b", "status": "missing_artifact"},
+                ],
+            ),
+            patch.object(api_server, "build_items_archive", return_value=Path("all-items.zip")) as build_archive,
+        ):
+            status, payload = api_server.handle_request("POST", "/items/download", {})
+
+        self.assertEqual(200, status)
+        build_archive.assert_called_once_with(item_ids=["item-a"], output=None)
+        self.assertEqual({"archive_path": "all-items.zip", "item_ids": ["item-a"]}, payload)
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@ Run from Windows PowerShell:
 This checks:
 
 - Python unit tests
-- C# health API build
+- worker HTTP API behavior
 - local API behavior
 - Docker-facing JSON error envelopes
 - settings and list operations

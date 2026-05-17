@@ -19,4 +19,4 @@ COPY configs/ /app/config/
 COPY settings.example.json /app/settings.example.json
 
 ENV PYTHONPATH=/app/worker/src
-ENTRYPOINT ["python", "-m", "timeline_for_audio_worker", "daemon", "--poll-interval", "5"]
+ENTRYPOINT ["python", "-m", "timeline_for_audio_worker.api_server"]

@@ -2,7 +2,7 @@
 
 TimelineForAudio is a local Docker-first product that converts local audio files into speaker/time/transcript timeline data.
 
-The product integration surface is the small local C#/.NET API.
+The product integration surface is the small local HTTP API exposed by the worker container.
 
 ## Role
 
@@ -54,7 +54,7 @@ cd C:\apps\TimelineForAudio
 `start.ps1` starts:
 
 - Docker worker
-- local API
+- local API inside the worker container
 
 Health check:
 
@@ -81,9 +81,8 @@ Operation API:
 | Create download ZIP | `POST /items/download` |
 | Show model inventory | `POST /models/list` |
 
-The API invokes the Docker worker directly from C#.
-If the Docker worker is not already running, operation routes return an error
-instead of starting it implicitly.
+The API is served by the resident worker container. Starting the product is still
+explicit; operation routes do not start Docker implicitly.
 
 ## Output
 
