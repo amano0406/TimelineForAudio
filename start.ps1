@@ -33,7 +33,7 @@ if ($computeMode -eq "gpu") {
 
 Write-Host "Starting the worker container..."
 Invoke-TfaWithFileLock -RepoRoot $repoRoot -LockName "docker-compose.lock" -ScriptBlock {
-    $upArgs = @("compose") + $composeArgs + @("up", "-d", "--remove-orphans")
+    $upArgs = @("compose") + $composeArgs + @("up", "-d", "--build", "--remove-orphans")
     if (Test-TfaWorkerFlavorMismatch -RepoRoot $repoRoot -ComposeArgs $composeArgs) {
         Write-Host "Existing worker flavor does not match settings.json. Recreating worker..."
         $upArgs += "--force-recreate"
