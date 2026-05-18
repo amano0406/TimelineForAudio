@@ -69,6 +69,31 @@ function Add-Mount {
     }
 }
 
+function Get-TimelineDataRootFromOutputRoot {
+    param([string]$OutputRootPath)
+
+    if (-not $OutputRootPath) {
+        return $null
+    }
+    try {
+        $fullPath = [System.IO.Path]::GetFullPath($OutputRootPath)
+    }
+    catch {
+        return $null
+    }
+
+    $productRoot = Split-Path -Parent $fullPath
+    if (-not $productRoot) {
+        return $null
+    }
+    $productParentName = Split-Path -Leaf $productRoot
+    if (-not $productParentName.Equals("to_text", [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $null
+    }
+
+    return Split-Path -Parent $productRoot
+}
+
 $repoSettingsPath = Join-Path $RepoRoot "settings.json"
 $settingsExamplePath = Join-Path $RepoRoot "settings.example.json"
 $settingsOverridePath = [string]$SettingsPath
@@ -140,6 +165,17 @@ if ($null -ne $outputRoot) {
         -ContainerPath "/host/output/master" `
         -ReadOnly $false `
         -CreateIfMissing $true
+
+    $timelineDataRoot = Get-TimelineDataRootFromOutputRoot -OutputRootPath $outputRootPath
+    if ($timelineDataRoot) {
+        Add-Mount `
+            -Mappings $mappings `
+            -VolumeLines $volumeLines `
+            -HostPath $timelineDataRoot `
+            -ContainerPath "/host/timeline-data" `
+            -ReadOnly $false `
+            -CreateIfMissing $false
+    }
 }
 
 $mappingRows = @()

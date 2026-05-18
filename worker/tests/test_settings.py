@@ -8,6 +8,7 @@ from pathlib import Path
 
 from timeline_for_audio_worker.settings import (
     configured_path,
+    configured_path_to_host_text,
     ensure_runtime_settings,
     init_settings,
     load_settings,
@@ -104,6 +105,31 @@ class SettingsTests(unittest.TestCase):
 
         self.assertEqual(Path("/host/input/videos"), root_path)
         self.assertEqual(Path("/host/input/videos/sample/a.mp3"), child_path)
+
+    def test_configured_path_to_host_text_reverses_explicit_mapping(self) -> None:
+        previous = os.environ.get("TIMELINE_FOR_AUDIO_PATH_MAPPINGS")
+        os.environ["TIMELINE_FOR_AUDIO_PATH_MAPPINGS"] = json.dumps(
+            [
+                {
+                    "host": "C:\\apps\\Timeline\\data",
+                    "container": "/host/timeline-data",
+                }
+            ]
+        )
+        try:
+            host_path = configured_path_to_host_text(
+                "/host/timeline-data/work/downloads/audio/requested-items.zip"
+            )
+        finally:
+            if previous is None:
+                os.environ.pop("TIMELINE_FOR_AUDIO_PATH_MAPPINGS", None)
+            else:
+                os.environ["TIMELINE_FOR_AUDIO_PATH_MAPPINGS"] = previous
+
+        self.assertEqual(
+            "C:\\apps\\Timeline\\data\\work\\downloads\\audio\\requested-items.zip",
+            host_path,
+        )
 
     def test_input_roots_can_be_saved_and_removed(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

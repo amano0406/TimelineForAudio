@@ -20,6 +20,8 @@ from .run_store import settings_snapshot
 from .settings import init_settings
 from .settings import load_settings
 from .settings import save_settings
+from .settings import configured_path
+from .settings import configured_path_to_host_text
 from .worker_runtime import start_worker_heartbeat
 from .worker_runtime import write_worker_capabilities
 
@@ -130,8 +132,11 @@ def items_download_payload(request: dict[str, Any]) -> dict[str, Any]:
     if not item_ids:
         raise ValueError("At least one available item id is required.")
     output = get_string_any(request, ["outputPath", "output", "to", "destinationPath"])
-    archive_path = build_items_archive(item_ids=item_ids, output=Path(output) if output else None)
-    return {"archive_path": str(archive_path), "item_ids": item_ids}
+    archive_path = build_items_archive(
+        item_ids=item_ids,
+        output=configured_path(output) if output else None,
+    )
+    return {"archive_path": configured_path_to_host_text(archive_path), "item_ids": item_ids}
 
 
 def models_list_payload(request: dict[str, Any]) -> dict[str, Any]:

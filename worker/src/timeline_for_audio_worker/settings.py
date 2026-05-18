@@ -89,6 +89,23 @@ def configured_path(value: str | Path) -> Path:
     return Path(text).expanduser()
 
 
+def configured_path_to_host_text(value: str | Path) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    normalized_text = text.replace("\\", "/").rstrip("/")
+    for row in sorted(_path_mappings(), key=lambda item: len(item["container"]), reverse=True):
+        container_key = row["container"].replace("\\", "/").rstrip("/")
+        if not container_key:
+            continue
+        if normalized_text == container_key:
+            return row["host"]
+        if normalized_text.startswith(container_key + "/"):
+            relative = normalized_text[len(container_key) + 1 :]
+            return _join_host_path(row["host"], relative)
+    return text
+
+
 def _normalize_mapping_key(value: str) -> str:
     normalized = str(value or "").strip().replace("\\", "/").rstrip("/")
     if os.name == "nt":
@@ -131,6 +148,12 @@ def _map_configured_path(text: str) -> Path | None:
             relative = normalized_text[len(host_key) + 1 :]
             return Path(row["container"]) / relative
     return None
+
+
+def _join_host_path(host_root: str, relative: str) -> str:
+    root = host_root.rstrip("\\/")
+    separator = "\\" if _WINDOWS_DRIVE_RE.match(host_root) or "\\" in host_root else "/"
+    return root + separator + relative.replace("/", separator)
 
 
 def _example_settings_payload() -> dict[str, Any] | None:

@@ -52,13 +52,43 @@ class ApiServerTests(unittest.TestCase):
                     {"item_id": "item-b", "status": "missing_artifact"},
                 ],
             ),
-            patch.object(api_server, "build_items_archive", return_value=Path("all-items.zip")) as build_archive,
+            patch.object(api_server, "configured_path", side_effect=lambda value: Path(f"/mapped/{value}")) as map_path,
+            patch.object(api_server, "configured_path_to_host_text", return_value="all-items.zip") as to_host_text,
+            patch.object(api_server, "build_items_archive", return_value=Path("/mapped/all-items.zip")) as build_archive,
         ):
             status, payload = api_server.handle_request("POST", "/items/download", {})
 
         self.assertEqual(200, status)
+        map_path.assert_not_called()
+        to_host_text.assert_called_once_with(Path("/mapped/all-items.zip"))
         build_archive.assert_called_once_with(item_ids=["item-a"], output=None)
         self.assertEqual({"archive_path": "all-items.zip", "item_ids": ["item-a"]}, payload)
+
+    def test_api_server_maps_explicit_download_output_path(self) -> None:
+        with (
+            patch.object(
+                api_server,
+                "list_items",
+                return_value=[{"item_id": "item-a", "status": "available"}],
+            ),
+            patch.object(api_server, "configured_path", return_value=Path("/host/timeline-data/work/requested.zip")) as map_path,
+            patch.object(api_server, "configured_path_to_host_text", return_value=r"C:\apps\Timeline\data\work\requested.zip") as to_host_text,
+            patch.object(api_server, "build_items_archive", return_value=Path("/host/timeline-data/work/requested.zip")) as build_archive,
+        ):
+            status, payload = api_server.handle_request(
+                "POST",
+                "/items/download",
+                {"outputPath": r"C:\apps\Timeline\data\work\requested.zip"},
+            )
+
+        self.assertEqual(200, status)
+        map_path.assert_called_once_with(r"C:\apps\Timeline\data\work\requested.zip")
+        build_archive.assert_called_once_with(
+            item_ids=["item-a"],
+            output=Path("/host/timeline-data/work/requested.zip"),
+        )
+        to_host_text.assert_called_once_with(Path("/host/timeline-data/work/requested.zip"))
+        self.assertEqual(r"C:\apps\Timeline\data\work\requested.zip", payload["archive_path"])
 
     def test_api_server_returns_machine_readable_errors(self) -> None:
         with patch.object(api_server, "list_items", return_value=[]):
