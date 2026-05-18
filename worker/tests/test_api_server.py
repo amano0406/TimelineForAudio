@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -41,6 +42,49 @@ class ApiServerTests(unittest.TestCase):
         self.assertEqual("pending", payload["state"])
         self.assertEqual("run-1", payload["run_id"])
         self.assertTrue(payload["queue_only"])
+
+    def test_api_server_starts_refresh_job(self) -> None:
+        summary = {
+            "total_discovered": 1,
+            "queued_count": 1,
+            "skipped_count": 0,
+            "deferred_count": 0,
+            "queued_limit": None,
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "run-1"
+            run_dir.mkdir()
+            (run_dir / "status.json").write_text(
+                json.dumps(
+                    {
+                        "run_id": "run-1",
+                        "state": "pending",
+                        "current_stage": "queued",
+                        "message": "Queued for worker pickup.",
+                        "items_total": 1,
+                        "progress_percent": 0.0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (run_dir / "result.json").write_text(
+                json.dumps({"run_id": "run-1", "state": "pending"}),
+                encoding="utf-8",
+            )
+            with (
+                patch.object(api_server, "load_settings", return_value={"computeMode": "cpu"}),
+                patch.object(api_server, "get_active_run", return_value=None),
+                patch.object(api_server, "create_refresh_run", return_value=("run-1", run_dir, summary)),
+                patch.object(api_server, "find_run_dir", return_value=run_dir),
+            ):
+                status, payload = api_server.handle_request("POST", "/jobs", {"type": "refresh"})
+
+        self.assertEqual(200, status)
+        self.assertEqual("timeline.product_job.v1", payload["schemaVersion"])
+        self.assertEqual("audio", payload["productId"])
+        self.assertEqual("run-1", payload["jobId"])
+        self.assertEqual("queued", payload["state"])
+        self.assertEqual(1, payload["progress"]["total"])
 
     def test_api_server_dispatches_item_download_without_process_spawn(self) -> None:
         with (

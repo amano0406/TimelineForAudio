@@ -8,13 +8,17 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 from .model_inventory import build_model_inventory
 from .run_store import build_items_archive
 from .run_store import create_refresh_run
+from .run_store import find_run_dir
+from .run_store import get_active_run
 from .run_store import list_audio_file_page
 from .run_store import list_items
 from .run_store import list_items_page
+from .run_store import list_runs
 from .run_store import remove_items
 from .run_store import settings_snapshot
 from .settings import init_settings
@@ -30,11 +34,19 @@ def handle_request(method: str, path: str, request: dict[str, Any] | None) -> tu
     route = path.rstrip("/") or "/"
     if method == "GET" and route == "/health":
         return HTTPStatus.OK, True
+    if method == "GET" and route == "/jobs":
+        return HTTPStatus.OK, jobs_list_payload()
+    if method == "GET" and route == "/jobs/active":
+        return HTTPStatus.OK, jobs_active_payload()
+    if method == "GET" and route.startswith("/jobs/"):
+        return job_response(job_status_payload(unquote(route.removeprefix("/jobs/"))))
     if method != "POST":
         return HTTPStatus.NOT_FOUND, error_payload(f"Endpoint not found: {method} {path}")
 
     try:
         payload = request or {}
+        if route == "/jobs":
+            return HTTPStatus.OK, jobs_start_payload(payload)
         if route == "/settings/init":
             return HTTPStatus.OK, init_settings()
         if route == "/settings/status":
@@ -114,6 +126,162 @@ def items_refresh_payload(request: dict[str, Any]) -> dict[str, Any]:
     return response
 
 
+def jobs_start_payload(request: dict[str, Any]) -> dict[str, Any]:
+    job_type = get_string_any(request, ["type", "jobType", "job_type"]) or "refresh"
+    if job_type != "refresh":
+        raise ValueError(f"Unsupported job type: {job_type}")
+
+    settings = load_settings()
+    active = get_active_run(settings)
+    if active:
+        return job_status_payload(str(active.get("run_id") or ""), settings=settings)
+
+    options = request.get("options") if isinstance(request.get("options"), dict) else request
+    run_id, run_dir, summary = create_refresh_run(
+        settings=settings,
+        source_ids=get_string_array_any(options, ["sourceIds", "source_ids", "inputRoots", "input_roots"]),
+        output_root_id="master",
+        reprocess_duplicates=get_bool_any(options, ["reprocessDuplicates", "reprocess_duplicates"], False),
+        max_items=get_optional_positive_int(options, ["maxItems", "max_items", "limit"]),
+    )
+    if run_id is None or run_dir is None:
+        return no_job_payload(
+            message="No changed audio files were found.",
+            result={
+                "state": "skipped_no_changes",
+                **summary,
+            },
+        )
+    return job_status_payload(run_id, settings=settings, fallback_result={**summary, "run_id": run_id, "run_dir": str(run_dir)})
+
+
+def jobs_list_payload() -> dict[str, Any]:
+    runs = list_runs()
+    return {
+        "schemaVersion": "timeline.product_jobs.v1",
+        "productId": "audio",
+        "productName": "TimelineForAudio",
+        "activeJobId": (get_active_run() or {}).get("run_id", ""),
+        "count": len(runs),
+        "jobs": runs,
+    }
+
+
+def jobs_active_payload() -> dict[str, Any]:
+    active = get_active_run()
+    if not active:
+        return no_job_payload(message="No active audio job.", state="none", progress_percent=0.0)
+    return job_status_payload(str(active.get("run_id") or ""))
+
+
+def job_response(payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    if payload.get("ok") is False:
+        return HTTPStatus.NOT_FOUND, payload
+    return HTTPStatus.OK, payload
+
+
+def job_status_payload(
+    job_id: str,
+    *,
+    settings: dict[str, Any] | None = None,
+    fallback_result: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    job_id = job_id.strip()
+    if not job_id:
+        return error_payload("Job id is required.", "ValueError") | {"ok": False}
+
+    try:
+        run_dir = find_run_dir(job_id, settings)
+    except Exception as exc:
+        return error_payload(str(exc), exc.__class__.__name__) | {"ok": False}
+
+    status = read_json_file_or_empty(run_dir / "status.json")
+    result = read_json_file_or_empty(run_dir / "result.json") or fallback_result
+    state = normalize_job_state(str(status.get("state") or (result or {}).get("state") or "unknown"))
+    stage = str(status.get("current_stage") or "")
+    message = str(status.get("message") or "")
+    total = int(status.get("items_total") or 0)
+    current = (
+        int(status.get("items_done") or 0)
+        + int(status.get("items_skipped") or 0)
+        + int(status.get("items_failed") or 0)
+    )
+    progress_percent = float(status.get("progress_percent") or (100.0 if state in {"completed", "completed_with_errors"} else 0.0))
+    error = message if state in {"failed", "completed_with_errors"} else None
+    return {
+        "schemaVersion": "timeline.product_job.v1",
+        "productId": "audio",
+        "productName": "TimelineForAudio",
+        "type": "refresh",
+        "jobId": job_id,
+        "state": state,
+        "phase": stage,
+        "stage": stage,
+        "message": message,
+        "progress": {
+            "percent": round(max(0.0, min(100.0, progress_percent)), 2),
+            "current": current,
+            "total": total,
+            "unit": "files",
+            "currentItem": str(status.get("current_item") or ""),
+            "estimatedRemainingSeconds": status.get("estimated_remaining_sec"),
+        },
+        "startedAt": str(status.get("started_at") or ""),
+        "updatedAt": str(status.get("updated_at") or ""),
+        "completedAt": str(status.get("completed_at") or ""),
+        "error": error,
+        "warnings": status.get("warnings") if isinstance(status.get("warnings"), list) else [],
+        "result": result,
+    }
+
+
+def no_job_payload(
+    *,
+    message: str,
+    state: str = "completed",
+    progress_percent: float = 100.0,
+    result: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "schemaVersion": "timeline.product_job.v1",
+        "productId": "audio",
+        "productName": "TimelineForAudio",
+        "type": "refresh",
+        "jobId": "",
+        "state": state,
+        "phase": "completed" if state == "completed" else "",
+        "stage": "completed" if state == "completed" else "",
+        "message": message,
+        "progress": {
+            "percent": progress_percent,
+            "current": 0,
+            "total": 0,
+            "unit": "files",
+            "currentItem": "",
+            "estimatedRemainingSeconds": None,
+        },
+        "startedAt": "",
+        "updatedAt": "",
+        "completedAt": "",
+        "error": None,
+        "warnings": [],
+        "result": result,
+    }
+
+
+def normalize_job_state(state: str) -> str:
+    lowered = state.strip().lower()
+    if lowered == "pending":
+        return "queued"
+    if lowered in {"running", "queued", "completed", "completed_with_errors", "failed"}:
+        return lowered
+    if lowered in {"canceled", "cancelled", "interrupted"}:
+        return "failed"
+    if lowered in {"skipped", "skipped_no_changes"}:
+        return "completed"
+    return lowered or "unknown"
+
+
 def items_remove_payload(request: dict[str, Any]) -> dict[str, Any]:
     item_ids = get_item_ids(request)
     if not item_ids:
@@ -154,6 +322,12 @@ def models_list_payload(request: dict[str, Any]) -> dict[str, Any]:
 
 def read_json_file(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8-sig", errors="replace"))
+
+
+def read_json_file_or_empty(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    return read_json_file(path)
 
 
 def get_item_ids(request: dict[str, Any]) -> list[str]:
