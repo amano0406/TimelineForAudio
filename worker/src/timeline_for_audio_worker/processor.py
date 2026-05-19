@@ -54,6 +54,16 @@ _INTERRUPTED_RUN_MESSAGE = (
     "Run was interrupted while the worker was stopped. It will not be resumed "
     "automatically; queue a new refresh to retry."
 )
+_MIN_TRANSCRIPT_SPEECH_OVERLAP_SEC = 0.1
+_HIGH_NO_SPEECH_PROBABILITY = 0.6
+_LOW_TRANSCRIPT_CONFIDENCE = -0.6
+_KNOWN_SILENCE_HALLUCINATION_PHRASES = {
+    "ご視聴ありがとうございました",
+    "ご視聴ありがとうございます",
+    "ありがとうございました",
+    "Thank you for watching",
+    "Thanks for watching",
+}
 
 
 class RunDeletionRequested(RuntimeError):
@@ -602,7 +612,7 @@ def _process_one_item(
             audio_path=normalized_audio_path,
             compute_mode=request.compute_mode,
         )
-        transcript_segment_rows = [
+        raw_transcript_segment_rows = [
             {
                 "index": segment.index,
                 "start_sec": segment.start,
@@ -613,6 +623,16 @@ def _process_one_item(
             }
             for segment in transcription_result.segments
         ]
+        transcript_segment_rows, rejected_transcript_segment_rows = _validate_transcript_segments(
+            raw_transcript_segment_rows,
+            cut_map,
+            list(speaker_payload.get("turns") or []),
+        )
+        transcription_warnings = list(transcription_result.warnings)
+        if rejected_transcript_segment_rows:
+            transcription_warnings.append(
+                f"Speech transcript validation rejected {len(rejected_transcript_segment_rows)} segment(s)."
+            )
         transcription_payload = {
             "schema_version": 1,
             "backend": transcription_result.backend_name,
@@ -623,10 +643,14 @@ def _process_one_item(
             "language": transcription_result.language,
             "language_probability": transcription_result.language_probability,
             "duration": transcription_result.duration,
-            "warning_count": len(transcription_result.warnings),
-            "warnings": transcription_result.warnings,
+            "warning_count": len(transcription_warnings),
+            "warnings": transcription_warnings,
+            "raw_segment_count": len(raw_transcript_segment_rows),
             "segment_count": len(transcript_segment_rows),
+            "rejected_segment_count": len(rejected_transcript_segment_rows),
+            "raw_segments": raw_transcript_segment_rows,
             "segments": transcript_segment_rows,
+            "rejected_segments": rejected_transcript_segment_rows,
         }
         if transcription_result.status != "ok":
             raise RuntimeError(
@@ -659,7 +683,7 @@ def _process_one_item(
             ensure_not_delete_requested("generate_artifacts")
         return [
             *list(speaker_payload.get("warnings") or []),
-            *list(transcription_result.warnings),
+            *transcription_warnings,
         ]
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
@@ -768,7 +792,9 @@ def _build_conversion_info_payload(
                 "language_probability": transcription_payload.get("language_probability"),
                 "device": transcription_payload.get("device"),
                 "compute_type": transcription_payload.get("compute_type"),
+                "raw_segment_count": transcription_payload.get("raw_segment_count"),
                 "segment_count": transcription_payload.get("segment_count"),
+                "rejected_segment_count": transcription_payload.get("rejected_segment_count"),
                 "warning_count": transcription_payload.get("warning_count"),
             },
         },
@@ -800,20 +826,115 @@ def _build_conversion_info_payload(
             {
                 "step": 5,
                 "name": "timeline_merge",
-                "description": "Merge speaker labels, timestamps, and Whisper transcript text into the final timeline JSON without rewriting transcript text.",
+                "description": "Merge speaker labels, timestamps, and validated Whisper transcript text into the final timeline JSON without rewriting accepted text.",
                 "persistent_output": True,
             },
         ],
         "counts": {
             "speech_candidate_ranges": len(cut_map),
             "speaker_turns": len(speaker_payload.get("turns") or []),
+            "raw_transcript_segments": len(transcription_payload.get("raw_segments") or []),
             "transcript_segments": len(transcription_payload.get("segments") or []),
+            "rejected_transcript_segments": len(transcription_payload.get("rejected_segments") or []),
         },
         "output_files": {
             "convert_info": "convert_info.json",
             "timeline": "timeline.json",
         },
     }
+
+
+def _validate_transcript_segments(
+    raw_segments: list[dict[str, Any]],
+    speech_candidates: list[dict[str, Any]],
+    speaker_turns: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    validated: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    repeated_texts = {
+        text
+        for text, count in Counter(
+            _normalize_transcript_text(str(segment.get("text") or "")) for segment in raw_segments
+        ).items()
+        if text and count >= 3
+    }
+    known_hallucinations = {
+        _normalize_transcript_text(phrase) for phrase in _KNOWN_SILENCE_HALLUCINATION_PHRASES
+    }
+
+    for segment in raw_segments:
+        start = float(segment.get("start_sec", segment.get("start", 0.0)) or 0.0)
+        end = float(segment.get("end_sec", segment.get("end", start)) or start)
+        text = str(segment.get("text") or "").strip()
+        normalized_text = _normalize_transcript_text(text)
+        speech_overlap = _interval_overlap_with_speech_candidates(start, end, speech_candidates)
+        speaker = best_speaker_for_interval(start, end, speaker_turns)
+        avg_logprob = _optional_float(segment.get("avg_logprob"))
+        no_speech_probability = _optional_float(segment.get("no_speech_probability"))
+
+        reject = False
+        reasons: list[str] = []
+        if speech_overlap < _MIN_TRANSCRIPT_SPEECH_OVERLAP_SEC:
+            reasons.append("no_speech_candidate_overlap")
+            reject = True
+        if not speaker:
+            reasons.append("no_speaker_overlap")
+        if avg_logprob is not None and avg_logprob < _LOW_TRANSCRIPT_CONFIDENCE:
+            reasons.append("low_confidence")
+        if no_speech_probability is not None and no_speech_probability >= _HIGH_NO_SPEECH_PROBABILITY:
+            reasons.append("high_no_speech_probability")
+            reject = True
+        if (
+            normalized_text in known_hallucinations
+            and normalized_text in repeated_texts
+            and (speech_overlap < _MIN_TRANSCRIPT_SPEECH_OVERLAP_SEC or not speaker)
+        ):
+            reasons.append("known_silence_hallucination_phrase")
+            reasons.append("repeated_hallucination_phrase")
+            reject = True
+
+        enriched = dict(segment)
+        enriched["validation"] = {
+            "state": "rejected" if reject else "validated",
+            "speech_overlap_sec": round(speech_overlap, 3),
+            "speaker": speaker,
+            "reasons": reasons,
+        }
+        if reject:
+            enriched["rejection_reasons"] = reasons
+            rejected.append(enriched)
+        else:
+            validated.append(enriched)
+
+    return validated, rejected
+
+
+def _normalize_transcript_text(value: str) -> str:
+    return "".join(str(value or "").split()).casefold()
+
+
+def _interval_overlap_with_speech_candidates(
+    start: float,
+    end: float,
+    speech_candidates: list[dict[str, Any]],
+) -> float:
+    if end <= start:
+        return 0.0
+    overlap = 0.0
+    for candidate in speech_candidates:
+        candidate_start = float(candidate.get("original_start", candidate.get("startSec", 0.0)) or 0.0)
+        candidate_end = float(candidate.get("original_end", candidate.get("endSec", candidate_start)) or candidate_start)
+        overlap += max(0.0, min(end, candidate_end) - max(start, candidate_start))
+    return overlap
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _build_speaker_transcript_timeline(
@@ -864,6 +985,8 @@ def _build_speaker_transcript_timeline(
             "transcription_language": transcription_payload.get("language"),
             "transcription_device": transcription_payload.get("device"),
             "transcription_compute_type": transcription_payload.get("compute_type"),
+            "raw_transcript_segments": transcription_payload.get("raw_segment_count"),
+            "rejected_transcript_segments": transcription_payload.get("rejected_segment_count"),
         },
         "turn_count": len(turns),
         "turns": turns,

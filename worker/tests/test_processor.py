@@ -14,6 +14,65 @@ from timeline_for_audio_worker.contracts import InputItem, RunRequest, ManifestI
 
 
 class ProcessorQueueTests(unittest.TestCase):
+    def test_validate_transcript_segments_rejects_silence_hallucination(self) -> None:
+        raw_segments = [
+            {
+                "index": 1,
+                "start_sec": 176.44,
+                "end_sec": 178.44,
+                "text": "ご視聴ありがとうございました",
+                "avg_logprob": -0.3,
+                "no_speech_probability": 0.1,
+            },
+            {
+                "index": 2,
+                "start_sec": 206.44,
+                "end_sec": 208.44,
+                "text": "ご視聴ありがとうございました",
+                "avg_logprob": -0.3,
+                "no_speech_probability": 0.1,
+            },
+            {
+                "index": 3,
+                "start_sec": 236.44,
+                "end_sec": 238.44,
+                "text": "ご視聴ありがとうございました",
+                "avg_logprob": -0.3,
+                "no_speech_probability": 0.1,
+            },
+        ]
+
+        validated, rejected = processor._validate_transcript_segments(
+            raw_segments,
+            [{"original_start": 0.0, "original_end": 160.0}],
+            [],
+        )
+
+        self.assertEqual([], validated)
+        self.assertEqual(3, len(rejected))
+        self.assertIn("no_speech_candidate_overlap", rejected[0]["rejection_reasons"])
+        self.assertIn("known_silence_hallucination_phrase", rejected[0]["rejection_reasons"])
+
+    def test_validate_transcript_segments_keeps_speech_candidate_text(self) -> None:
+        validated, rejected = processor._validate_transcript_segments(
+            [
+                {
+                    "index": 1,
+                    "start_sec": 2.0,
+                    "end_sec": 4.0,
+                    "text": "ご視聴ありがとうございました",
+                    "avg_logprob": -0.1,
+                    "no_speech_probability": 0.01,
+                }
+            ],
+            [{"original_start": 1.0, "original_end": 5.0}],
+            [{"start": 1.0, "end": 5.0, "speaker": "SPEAKER_00"}],
+        )
+
+        self.assertEqual(1, len(validated))
+        self.assertEqual([], rejected)
+        self.assertEqual("validated", validated[0]["validation"]["state"])
+
     def test_pending_run_lock_is_not_stale_immediately(self) -> None:
         with TemporaryDirectory() as temp_dir:
             run_dir = Path(temp_dir) / "run-1"

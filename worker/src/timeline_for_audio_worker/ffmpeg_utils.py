@@ -248,8 +248,6 @@ def _invert_intervals(
         cursor = min(duration, silence_end + padding)
     if duration - cursor >= 0.25:
         keep.append((cursor, duration))
-    if not keep:
-        return [(0.0, duration)]
     return keep
 
 
@@ -279,6 +277,9 @@ def trim_audio(
     silences = _parse_silencedetect((detected.stderr or "") + "\n" + (detected.stdout or ""))
     keep_intervals = _invert_intervals(duration_seconds, silences, padding=1.0)
     if write_audio:
+        if not keep_intervals:
+            output_path.unlink(missing_ok=True)
+            return []
         if (
             len(keep_intervals) == 1
             and abs(keep_intervals[0][0]) < 0.001
