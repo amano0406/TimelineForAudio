@@ -57,6 +57,8 @@ _INTERRUPTED_RUN_MESSAGE = (
 _MIN_TRANSCRIPT_SPEECH_OVERLAP_SEC = 0.1
 _HIGH_NO_SPEECH_PROBABILITY = 0.6
 _LOW_TRANSCRIPT_CONFIDENCE = -0.6
+_SILENCE_HALLUCINATION_REPEAT_COUNT = 3
+_SILENCE_HALLUCINATION_LONG_SEGMENT_SEC = 8.0
 _KNOWN_SILENCE_HALLUCINATION_PHRASES = {
     "ご視聴ありがとうございました",
     "ご視聴ありがとうございます",
@@ -851,26 +853,33 @@ def _validate_transcript_segments(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     validated: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
+    normalized_segment_texts = [
+        _normalize_transcript_text(str(segment.get("text") or "")) for segment in raw_segments
+    ]
     repeated_texts = {
         text
-        for text, count in Counter(
-            _normalize_transcript_text(str(segment.get("text") or "")) for segment in raw_segments
-        ).items()
-        if text and count >= 3
+        for text, count in Counter(normalized_segment_texts).items()
+        if text and count >= _SILENCE_HALLUCINATION_REPEAT_COUNT
     }
+    consecutive_run_lengths = _consecutive_run_lengths(normalized_segment_texts)
     known_hallucinations = {
         _normalize_transcript_text(phrase) for phrase in _KNOWN_SILENCE_HALLUCINATION_PHRASES
     }
 
-    for segment in raw_segments:
+    for index, segment in enumerate(raw_segments):
         start = float(segment.get("start_sec", segment.get("start", 0.0)) or 0.0)
         end = float(segment.get("end_sec", segment.get("end", start)) or start)
+        duration = max(0.0, end - start)
         text = str(segment.get("text") or "").strip()
         normalized_text = _normalize_transcript_text(text)
         speech_overlap = _interval_overlap_with_speech_candidates(start, end, speech_candidates)
         speaker = best_speaker_for_interval(start, end, speaker_turns)
         avg_logprob = _optional_float(segment.get("avg_logprob"))
         no_speech_probability = _optional_float(segment.get("no_speech_probability"))
+        high_no_speech = (
+            no_speech_probability is not None
+            and no_speech_probability >= _HIGH_NO_SPEECH_PROBABILITY
+        )
 
         reject = False
         reasons: list[str] = []
@@ -881,17 +890,23 @@ def _validate_transcript_segments(
             reasons.append("no_speaker_overlap")
         if avg_logprob is not None and avg_logprob < _LOW_TRANSCRIPT_CONFIDENCE:
             reasons.append("low_confidence")
-        if no_speech_probability is not None and no_speech_probability >= _HIGH_NO_SPEECH_PROBABILITY:
+        if high_no_speech:
             reasons.append("high_no_speech_probability")
             reject = True
-        if (
-            normalized_text in known_hallucinations
-            and normalized_text in repeated_texts
-            and (speech_overlap < _MIN_TRANSCRIPT_SPEECH_OVERLAP_SEC or not speaker)
-        ):
-            reasons.append("known_silence_hallucination_phrase")
-            reasons.append("repeated_hallucination_phrase")
-            reject = True
+        if normalized_text in known_hallucinations and normalized_text in repeated_texts:
+            is_consecutive_repeat = (
+                consecutive_run_lengths[index] >= _SILENCE_HALLUCINATION_REPEAT_COUNT
+            )
+            is_long_known_phrase = duration >= _SILENCE_HALLUCINATION_LONG_SEGMENT_SEC
+            has_weak_audio_evidence = speech_overlap < _MIN_TRANSCRIPT_SPEECH_OVERLAP_SEC or not speaker
+            if is_consecutive_repeat or is_long_known_phrase or has_weak_audio_evidence or high_no_speech:
+                reasons.append("known_silence_hallucination_phrase")
+                reasons.append("repeated_hallucination_phrase")
+                if is_consecutive_repeat:
+                    reasons.append("consecutive_hallucination_phrase")
+                if is_long_known_phrase:
+                    reasons.append("long_known_hallucination_segment")
+                reject = True
 
         enriched = dict(segment)
         enriched["validation"] = {
@@ -911,6 +926,21 @@ def _validate_transcript_segments(
 
 def _normalize_transcript_text(value: str) -> str:
     return "".join(str(value or "").split()).casefold()
+
+
+def _consecutive_run_lengths(values: list[str]) -> list[int]:
+    lengths = [0] * len(values)
+    index = 0
+    while index < len(values):
+        value = values[index]
+        end = index + 1
+        while end < len(values) and values[end] == value:
+            end += 1
+        run_length = end - index
+        for run_index in range(index, end):
+            lengths[run_index] = run_length if value else 0
+        index = end
+    return lengths
 
 
 def _interval_overlap_with_speech_candidates(
@@ -1027,7 +1057,7 @@ def _mark_interrupted_running_run(run_dir: Path) -> bool:
     if _running_run_is_active(run_dir):
         return False
 
-    status.state = "canceled"
+    status.state = "interrupted"
     status.current_stage = "interrupted"
     status.message = _INTERRUPTED_RUN_MESSAGE
     status.estimated_remaining_sec = None
@@ -1038,7 +1068,7 @@ def _mark_interrupted_running_run(run_dir: Path) -> bool:
 
     result = _load_result(run_dir)
     result.run_id = result.run_id or status.run_id or run_dir.name
-    result.state = "canceled"
+    result.state = "interrupted"
     result.run_dir = result.run_dir or str(run_dir)
     if _INTERRUPTED_RUN_MESSAGE not in result.warnings:
         result.warnings.append(_INTERRUPTED_RUN_MESSAGE)

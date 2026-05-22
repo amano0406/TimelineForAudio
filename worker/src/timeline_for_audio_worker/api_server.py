@@ -207,7 +207,7 @@ def job_status_payload(
         + int(status.get("items_failed") or 0)
     )
     progress_percent = float(status.get("progress_percent") or (100.0 if state in {"completed", "completed_with_errors"} else 0.0))
-    error = message if state in {"failed", "completed_with_errors"} else None
+    error = message if state in {"failed", "completed_with_errors", "interrupted"} else None
     return {
         "schemaVersion": "timeline.product_job.v1",
         "productId": "audio",
@@ -273,9 +273,9 @@ def normalize_job_state(state: str) -> str:
     lowered = state.strip().lower()
     if lowered == "pending":
         return "queued"
-    if lowered in {"running", "queued", "completed", "completed_with_errors", "failed"}:
+    if lowered in {"running", "queued", "completed", "completed_with_errors", "failed", "interrupted"}:
         return lowered
-    if lowered in {"canceled", "cancelled", "interrupted"}:
+    if lowered in {"canceled", "cancelled"}:
         return "failed"
     if lowered in {"skipped", "skipped_no_changes"}:
         return "completed"

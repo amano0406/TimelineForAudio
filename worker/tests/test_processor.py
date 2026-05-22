@@ -73,6 +73,32 @@ class ProcessorQueueTests(unittest.TestCase):
         self.assertEqual([], rejected)
         self.assertEqual("validated", validated[0]["validation"]["state"])
 
+    def test_validate_transcript_segments_rejects_repeated_long_hallucination_with_speaker(self) -> None:
+        raw_segments = [
+            {
+                "index": index,
+                "start_sec": float((index - 1) * 30),
+                "end_sec": float(index * 30),
+                "text": "ご視聴ありがとうございました",
+                "avg_logprob": -0.1,
+                "no_speech_probability": 0.2,
+            }
+            for index in range(1, 4)
+        ]
+
+        validated, rejected = processor._validate_transcript_segments(
+            raw_segments,
+            [{"original_start": 0.0, "original_end": 90.0}],
+            [{"start": 0.0, "end": 90.0, "speaker": "SPEAKER_00"}],
+        )
+
+        self.assertEqual([], validated)
+        self.assertEqual(3, len(rejected))
+        self.assertIn("known_silence_hallucination_phrase", rejected[0]["rejection_reasons"])
+        self.assertIn("repeated_hallucination_phrase", rejected[0]["rejection_reasons"])
+        self.assertIn("consecutive_hallucination_phrase", rejected[0]["rejection_reasons"])
+        self.assertIn("long_known_hallucination_segment", rejected[0]["rejection_reasons"])
+
     def test_pending_run_lock_is_not_stale_immediately(self) -> None:
         with TemporaryDirectory() as temp_dir:
             run_dir = Path(temp_dir) / "run-1"
@@ -223,10 +249,10 @@ class ProcessorQueueTests(unittest.TestCase):
             write_support_docs.assert_not_called()
             status_payload = json.loads((run_dir / "status.json").read_text(encoding="utf-8"))
             result_payload = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
-            self.assertEqual("canceled", status_payload["state"])
+            self.assertEqual("interrupted", status_payload["state"])
             self.assertEqual("interrupted", status_payload["current_stage"])
             self.assertIn("will not be resumed automatically", status_payload["message"])
-            self.assertEqual("canceled", result_payload["state"])
+            self.assertEqual("interrupted", result_payload["state"])
             self.assertFalse((run_dir / ".run.lock").exists())
 
     def test_resolve_duplicate_artifact_path_returns_none_for_stale_catalog_entry(self) -> None:
@@ -394,7 +420,7 @@ class ProcessorQueueTests(unittest.TestCase):
             pending_status = json.loads(
                 (pending_run_dir / "status.json").read_text(encoding="utf-8")
             )
-            self.assertEqual("canceled", running_status["state"])
+            self.assertEqual("interrupted", running_status["state"])
             self.assertEqual("interrupted", running_status["current_stage"])
             self.assertEqual("completed", pending_status["state"])
 

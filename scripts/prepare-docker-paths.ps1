@@ -121,6 +121,11 @@ $mappings = [System.Collections.Generic.List[object]]::new()
 $volumeLines = [System.Collections.Generic.List[string]]::new()
 $apiVolumeLines = [System.Collections.Generic.List[string]]::new()
 
+$mappings.Add([ordered]@{
+    host = $RepoRoot
+    container = "/workspace"
+}) | Out-Null
+
 if ($usingSettingsOverride) {
     $VolumeLines.Add("      - type: bind") | Out-Null
     $VolumeLines.Add("        source: $(Convert-ToYamlSingleQuoted -Value $sourceSettingsPath)") | Out-Null
