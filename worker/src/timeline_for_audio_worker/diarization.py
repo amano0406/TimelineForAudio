@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import warnings
+import gc
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -85,6 +86,20 @@ def _load_diarizer(token: str, compute_mode: str) -> Any:
         except Exception:
             pass
     return diarizer
+
+
+def release_diarization_resources() -> None:
+    _load_diarizer.cache_clear()
+    gc.collect()
+    try:
+        import torch
+
+        if getattr(torch.cuda, "is_available", lambda: False)():
+            torch.cuda.empty_cache()
+            if hasattr(torch.cuda, "ipc_collect"):
+                torch.cuda.ipc_collect()
+    except Exception:
+        pass
 
 
 def generate_speaker_turns(

@@ -28,6 +28,7 @@ from .settings import configured_path
 from .settings import configured_path_to_host_text
 from .worker_runtime import start_worker_heartbeat
 from .worker_runtime import write_worker_capabilities
+from .processor import request_run_cancel
 
 
 def handle_request(method: str, path: str, request: dict[str, Any] | None) -> tuple[int, Any]:
@@ -47,6 +48,9 @@ def handle_request(method: str, path: str, request: dict[str, Any] | None) -> tu
         payload = request or {}
         if route == "/jobs":
             return HTTPStatus.OK, jobs_start_payload(payload)
+        if route.startswith("/jobs/") and route.endswith("/cancel"):
+            job_id = unquote(route[len("/jobs/") : -len("/cancel")]).strip()
+            return job_response(jobs_cancel_payload(job_id))
         if route == "/settings/init":
             return HTTPStatus.OK, init_settings()
         if route == "/settings/status":
@@ -174,6 +178,24 @@ def jobs_active_payload() -> dict[str, Any]:
     return job_status_payload(str(active.get("run_id") or ""))
 
 
+def jobs_cancel_payload(job_id: str) -> dict[str, Any]:
+    job_id = job_id.strip()
+    if not job_id:
+        return error_payload("Job id is required.", "ValueError") | {"ok": False}
+
+    try:
+        run_dir = find_run_dir(job_id)
+    except Exception as exc:
+        return error_payload(str(exc), exc.__class__.__name__) | {"ok": False}
+
+    status = job_status_payload(job_id)
+    if str(status.get("state") or "").lower() not in {"queued", "running", "canceling"}:
+        return status
+
+    request_run_cancel(run_dir, "Audio refresh cancellation was requested.")
+    return job_status_payload(job_id)
+
+
 def job_response(payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     if payload.get("ok") is False:
         return HTTPStatus.NOT_FOUND, payload
@@ -273,10 +295,10 @@ def normalize_job_state(state: str) -> str:
     lowered = state.strip().lower()
     if lowered == "pending":
         return "queued"
-    if lowered in {"running", "queued", "completed", "completed_with_errors", "failed", "interrupted"}:
+    if lowered in {"running", "queued", "canceling", "canceled", "completed", "completed_with_errors", "failed", "interrupted"}:
         return lowered
-    if lowered in {"canceled", "cancelled"}:
-        return "failed"
+    if lowered == "cancelled":
+        return "canceled"
     if lowered in {"skipped", "skipped_no_changes"}:
         return "completed"
     return lowered or "unknown"

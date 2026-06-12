@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import signal
 import shutil
+import subprocess
+import sys
 import threading
 import traceback
 from collections import Counter
@@ -15,7 +18,7 @@ from typing import Any, Callable
 
 from .catalog import append_catalog_rows, catalog_key, catalog_path, load_catalog
 from .contracts import RunRequest, RunResult, RunStatus, ManifestItem
-from .diarization import generate_speaker_turns
+from .diarization import generate_speaker_turns, release_diarization_resources
 from .eta import build_eta_predictor, estimate_remaining_seconds
 from .ffmpeg_utils import extract_audio, probe_audio, trim_audio
 from .fs_utils import (
@@ -42,14 +45,16 @@ from .transcription import (
     TRANSCRIPTION_MODEL_ID,
     best_speaker_for_interval,
     generate_transcript_segments,
+    release_transcription_resources,
 )
-from .runtime_profile import assert_runtime_supports_compute_mode
+from .runtime_profile import assert_runtime_supports_compute_mode, normalize_compute_mode
 from .vad_profile import vad_config_for_profile
 
 _RUN_LOCK_STALE_AFTER = timedelta(seconds=30)
 _MIN_PREPROCESS_DURATION_SEC = 2.0
 _PREFLIGHT_SKIPPED_STATUSES = {"skipped_invalid", "skipped_too_short"}
 _DELETE_REQUEST_MARKER = ".delete-requested"
+_CANCEL_REQUEST_MARKER = ".cancel-requested"
 _INTERRUPTED_RUN_MESSAGE = (
     "Run was interrupted while the worker was stopped. It will not be resumed "
     "automatically; queue a new refresh to retry."
@@ -68,7 +73,127 @@ _KNOWN_SILENCE_HALLUCINATION_PHRASES = {
 }
 
 
+def _use_isolated_model_stage(compute_mode: str | None) -> bool:
+    mode = str(os.environ.get("TIMELINE_FOR_AUDIO_MODEL_STAGE_MODE") or "auto").strip().lower()
+    if mode in {"process", "subprocess", "isolated", "1", "true", "yes"}:
+        return True
+    if mode in {"direct", "inline", "0", "false", "no"}:
+        return False
+    return Path("/.dockerenv").exists() or normalize_compute_mode(compute_mode) == "gpu"
+
+
+def _start_process_group(
+    args: list[str],
+    *,
+    cwd: str,
+    stdout: Any,
+    stderr: Any,
+) -> subprocess.Popen[Any]:
+    kwargs: dict[str, Any] = {
+        "cwd": cwd,
+        "stdout": stdout,
+        "stderr": stderr,
+    }
+    env = os.environ.copy()
+    source_root = str(Path(__file__).resolve().parents[1])
+    current_pythonpath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = source_root if not current_pythonpath else source_root + os.pathsep + current_pythonpath
+    kwargs["env"] = env
+    if os.name == "nt":
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    else:
+        kwargs["start_new_session"] = True
+    return subprocess.Popen(args, **kwargs)
+
+
+def _terminate_process_tree(process: subprocess.Popen[Any], *, timeout_sec: float = 5.0) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            os.killpg(process.pid, signal.SIGTERM)
+        process.wait(timeout=timeout_sec)
+        return
+    except Exception:
+        pass
+
+    try:
+        if os.name != "nt":
+            os.killpg(process.pid, signal.SIGKILL)
+        else:
+            process.kill()
+        process.wait(timeout=timeout_sec)
+    except Exception:
+        try:
+            process.kill()
+        except Exception:
+            pass
+
+
+def _run_model_stage_process(
+    *,
+    stage: str,
+    work_dir: Path,
+    request: dict[str, Any],
+    cancel_check: Callable[[], None] | None = None,
+) -> dict[str, Any]:
+    request_path = work_dir / f"{stage}-request.json"
+    output_path = work_dir / f"{stage}-output.json"
+    log_path = work_dir / f"{stage}.log"
+    write_json_atomic(request_path, request)
+    with log_path.open("w", encoding="utf-8", errors="replace") as log_handle:
+        process = _start_process_group(
+            [
+                sys.executable,
+                "-m",
+                "timeline_for_audio_worker.stage_runner",
+                stage,
+                str(request_path),
+                str(output_path),
+            ],
+            cwd=str(Path(__file__).resolve().parents[3]),
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+        )
+        while True:
+            if process.poll() is not None:
+                break
+            try:
+                if cancel_check is not None:
+                    cancel_check()
+            except Exception:
+                _terminate_process_tree(process)
+                raise
+            try:
+                process.wait(timeout=0.5)
+            except subprocess.TimeoutExpired:
+                continue
+    if process.returncode != 0:
+        detail = tail_text(log_path, max_lines=120)
+        raise RuntimeError(
+            f"{stage} stage process failed with exit code {process.returncode}."
+            + (f" Log tail: {detail}" if detail else "")
+        )
+    if not output_path.exists():
+        raise RuntimeError(f"{stage} stage process did not write an output file.")
+    payload = read_json(output_path)
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"{stage} stage process wrote an invalid output payload.")
+    return payload
+
+
 class RunDeletionRequested(RuntimeError):
+    pass
+
+
+class RunCancellationRequested(RuntimeError):
     pass
 
 
@@ -109,8 +234,16 @@ def _delete_request_path(run_dir: Path) -> Path:
     return run_dir / _DELETE_REQUEST_MARKER
 
 
+def _cancel_request_path(run_dir: Path) -> Path:
+    return run_dir / _CANCEL_REQUEST_MARKER
+
+
 def _delete_requested(run_dir: Path) -> bool:
     return _delete_request_path(run_dir).exists()
+
+
+def _cancel_requested(run_dir: Path) -> bool:
+    return _cancel_request_path(run_dir).exists()
 
 
 def _raise_if_delete_requested(run_dir: Path, stage_name: str | None = None) -> None:
@@ -118,6 +251,25 @@ def _raise_if_delete_requested(run_dir: Path, stage_name: str | None = None) -> 
         return
     suffix = f" during {stage_name}" if stage_name else ""
     raise RunDeletionRequested(f"Deletion requested{suffix}.")
+
+
+def _raise_if_cancel_requested(run_dir: Path, stage_name: str | None = None) -> None:
+    if not _cancel_requested(run_dir):
+        return
+    suffix = f" during {stage_name}" if stage_name else ""
+    raise RunCancellationRequested(f"Cancellation requested{suffix}.")
+
+
+def request_run_cancel(run_dir: Path, message: str = "Cancellation requested.") -> dict[str, Any]:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    write_json_atomic(_cancel_request_path(run_dir), {"requested_at": now_iso(), "message": message})
+    status = _load_status(run_dir)
+    status.state = "canceling"
+    status.current_stage = "canceling"
+    status.message = message
+    status.updated_at = now_iso()
+    _write_status(run_dir, status)
+    return status.to_dict()
 
 
 def _delete_upload_directories(request: RunRequest) -> None:
@@ -587,11 +739,28 @@ def _process_one_item(
 
         if on_stage:
             on_stage("diarize_audio", "Running required speaker diarization.")
-        speaker_payload = generate_speaker_turns(
-            source_name=item.display_name,
-            audio_path=normalized_audio_path,
-            compute_mode=request.compute_mode,
-        )
+        if _use_isolated_model_stage(request.compute_mode):
+            speaker_payload = _run_model_stage_process(
+                stage="diarize",
+                work_dir=work_dir,
+                request={
+                    "source_name": item.display_name,
+                    "audio_path": str(normalized_audio_path),
+                    "compute_mode": request.compute_mode,
+                },
+                cancel_check=(
+                    (lambda: ensure_not_delete_requested("diarize_audio"))
+                    if ensure_not_delete_requested
+                    else None
+                ),
+            )
+        else:
+            speaker_payload = generate_speaker_turns(
+                source_name=item.display_name,
+                audio_path=normalized_audio_path,
+                compute_mode=request.compute_mode,
+            )
+            release_diarization_resources()
         if ensure_not_delete_requested:
             ensure_not_delete_requested("diarize_audio")
 
@@ -600,8 +769,6 @@ def _process_one_item(
             for turn in speaker_payload.get("turns", [])
             if str(turn.get("speaker") or "").strip()
         }
-        if not speaker_labels:
-            raise RuntimeError("Speaker diarization produced no speaker turns.")
         manifest_item.speaker_count = len(speaker_labels) or None
         manifest_item.speaker_count_status = "confirmed" if speaker_labels else "unavailable"
         manifest_item.speaker_count_note = (
@@ -610,41 +777,99 @@ def _process_one_item(
 
         if on_stage:
             on_stage("transcribe_audio", "Transcribing speech with Whisper.")
-        transcription_result = generate_transcript_segments(
-            audio_path=normalized_audio_path,
-            compute_mode=request.compute_mode,
-        )
+        if _use_isolated_model_stage(request.compute_mode):
+            transcription_result_payload = _run_model_stage_process(
+                stage="transcribe",
+                work_dir=work_dir,
+                request={
+                    "audio_path": str(normalized_audio_path),
+                    "compute_mode": request.compute_mode,
+                },
+                cancel_check=(
+                    (lambda: ensure_not_delete_requested("transcribe_audio"))
+                    if ensure_not_delete_requested
+                    else None
+                ),
+            )
+            raw_segments = list(transcription_result_payload.get("segments") or [])
+            transcription_result_status = str(
+                transcription_result_payload.get("status") or "unknown"
+            )
+            transcription_result_warnings = list(
+                transcription_result_payload.get("warnings") or []
+            )
+            transcription_result_backend = str(
+                transcription_result_payload.get("backend_name") or TRANSCRIPTION_BACKEND
+            )
+            transcription_result_model_id = str(
+                transcription_result_payload.get("model_id") or TRANSCRIPTION_MODEL_ID
+            )
+            transcription_result_device = str(transcription_result_payload.get("device") or "")
+            transcription_result_compute_type = str(
+                transcription_result_payload.get("compute_type") or ""
+            )
+            transcription_result_language = transcription_result_payload.get("language")
+            transcription_result_language_probability = transcription_result_payload.get(
+                "language_probability"
+            )
+            transcription_result_duration = transcription_result_payload.get("duration")
+        else:
+            transcription_result = generate_transcript_segments(
+                audio_path=normalized_audio_path,
+                compute_mode=request.compute_mode,
+            )
+            release_transcription_resources()
+            raw_segments = [
+                {
+                    "index": segment.index,
+                    "start": segment.start,
+                    "end": segment.end,
+                    "text": segment.text,
+                    "avg_logprob": segment.avg_logprob,
+                    "no_speech_probability": segment.no_speech_probability,
+                }
+                for segment in transcription_result.segments
+            ]
+            transcription_result_status = transcription_result.status
+            transcription_result_warnings = list(transcription_result.warnings)
+            transcription_result_backend = transcription_result.backend_name
+            transcription_result_model_id = transcription_result.model_id
+            transcription_result_device = transcription_result.device
+            transcription_result_compute_type = transcription_result.compute_type
+            transcription_result_language = transcription_result.language
+            transcription_result_language_probability = transcription_result.language_probability
+            transcription_result_duration = transcription_result.duration
         raw_transcript_segment_rows = [
             {
-                "index": segment.index,
-                "start_sec": segment.start,
-                "end_sec": segment.end,
-                "text": segment.text,
-                "avg_logprob": segment.avg_logprob,
-                "no_speech_probability": segment.no_speech_probability,
+                "index": segment.get("index"),
+                "start_sec": segment.get("start"),
+                "end_sec": segment.get("end"),
+                "text": segment.get("text"),
+                "avg_logprob": segment.get("avg_logprob"),
+                "no_speech_probability": segment.get("no_speech_probability"),
             }
-            for segment in transcription_result.segments
+            for segment in raw_segments
         ]
         transcript_segment_rows, rejected_transcript_segment_rows = _validate_transcript_segments(
             raw_transcript_segment_rows,
             cut_map,
             list(speaker_payload.get("turns") or []),
         )
-        transcription_warnings = list(transcription_result.warnings)
+        transcription_warnings = list(transcription_result_warnings)
         if rejected_transcript_segment_rows:
             transcription_warnings.append(
                 f"Speech transcript validation rejected {len(rejected_transcript_segment_rows)} segment(s)."
             )
         transcription_payload = {
             "schema_version": 1,
-            "backend": transcription_result.backend_name,
-            "model_id": transcription_result.model_id,
-            "status": transcription_result.status,
-            "device": transcription_result.device,
-            "compute_type": transcription_result.compute_type,
-            "language": transcription_result.language,
-            "language_probability": transcription_result.language_probability,
-            "duration": transcription_result.duration,
+            "backend": transcription_result_backend,
+            "model_id": transcription_result_model_id,
+            "status": transcription_result_status,
+            "device": transcription_result_device,
+            "compute_type": transcription_result_compute_type,
+            "language": transcription_result_language,
+            "language_probability": transcription_result_language_probability,
+            "duration": transcription_result_duration,
             "warning_count": len(transcription_warnings),
             "warnings": transcription_warnings,
             "raw_segment_count": len(raw_transcript_segment_rows),
@@ -654,9 +879,9 @@ def _process_one_item(
             "segments": transcript_segment_rows,
             "rejected_segments": rejected_transcript_segment_rows,
         }
-        if transcription_result.status != "ok":
+        if transcription_result_status not in {"ok", "no_segments"}:
             raise RuntimeError(
-                "; ".join(transcription_result.warnings) or "Speech transcription failed."
+                "; ".join(transcription_result_warnings) or "Speech transcription failed."
             )
         if ensure_not_delete_requested:
             ensure_not_delete_requested("transcribe_audio")
@@ -1177,13 +1402,16 @@ def process_run(run_dir: Path | None = None) -> bool:
 
     def ensure_not_delete_requested(stage_name: str | None = None) -> None:
         _raise_if_delete_requested(run_dir, stage_name)
+        _raise_if_cancel_requested(run_dir, stage_name)
 
     try:
+        _raise_if_cancel_requested(run_dir, "queued")
         _write_status(run_dir, status)
         _write_result(run_dir, result)
         append_log(log_path, f"[{now_iso()}] Starting run {request.run_id}")
         for index, input_item in enumerate(request.input_items, start=1):
             _raise_if_delete_requested(run_dir, "preflight")
+            _raise_if_cancel_requested(run_dir, "preflight")
             status.current_item = input_item.display_name
             status.message = (
                 f"Preflight {index}/{len(request.input_items)}: {input_item.display_name}"
@@ -1366,6 +1594,7 @@ def process_run(run_dir: Path | None = None) -> bool:
             zip(request.input_items, manifest_items, strict=False), start=1
         ):
             _raise_if_delete_requested(run_dir, "extract_audio")
+            _raise_if_cancel_requested(run_dir, "extract_audio")
             if manifest_item.status in _PREFLIGHT_SKIPPED_STATUSES:
                 append_log(
                     log_path,
@@ -1504,6 +1733,7 @@ def process_run(run_dir: Path | None = None) -> bool:
 
             def stage_update(stage_name: str, message: str) -> None:
                 _raise_if_delete_requested(run_dir, stage_name)
+                _raise_if_cancel_requested(run_dir, stage_name)
                 now_value = monotonic()
                 with heartbeat_lock:
                     previous_stage_name = str(heartbeat_state["stage_name"])
@@ -1663,6 +1893,7 @@ def process_run(run_dir: Path | None = None) -> bool:
             append_catalog_rows(Path(request.output_root_path), appended_catalog_rows)
 
         _raise_if_delete_requested(run_dir, "finalize")
+        _raise_if_cancel_requested(run_dir, "finalize")
         status.current_item = None
         status.current_item_elapsed_sec = 0.0
         status.current_stage_elapsed_sec = 0.0
@@ -1707,6 +1938,26 @@ def process_run(run_dir: Path | None = None) -> bool:
         status.state = "canceled"
         status.current_stage = "canceled"
         status.message = "Deletion requested. Run canceled."
+        status.warnings = warnings
+        status.current_item = None
+        status.current_item_elapsed_sec = 0.0
+        status.current_stage_elapsed_sec = 0.0
+        status.estimated_remaining_sec = 0.0
+        status.progress_percent = max(status.progress_percent, 1.0)
+        status.completed_at = now_iso()
+        _write_status(run_dir, status)
+        result.state = "canceled"
+        result.processed_count = status.items_done
+        result.skipped_count = status.items_skipped
+        result.error_count = status.items_failed
+        result.warnings = warnings
+        _write_result(run_dir, result)
+        return True
+    except RunCancellationRequested as exc:
+        append_log(log_path, f"[{now_iso()}] Run canceled: {exc}")
+        status.state = "canceled"
+        status.current_stage = "canceled"
+        status.message = "Cancellation requested. Run canceled."
         status.warnings = warnings
         status.current_item = None
         status.current_item_elapsed_sec = 0.0

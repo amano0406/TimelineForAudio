@@ -1177,7 +1177,7 @@ class ProcessorQueueTests(unittest.TestCase):
                 conversion_info["source"]["file_name"],
             )
 
-    def test_process_one_item_fails_when_speaker_diarization_has_no_turns(self) -> None:
+    def test_process_one_item_completes_when_speaker_diarization_has_no_turns(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source_path = root / "silence.wav"
@@ -1278,13 +1278,21 @@ class ProcessorQueueTests(unittest.TestCase):
                     ),
                 ),
             ):
-                with self.assertRaisesRegex(RuntimeError, "Speaker diarization"):
-                    processor._process_one_item(
-                        run_dir=run_dir,
-                        request=request,
-                        item=item,
-                        manifest_item=manifest_item,
-                    )
+                warnings = processor._process_one_item(
+                    run_dir=run_dir,
+                    request=request,
+                    item=item,
+                    manifest_item=manifest_item,
+                )
+
+            self.assertIn(
+                "Speaker diarization completed, but no speaker turns were found.",
+                warnings,
+            )
+            timeline_path = root / str(manifest_item.media_id) / "timeline.json"
+            self.assertTrue(timeline_path.exists())
+            timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
+            self.assertEqual([], timeline["turns"])
 
 
 if __name__ == "__main__":

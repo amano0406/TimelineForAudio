@@ -9,9 +9,9 @@ from timeline_for_audio_worker.transcription import best_speaker_for_interval
 
 
 class TranscriptionTests(unittest.TestCase):
-    def test_gpu_mode_uses_cuda_float16(self) -> None:
+    def test_gpu_mode_uses_cuda_quantized_float16(self) -> None:
         self.assertEqual("cuda", transcription._device_for_compute_mode("gpu"))
-        self.assertEqual("float16", transcription._compute_type_for_compute_mode("gpu"))
+        self.assertEqual("int8_float16", transcription._compute_type_for_compute_mode("gpu"))
 
     def test_cpu_mode_uses_cpu_int8(self) -> None:
         self.assertEqual("cpu", transcription._device_for_compute_mode("cpu"))
