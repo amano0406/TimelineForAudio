@@ -243,6 +243,48 @@ class RunStoreTests(unittest.TestCase):
                 summary["skipped"][0]["source_file_identity"],
             )
 
+    def test_create_refresh_run_reuses_existing_artifact_with_different_compute_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_dir = root / "audio"
+            runs_root = root / "runs"
+            source_dir.mkdir()
+            audio_file = source_dir / "2026-04-01 12-00-00.wav"
+            audio_file.write_bytes(b"stable-audio")
+            cpu_settings = {
+                "inputRoots": [str(source_dir)],
+                "outputRoot": str(runs_root),
+                "computeMode": "cpu",
+            }
+            gpu_settings = {
+                "inputRoots": [str(source_dir)],
+                "outputRoot": str(runs_root),
+                "computeMode": "gpu",
+            }
+            existing_signature = generation_signature_for_settings(settings=gpu_settings)
+            requested_signature = generation_signature_for_settings(settings=cpu_settings)
+            self.assertNotEqual(existing_signature, requested_signature)
+            write_master_item(
+                runs_root,
+                "media-0001",
+                source_hash=sha256_file(audio_file),
+                conversion_signature=existing_signature,
+                source_relative_path="2026-04-01 12-00-00.wav",
+                source_id=str(source_dir),
+                source_file_identity=f"{source_dir}::2026-04-01 12-00-00.wav",
+            )
+
+            run_id, run_dir, summary = create_refresh_run(settings=cpu_settings)
+
+            self.assertIsNone(run_id)
+            self.assertIsNone(run_dir)
+            self.assertEqual(1, summary["total_discovered"])
+            self.assertEqual(0, summary["queued_count"])
+            self.assertEqual(1, summary["skipped_count"])
+            self.assertEqual("existing_artifact_reused", summary["skipped"][0]["reason"])
+            self.assertEqual(existing_signature, summary["skipped"][0]["existing_conversion_signature"])
+            self.assertEqual(requested_signature, summary["skipped"][0]["requested_conversion_signature"])
+
     def test_create_refresh_run_treats_renamed_same_hash_as_new_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

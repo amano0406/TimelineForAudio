@@ -422,6 +422,29 @@ def _artifact_path_from_catalog_row(row: dict[str, Any] | None) -> Path | None:
     return None
 
 
+def _find_reusable_catalog_row(
+    rows: list[dict[str, Any]],
+    *,
+    source_hash: str,
+    source_file_identity: str,
+) -> dict[str, Any] | None:
+    normalized_identity = normalize_file_identity(source_file_identity)
+    normalized_hash = str(source_hash or "").strip().lower()
+    if not normalized_hash:
+        return None
+    for row in rows:
+        row_hash = str(row.get("source_hash") or row.get("sha256") or "").strip().lower()
+        if row_hash != normalized_hash:
+            continue
+        if normalized_identity:
+            row_identity = normalize_file_identity(row.get("source_file_identity"))
+            if row_identity != normalized_identity:
+                continue
+        if _artifact_path_from_catalog_row(row) is not None:
+            return row
+    return None
+
+
 def item_id_from_catalog_row(row: dict[str, Any]) -> str:
     media_id = str(row.get("audio_id") or row.get("media_id") or "").strip()
     if media_id:
@@ -839,6 +862,7 @@ def create_refresh_run(
         settings=settings,
     )
     catalog = load_catalog(output_root_path)
+    catalog_rows = load_catalog_rows(output_root_path)
     input_items: list[InputItem] = []
     skipped_rows: list[dict[str, Any]] = []
     deferred_rows: list[dict[str, Any]] = []
@@ -869,6 +893,15 @@ def create_refresh_run(
         relative_path = _relative_path_label(source_path, source_root_path)
         source_file_identity = _source_file_identity(source_name, relative_path)
         duplicate = catalog.get(catalog_key(file_hash, generation_signature, source_file_identity))
+        duplicate_reason = "unchanged"
+        if duplicate is None and not reprocess_duplicates:
+            duplicate = _find_reusable_catalog_row(
+                catalog_rows,
+                source_hash=file_hash,
+                source_file_identity=source_file_identity,
+            )
+            if duplicate is not None:
+                duplicate_reason = "existing_artifact_reused"
         if (
             duplicate
             and not reprocess_duplicates
@@ -880,10 +913,12 @@ def create_refresh_run(
                     "source_id": source_name,
                     "source_relative_path": relative_path,
                     "source_file_identity": source_file_identity,
-                    "reason": "unchanged",
+                    "reason": duplicate_reason,
                     "source_hash": file_hash,
                     "duplicate_of": duplicate.get("audio_id") or duplicate.get("media_id"),
                     "run_id": duplicate.get("run_id"),
+                    "existing_conversion_signature": duplicate.get("conversion_signature"),
+                    "requested_conversion_signature": generation_signature,
                 }
             )
             continue
