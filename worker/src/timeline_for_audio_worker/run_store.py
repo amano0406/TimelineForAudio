@@ -843,8 +843,16 @@ def create_refresh_run(
     skipped_rows: list[dict[str, Any]] = []
     deferred_rows: list[dict[str, Any]] = []
     queued_limit = _refresh_queue_limit(settings, max_items)
+    audio_rows = list(discovered.get("audio_files", []))
+    if queued_limit is not None:
+        audio_rows.sort(
+            key=lambda row: (
+                int(row.get("size_bytes") or 0),
+                str(row.get("path") or "").lower(),
+            )
+        )
 
-    for row in discovered.get("audio_files", []):
+    for row in audio_rows:
         source_name = str(row.get("source_name") or "")
         if selected_source_ids and source_name.lower() not in selected_source_ids:
             continue

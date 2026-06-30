@@ -603,6 +603,29 @@ class RunStoreTests(unittest.TestCase):
             request = json.loads((Path(str(run_dir)) / "request.json").read_text(encoding="utf-8"))
             self.assertEqual(2, len(request["input_items"]))
 
+    def test_create_refresh_run_prefers_small_files_for_limited_batch(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source_dir = root / "audio"
+            runs_root = root / "runs"
+            source_dir.mkdir()
+            (source_dir / "a-large.wav").write_bytes(b"x" * 500)
+            (source_dir / "b-small.wav").write_bytes(b"x" * 5)
+            (source_dir / "c-mid.wav").write_bytes(b"x" * 50)
+            settings = {
+                "inputRoots": [str(source_dir)],
+                "outputRoot": str(runs_root),
+                "computeMode": "cpu",
+            }
+
+            run_id, run_dir, summary = create_refresh_run(settings=settings, max_items=1)
+
+            self.assertIsNotNone(run_id)
+            self.assertIsNotNone(run_dir)
+            self.assertEqual(1, summary["queued_count"])
+            request = json.loads((Path(str(run_dir)) / "request.json").read_text(encoding="utf-8"))
+            self.assertEqual(["b-small.wav"], [item["display_name"] for item in request["input_items"]])
+
     def test_create_run_writes_pending_contract_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
