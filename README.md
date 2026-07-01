@@ -51,6 +51,16 @@ cd C:\apps\TimelineForAudio
 .\start.ps1
 ```
 
+Run from macOS or Linux:
+
+```bash
+./start.sh
+```
+
+The bash launcher starts the Docker worker with the default CPU compose file.
+Set `TIMELINE_FOR_AUDIO_ENABLE_GPU=1` only when the host Docker runtime has a
+compatible NVIDIA GPU path.
+
 `start.ps1` starts:
 
 - Docker worker
@@ -119,6 +129,8 @@ For concrete JSON structures and field meanings, see [docs/OUTPUTS.md](docs/OUTP
 |---|---|
 | Start Docker worker and local API | `.\start.ps1` |
 | Stop Docker worker and local API | `.\stop.ps1` |
+| Start Docker worker on macOS/Linux | `./start.sh` |
+| Stop Docker worker on macOS/Linux | `./stop.sh` |
 | Check local API health | `Invoke-RestMethod http://127.0.0.1:19100/health` |
 | Read settings through API | `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19100/settings/status -Body '{}' -ContentType 'application/json'` |
 | Save token / compute mode | `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:19100/settings/save -Body '{"token":"<HUGGING_FACE_TOKEN>","computeMode":"gpu"}' -ContentType 'application/json'` |

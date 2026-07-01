@@ -16,12 +16,16 @@ services:
       TIMELINE_FOR_AUDIO_DOWNLOADS_ROOT: /workspace/output
       TIMELINE_FOR_AUDIO_SETTINGS_PATH: /workspace/settings.json
       TIMELINE_FOR_AUDIO_SETTINGS_EXAMPLE_PATH: /workspace/settings.example.json
+      TIMELINE_FOR_AUDIO_PATH_MAPPINGS: ${TIMELINE_FOR_AUDIO_PATH_MAPPINGS:-[]}
       PYTHONPATH: /workspace/worker/src
       HF_HOME: /shared/cache/huggingface
       TRANSFORMERS_CACHE: /shared/cache/huggingface
       TORCH_HOME: /shared/cache/torch
     volumes:
       - ./:/workspace
+      - type: bind
+        source: ${TIMELINE_FOR_AUDIO_HOST_ROOT:-.}
+        target: /host
       - app-data:/shared/app-data
       - cache-data:/shared/cache
     ports:
